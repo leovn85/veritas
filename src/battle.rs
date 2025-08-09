@@ -21,9 +21,9 @@ pub enum BattleState {
 
 // Data that aren't meant to be exposed in the API
 // And is only for the overlay frontend
-pub struct BattleContextInternal {
-    pub relative_action_value: f64,
-}
+// pub struct BattleContextInternal {
+//     pub relative_action_value: f64,
+// }
 
 #[derive(Default, Clone)]
 pub struct BattleContext {

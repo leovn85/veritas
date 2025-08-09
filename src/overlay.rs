@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use egui_notify::Toast;
 use widestring::u16str;
 use std::{
@@ -7,7 +7,7 @@ use std::{
     ptr::null_mut, time::Duration,
 };
 use windows::{
-    core::{w, Interface, PCWSTR}, Win32::{
+    core::{Interface, PCWSTR}, Win32::{
         Foundation::HMODULE,
         Graphics::{
             Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0},
@@ -58,7 +58,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             Some(window_class.hInstance),
             None,
         )
-        .unwrap();
+        ?;
 
         let mut feature_levels = [D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0];
 
@@ -109,17 +109,17 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             Some(feature_levels.as_mut_ptr()),
             Some(&mut context),
         )
-        .unwrap();
+        ?;
 
         let mut vtable = Box::new([0usize; 205]);
 
-        let swap_chain_ptr = &swap_chain.unwrap();
+        let swap_chain_ptr = &swap_chain.context("Failed to initialize D3D11SwapChain")?;
         let swap_chain_vtable = Interface::vtable(swap_chain_ptr);
 
-        let device_ptr = &device.unwrap();
+        let device_ptr = &device.context("Failed to initialize D3D11Device")?;
         let device_vtable = Interface::vtable(device_ptr);
 
-        let context_ptr = &context.unwrap();
+        let context_ptr = &context.context("Failed to initialize D3D11DeviceContext")?;
         let context_vtable = Interface::vtable(context_ptr);
 
         std::ptr::copy_nonoverlapping(mem::transmute(swap_chain_vtable), vtable.as_mut_ptr(), 18);

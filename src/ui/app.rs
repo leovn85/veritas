@@ -133,7 +133,7 @@ impl Overlay for App {
                             .show(ctx, |ui| {
                                 // Settings
                                 egui::Frame::default().inner_margin(5.0).show(ui, |ui| {
-                                    egui::menu::bar(ui, |ui| {
+                                    egui::MenuBar::new().ui(ui, |ui| {
                                         ui.toggle_value(
                                             &mut self.state.show_settings,
                                             RichText::new(format!(
@@ -447,7 +447,7 @@ impl App {
     }
 
     fn show_settings(&mut self, ui: &mut Ui) {
-        egui::menu::bar(ui, |ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
             let style = ui.ctx().style();
             let font_id = &style.text_styles[&egui::TextStyle::Button];
             let font_size = font_id.size;
@@ -472,7 +472,7 @@ impl App {
                         else {
                             self.config.set_theme_mode(egui::Theme::Light);
                         }
-                        ui.close_menu();
+                        ui.close();
                     }
 
                     if ui.button(t!("Revert theme")).clicked() {
@@ -481,7 +481,7 @@ impl App {
                             egui::Theme::Light => self.settings.colorix.set_light(ui),
                         }
                         self.settings.colorix.update_theme(ui.ctx(), *self.config.get_theme());
-                        ui.close_menu();
+                        ui.close();
                     }
                 },
             );
@@ -498,7 +498,7 @@ impl App {
                             if ui.button(*locale).clicked() {
                                 self.config.set_locale(locale_code.to_string());
                                 rust_i18n::set_locale(locale_code);
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     }
