@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear and concise description of what the bug is. Do not restart the game, and attach `veritas.log.debug`. If you already restarted the game, try to replicate the issue and immediately attach the debug log.
 
 **To Reproduce**
 Steps to reproduce the behavior:
