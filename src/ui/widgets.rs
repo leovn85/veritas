@@ -64,8 +64,22 @@ impl App {
     }
 
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
-        let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
+        
+        let (num_characters, avatar_lineup, real_time_damages) = {
+            let battle_context = BattleContext::get_instance();
+            (
+                battle_context.avatar_lineup.len().max(1) as f32,
+                battle_context.avatar_lineup.clone(),
+                battle_context.real_time_damages.clone(),
+            )
+        };
+        
+        let char_width_per_bar = available.x / num_characters;
+        let max_chars_per_line = ((char_width_per_bar / 8.0).max(8.0).min(15.0)) as usize;
+        
+        let avatar_lineup_for_formatter = avatar_lineup.clone();
+        
         Plot::new("damage_bars")
             .legend(
                 Legend::default()
@@ -79,18 +93,17 @@ impl App {
             .allow_scroll(false)
             .show_background(false)
             .y_axis_formatter(|y, _| helpers::format_damage(y.value))
-            .x_axis_formatter(|x, _| {
+            .x_axis_formatter(move |x, _| {
                 let index = x.value.floor() as usize;
-                battle_context
-                    .avatar_lineup
+                avatar_lineup_for_formatter
                     .get(index)
-                    .map(|avatar| avatar.name.clone())
+                    .map(|avatar| helpers::wrap_character_name(&avatar.name, max_chars_per_line))
                     .unwrap_or_default()
             })
             .show(ui, |plot_ui| {
                 let bars_data = create_bar_data(
-                    &battle_context.real_time_damages,
-                    &battle_context.avatar_lineup,
+                    &real_time_damages,
+                    &avatar_lineup,
                 );
                 let bars: Vec<Bar> = bars_data
                     .iter()
