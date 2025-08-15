@@ -489,6 +489,9 @@ name = "bitflags"
 version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "block-buffer"
@@ -863,7 +866,7 @@ dependencies = [
 [[package]]
 name = "edio11"
 version = "0.1.1"
-source = "git+https://github.com/hessiser/edio11-rs.git?rev=e9a1f8c#e9a1f8ccd03d9f2ce1de4664ee611c50b69de74d"
+source = "git+https://github.com/hessiser/edio11-rs.git?rev=1be4e8b#1be4e8b2943d9e3869a805f91c6b26674e1fb841"
 dependencies = [
  "arboard",
  "dark-light",
@@ -888,6 +891,7 @@ dependencies = [
  "epaint",
  "nohash-hasher",
  "profiling",
+ "ron",
  "serde",
  "smallvec",
  "unicode-segmentation",
@@ -2649,6 +2653,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ron"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beceb6f7bf81c73e73aeef6dd1356d9a1b2b4909e1f0fc3e59b034f9572d7b7f"
+dependencies = [
+ "base64",
+ "bitflags 2.9.1",
+ "serde",
+ "serde_derive",
+ "unicode-ident",
+]
+
+[[package]]
 name = "rust-i18n"
 version = "3.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3623,6 +3640,7 @@ dependencies = [
  "reqwest",
  "retour",
  "rfd",
+ "ron",
  "rust-i18n",
  "semver",
  "serde",

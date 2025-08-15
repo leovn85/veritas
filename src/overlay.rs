@@ -1,30 +1,37 @@
 use anyhow::{Context, Result};
+use edio11::Overlay;
 use egui_notify::Toast;
-use widestring::u16str;
 use std::{
     ffi::c_void,
     mem::{self},
-    ptr::null_mut, time::Duration,
+    ptr::null_mut,
+    time::Duration,
 };
+use widestring::u16str;
 use windows::{
-    core::{Interface, PCWSTR}, Win32::{
+    Win32::{
         Foundation::HMODULE,
         Graphics::{
             Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0},
             Direct3D11::{
-                D3D11CreateDeviceAndSwapChain, ID3D11Device, ID3D11DeviceContext, D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION
+                D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION, D3D11CreateDeviceAndSwapChain,
+                ID3D11Device, ID3D11DeviceContext,
             },
             Dxgi::{
                 Common::{
                     DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_MODE_SCALING_UNSPECIFIED,
                     DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
-                }, IDXGISwapChain, DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT
+                },
+                DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH,
+                DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGISwapChain,
             },
         },
         UI::WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassExW, UnregisterClassW, CS_HREDRAW, CS_VREDRAW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW
+            CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
+            RegisterClassExW, UnregisterClassW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
         },
-    }
+    },
+    core::{Interface, PCWSTR},
 };
 
 use crate::ui::app::App;
@@ -57,8 +64,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             None,
             Some(window_class.hInstance),
             None,
-        )
-        ?;
+        )?;
 
         let mut feature_levels = [D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0];
 
@@ -108,8 +114,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             Some(&mut device),
             Some(feature_levels.as_mut_ptr()),
             Some(&mut context),
-        )
-        ?;
+        )?;
 
         let mut vtable = Box::new([0usize; 205]);
 
@@ -146,17 +151,18 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
 pub fn initialize(toasts: Vec<Toast>) -> Result<()> {
     let vtable = get_vtable()?;
     unsafe {
-        Ok(edio11::set_overlay(
+        edio11::set_overlay(
             Box::new(|ctx| {
-                let mut app = Box::new(App::new(ctx));
+                let mut app = Box::new(App::new(ctx.clone()));
                 for mut toast in toasts {
                     toast.duration(Some(Duration::from_secs(5)));
-                    app.state.notifs.add(toast);
+                    app.notifs.add(toast);
                 }
                 app
             }),
             mem::transmute(vtable[8]),
             mem::transmute(vtable[13]),
-        )?)
+        )?;
+        Ok(())
     }
 }
