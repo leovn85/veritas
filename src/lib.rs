@@ -32,6 +32,8 @@ pub static UNITYPLAYER_HANDLE: LazyLock<usize> = LazyLock::new(|| unsafe {
         .0 as usize
 });
 
+pub const CHANGELOG: &str = include_str!("../CHANGELOG.MD");
+
 static LOCALES: phf::Map<&'static str, &'static str> = phf_map! {
     "en" => "English",
     "fr" => "Français",

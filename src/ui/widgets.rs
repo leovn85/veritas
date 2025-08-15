@@ -18,8 +18,8 @@ impl App {
         Plot::new("damage_pie")
             .legend(
                 Legend::default()
-                    .position(egui_plot::Corner::RightTop)
-                    .text_style(TextStyle::Small),
+                    .position(self.config.legend_position)
+                    .text_style(self.config.legend_text_style.clone()),
             )
             .height(available.y)
             .width(available.x)
@@ -28,7 +28,7 @@ impl App {
             .show_grid(false)
             .show_background(false)
             .show_axes([false; 2])
-            .allow_drag(false)
+            // .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
             .show(ui, |plot_ui: &mut egui_plot::PlotUi<'_>| {
@@ -47,9 +47,10 @@ impl App {
                         let plot_points = PlotPoints::new(segment.points);
                         let polygon = Polygon::new("Damage Pie", plot_points)
                             .stroke(Stroke::new(1.5, color))
+                            .fill_color(color.linear_multiply(self.config.pie_chart_opacity))
                             .id(avatar.name.clone())
                             .name(format!(
-                                "{}: {:.1}%, {} DMG, {:.0} DpAV",
+                                "{}: {:.0}% | {} DMG | {:.0} DPAV",
                                 avatar.name,
                                 percentage,
                                 helpers::format_damage(segment.value),
@@ -66,7 +67,11 @@ impl App {
         let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
         Plot::new("damage_bars")
-            .legend(Legend::default())
+            .legend(
+                Legend::default()
+                    .position(self.config.legend_position)
+                    .text_style(self.config.legend_text_style.clone()),
+            )
             .height(available.y)
             .width(available.x)
             .allow_drag(false)
@@ -105,11 +110,11 @@ impl App {
     pub fn show_turn_damage_plot(&mut self, ui: &mut Ui) {
         let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
-        Plot::new("turn_damage_plot")
+        Plot::new("damage_plot")
             .legend(
                 Legend::default()
-                    .position(egui_plot::Corner::RightTop)
-                    .text_style(TextStyle::Small),
+                    .position(self.config.legend_position)
+                    .text_style(self.config.legend_text_style.clone()),
             )
             .height(available.y)
             .width(available.x)
@@ -143,11 +148,11 @@ impl App {
     pub fn show_av_damage_plot(&mut self, ui: &mut Ui) {
         let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
-        Plot::new("av_damage_plot")
+        Plot::new("damage_plot")
             .legend(
                 Legend::default()
-                    .position(egui_plot::Corner::RightTop)
-                    .text_style(TextStyle::Small),
+                    .position(self.config.legend_position)
+                    .text_style(self.config.legend_text_style.clone()),
             )
             .height(available.y)
             .width(available.x)

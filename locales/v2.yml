@@ -539,4 +539,56 @@ Update:
   ru: Обновление
   vi: Cập nhật
   zh: 更新
+25vUKHE8EF1q:
+  de: Legendenposition
+  en: Legend Position
+  es: Posición de la leyenda
+  fr: Position de la légende
+  it: Posizione della legenda
+  ja: 凡例の位置
+  nl: Legendepositie
+  pl: Pozycja legendy
+  pt: Posição da legenda
+  ru: Положение легенды
+  vi: Vị trí chú giải
+  zh: 图例位置
+7G6zzA1r2oRH:
+  de: Kreisdiagramm-Deckkraft
+  en: Pie Chart Opacity
+  es: Opacidad del gráfico circular
+  fr: Opacité du graphique circulaire
+  it: Opacità del grafico a torta
+  ja: 円グラフの不透明度
+  nl: Taartdiagramdoorzichtigheid
+  pl: Przezroczystość wykresu kołowego
+  pt: Opacidade do gráfico de pizza
+  ru: Прозрачность круговой диаграммы
+  vi: Độ mờ biểu đồ tròn
+  zh: 饼图不透明度
+kHK0pogPObg2:
+  de: Legenden-Deckkraft
+  en: Legend Opacity
+  es: Opacidad de la leyenda
+  fr: Opacité de la légende
+  it: Opacità della legenda
+  ja: 凡例の不透明度
+  nl: Legendedoorzichtigheid
+  pl: Przezroczystość legendy
+  pt: Opacidade da legenda
+  ru: Прозрачность легенды
+  vi: Độ mờ của chú giải
+  zh: 图例不透明度
+yNEe4qFICqIA:
+  de: Legendentextstil
+  en: Legend Text Style
+  es: Estilo de texto de la leyenda
+  fr: Style de texte de la légende
+  it: Stile del testo della legenda
+  ja: 凡例のテキストスタイル
+  nl: Tekststijl van de legenda
+  pl: Styl tekstu legendy
+  pt: Estilo de texto da legenda
+  ru: Стиль текста легенды
+  vi: Kiểu chữ chú giải
+  zh: 图例文本样式
 _version: 2

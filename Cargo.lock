@@ -957,6 +957,7 @@ dependencies = [
  "ahash",
  "egui",
  "emath",
+ "serde",
 ]
 
 [[package]]
@@ -2222,6 +2223,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "parse-changelog"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "273a60ea03abb9825bb3034849496510a4aa9d438449cb5a7cb842e954e86490"
+dependencies = [
+ "indexmap",
+ "memchr",
+ "regex",
 ]
 
 [[package]]
@@ -3634,6 +3646,7 @@ dependencies = [
  "indoc",
  "log",
  "microseh",
+ "parse-changelog",
  "paste",
  "patternscan",
  "phf",

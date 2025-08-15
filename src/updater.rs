@@ -36,7 +36,7 @@ pub struct Updater {
 impl Updater {
     pub fn new(current_version: &str) -> Self {
         Self {
-            client: Client::builder().user_agent("veritas").build().unwrap(),
+            client: Client::builder().user_agent(env!("CARGO_PKG_NAME")).build().unwrap(),
             current_version: current_version.to_string(),
         }
     }

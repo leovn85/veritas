@@ -13,6 +13,12 @@ fn entry() {
 }
 
 fn init() {
+    logging::MultiLogger::init().unwrap();
+    #[cfg(debug_assertions)]
+    unsafe {
+        windows::Win32::System::Console::AllocConsole().unwrap();
+    }
+
     let mut toasts = Vec::<Toast>::new();
     let plugin_name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     match setup_subscribers() {
@@ -30,23 +36,17 @@ fn init() {
         }
     };
 
+    thread::spawn(|| server::start_server());
+
     match overlay::initialize(toasts) {
         Ok(_) => log::info!("Finished setting up overlay"),
         Err(e) => log::error!("Failed to initialize overlay: {}", e),
     }
-
-    thread::spawn(|| {
-        server::start_server();
-    });
 }
 
 fn setup_subscribers() -> anyhow::Result<()> {
     unsafe {
         let plugin_name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-
-        logging::MultiLogger::init()?;
-        #[cfg(debug_assertions)]
-        windows::Win32::System::Console::AllocConsole()?;
 
         log::info!("{plugin_name}");
         log::info!("Setting up...");

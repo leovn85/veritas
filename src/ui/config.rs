@@ -2,63 +2,50 @@ use std::{fs::File, io::Write, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use directories::ProjectDirs;
+use egui::Theme;
+use egui_plot::Corner;
 use serde::{Deserialize, Serialize};
 
-use super::themes::EGUI_THEME;
+use crate::ui::themes::EGUI_THEME;
+
 
 const CONFIG_FILENAME: &'static str = "config.json";
 
-macro_rules! config {
-    ( $ ( $field:ident : $field_type:ty ) ,*) => {
-        #[derive(Clone, Deserialize, Serialize)]
-        pub struct Config {
-            $(
-                $field : $field_type,
-            )*
-        }
-
-        impl Config {
-            paste::item! {
-                $(
-                    pub fn [<set_ $field>] (&mut self, value: $field_type) {
-                        if self. $field != value {
-                            self. $field = value;
-                            self.write().unwrap();
-                        }
-                    }
-
-                    pub fn [<get_ $field>] (&self) -> & $field_type {
-                        & self. $field
-                    }
-
-                )*
-            }
-        }
-    };
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Config {
+    pub version: String,
+    pub locale: String,
+    // pub fps: i32,
+    pub widget_opacity: f32,
+    pub streamer_mode: bool,
+    pub streamer_msg: String,
+    pub streamer_msg_size_pt: f32,
+    pub theme: egui_colors::Theme,
+    pub theme_mode: egui::Theme,
+    pub legend_text_style: egui::TextStyle,
+    pub legend_position: Corner,
+    pub legend_opacity: f32,
+    pub pie_chart_opacity: f32,
+    pub defender_exclusion: bool
 }
-
-config!(
-    locale: String,
-    // fps: i32,
-    widget_opacity: f32,
-    streamer_mode: bool,
-    streamer_msg: String,
-    streamer_msg_size_pt: f32,
-    theme: egui_colors::Theme,
-    theme_mode: egui::Theme
-);
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            version: String::new(),
             locale: rust_i18n::locale().to_string(),
             // fps: 60,
-            widget_opacity: 0.15,
+            widget_opacity: 0.30,
             streamer_mode: true,
             streamer_msg: env!("CARGO_PKG_NAME").to_string(),
             theme: EGUI_THEME,
             theme_mode: egui::Theme::Dark,
             streamer_msg_size_pt: 1.0,
+            legend_text_style: egui::TextStyle::Small,
+            legend_position: Corner::RightTop,
+            legend_opacity: 1.0,
+            pie_chart_opacity: 0.05,
+            defender_exclusion: true,
         }
     }
 }
@@ -87,22 +74,27 @@ impl Config {
                     }
                 }
             }
-            None => Err(anyhow!("Failed to load/create config.")),
+            None => Err(anyhow!("Failed to load/create config project dirs.")),
         }
     }
 
     fn initialize(config_path: &PathBuf, ctx: &egui::Context) -> Result<Self> {
-        let config: Config = Config {
+        let mut config: Config = Config {
             theme_mode: ctx.theme(),
             ..Default::default()
         };
+
+        if config.theme_mode == Theme::Light {
+            config.widget_opacity = 0.75;
+        }
+
         let mut file = File::create(config_path)?;
         serde_json::to_writer(&mut file, &config)?;
         file.flush()?;
         Ok(config)
     }
 
-    fn write(&self) -> Result<()> {
+    pub fn save(&self) -> Result<()> {
         match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
             Some(proj_dirs) => {
                 let config_local_dir = proj_dirs.config_local_dir();
@@ -117,7 +109,7 @@ impl Config {
                 file.flush()?;
                 Ok(())
             }
-            None => Err(anyhow!("Failed to write config.")),
+            None => Err(anyhow!("Failed to load/create config project dirs.")),
         }
     }
 }

@@ -17,13 +17,13 @@ use egui::Stroke;
 use egui::TextEdit;
 use egui::Ui;
 use egui::UiBuilder;
-use egui::scroll_area::State;
 use egui::{
     CentralPanel, Color32, Context, Frame, Slider, Window,
     epaint::text::{FontInsert, InsertFontFamily},
 };
 use egui_colors::Colorix;
 use egui_notify::Toasts;
+use egui_plot::Corner;
 use serde::Deserialize;
 use serde::Serialize;
 use windows::Win32::{
@@ -31,11 +31,12 @@ use windows::Win32::{
     UI::{Input::KeyboardAndMouse::VK_MENU, WindowsAndMessaging::WM_KEYDOWN},
 };
 
+use crate::CHANGELOG;
 use crate::LOCALES;
+use crate::ui::themes;
 use crate::updater::Updater;
 
 use super::config::Config;
-use super::themes;
 
 #[derive(Default, PartialEq, Serialize, Deserialize)]
 pub enum GraphUnit {
@@ -47,6 +48,7 @@ pub enum GraphUnit {
 #[derive(Default, Serialize, Deserialize)]
 pub struct AppState {
     pub show_menu: bool,
+    pub show_changelog: bool,
     pub show_settings: bool,
     pub show_console: bool,
     pub show_damage_distribution: bool,
@@ -56,6 +58,7 @@ pub struct AppState {
     pub show_av_metrics: bool,
     pub should_hide: bool,
     pub graph_x_unit: GraphUnit,
+    #[serde(skip)]
     pub use_custom_color: bool,
     pub update_checked: bool,
     pub update_available: Option<String>,
@@ -63,22 +66,11 @@ pub struct AppState {
     pub update_toast_id: Option<egui::Id>,
 }
 
-#[derive(Default)]
-pub struct Settings {
-    pub widget_opacity: f32,
-    pub streamer_mode: bool,
-    pub streamer_msg_size_pt: f32,
-    pub streamer_msg: String,
-    // pub fps: i32,
-    pub colorix: Colorix,
-    pub defender_exclusion: bool,
-}
-
 pub struct App {
     pub state: AppState,
-    settings: Settings,
-    config: Config,
+    pub config: Config,
     pub notifs: Toasts,
+    pub colorix: Colorix,
     is_state_loaded: bool,
 }
 
@@ -115,14 +107,40 @@ impl Overlay for App {
 
         self.notifs.show(ctx);
 
-        if self.settings.streamer_mode {
+        if self.state.show_changelog {
+            let changelog = parse_changelog::parse(CHANGELOG).unwrap();
+
+            if let Some(release) = changelog.get(env!("CARGO_PKG_VERSION")) {
+                Window::new(t!("Changelog"))
+                    .id("changelog_window".into())
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .collapsible(false)
+                    .resizable(false)
+                    .frame(Frame::window(&ctx.style()).inner_margin(5.))
+                    .show(ctx, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.heading(release.title);
+                            ui.label(release.notes);
+
+                            ui.add_space(5.);
+
+                            if ui.button(t!("Close")).clicked() {
+                                self.state.show_changelog = false;
+                                self.config.version = env!("CARGO_PKG_VERSION").to_string();
+                            }
+                        });
+                    });
+            }
+        }
+
+        if self.config.streamer_mode {
             egui::TopBottomPanel::bottom("statusbar")
                 .resizable(true)
                 .show(ctx, |ui| {
                     for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                        font_id.size *= self.settings.streamer_msg_size_pt;
+                        font_id.size *= self.config.streamer_msg_size_pt;
                     }
-                    let label = Label::new(RichText::new(&self.settings.streamer_msg).strong())
+                    let label = Label::new(RichText::new(&self.config.streamer_msg).strong())
                         .selectable(false);
                     ui.add(label);
                     ui.allocate_space(ui.available_size())
@@ -234,7 +252,7 @@ impl Overlay for App {
                     });
             }
 
-            let opacity = self.settings.widget_opacity.clamp(0.0, 1.0);
+            let opacity = self.config.widget_opacity.clamp(0.0, 1.0);
             let color = ctx.style().visuals.extreme_bg_color.gamma_multiply(opacity);
             let window_frame = egui::Frame::new()
                 .fill(color)
@@ -318,7 +336,10 @@ impl Overlay for App {
         // This is a weird quirk of immediate mode where we must initialize our state a frame later
         if !self.is_state_loaded {
             self.is_state_loaded = !self.is_state_loaded;
-            self.state = AppState::load();
+            self.state = AppState::load().unwrap_or_else(|x| {
+                log::error!("{x}");
+                AppState::default()
+            });
 
             let updater = Updater::new(env!("CARGO_PKG_VERSION"));
             if let Ok(Some(new_version)) = updater.check_update() {
@@ -337,6 +358,10 @@ impl Overlay for App {
                 self.state.update_toast_id = Some(toast_id);
             } else {
                 self.state.update_checked = true;
+            }
+
+            if env!("CARGO_PKG_VERSION") != self.config.version {
+                self.state.show_changelog = true
             }
         }
     }
@@ -393,12 +418,18 @@ impl Overlay for App {
     }
 
     fn save(&mut self, _storage: &mut egui::Memory) {
-        if self.save_persist(_storage).is_err() {
-            log::error!("Failed to save persistence.");
+        self.save_persist(_storage)
+            .unwrap_or_else(|e| log::error!("{e}"));
+        self.state.save().unwrap_or_else(|e| log::error!("{e}"));
+
+        self.config.theme = *self.colorix.theme();
+        if self.colorix.dark_mode() {
+            self.config.theme_mode = egui::Theme::Dark;
+        } else {
+            self.config.theme_mode = egui::Theme::Light;
         }
-        if self.state.save().is_err() {
-            log::error!("Failed to save state.");
-        }
+
+        self.config.save().unwrap_or_else(|e| log::error!("{e}"));
     }
 }
 
@@ -406,34 +437,22 @@ const PERSISTENCE_FILENAME: &'static str = "persistence";
 const STATE_FILENAME: &'static str = "state";
 
 impl AppState {
-    fn load() -> Self {
+    fn load() -> Result<Self> {
         match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
             Some(proj_dirs) => {
                 let data_local_dir = proj_dirs.data_local_dir();
                 let state_path = data_local_dir.join(STATE_FILENAME);
 
                 if state_path.exists() {
-                    fn _load(state_path: std::path::PathBuf) -> Result<AppState> {
-                        let mut file = File::open(&state_path)?;
-                        let mut buffer = String::new();
-                        file.read_to_string(&mut buffer)?;
-                        Ok(ron::from_str(&buffer)?)
-                    }
-                    match _load(state_path) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            log::error!("{e}");
-                            Self::default()
-                        }
-                    }
+                    let mut file = File::open(&state_path)?;
+                    let mut buffer = String::new();
+                    file.read_to_string(&mut buffer)?;
+                    Ok(ron::from_str(&buffer)?)
                 } else {
-                    Self::default()
+                    Ok(Self::default())
                 }
             }
-            None => {
-                log::error!("Failed to load/create data project dirs.");
-                Self::default()
-            }
+            None => Err(anyhow!("Failed to load/create data project dirs.")),
         }
     }
 
@@ -534,42 +553,32 @@ impl App {
 
         ctx.set_fonts(fonts);
 
-        let config = Config::new(&ctx).unwrap();
+        let config = Config::new(&ctx).unwrap_or_else(|e| {
+            log::error!("{e}");
+            Config::default()
+        });
 
         let mut app = Self {
-            settings: Settings {
-                widget_opacity: *config.get_widget_opacity(),
-                streamer_mode: *config.get_streamer_mode(),
-                streamer_msg_size_pt: *config.get_streamer_msg_size_pt(),
-                streamer_msg: config.get_streamer_msg().to_owned(),
-                colorix: Colorix::global(&ctx, *config.get_theme()),
-                defender_exclusion: true,
-            },
+            colorix: Colorix::global(&ctx, config.theme),
             config,
             notifs: Toasts::default(),
             state: AppState::default(),
             is_state_loaded: false,
         };
 
-        app.initialize_settings(&ctx);
+        rust_i18n::set_locale(&app.config.locale);
+        match app.config.theme_mode {
+            egui::Theme::Dark => {
+                app.colorix
+                    .set_dark(&mut Ui::new(ctx.clone(), "".into(), UiBuilder::new()))
+            }
+            egui::Theme::Light => {
+                app.colorix
+                    .set_light(&mut Ui::new(ctx.clone(), "".into(), UiBuilder::new()))
+            }
+        }
 
         app
-    }
-
-    fn initialize_settings(&mut self, ctx: &Context) {
-        rust_i18n::set_locale(&self.config.get_locale());
-        match self.config.get_theme_mode() {
-            egui::Theme::Dark => self.settings.colorix.set_dark(&mut Ui::new(
-                ctx.clone(),
-                "".into(),
-                UiBuilder::new(),
-            )),
-            egui::Theme::Light => self.settings.colorix.set_light(&mut Ui::new(
-                ctx.clone(),
-                "".into(),
-                UiBuilder::new(),
-            )),
-        }
     }
 
     fn show_settings(&mut self, ui: &mut Ui) {
@@ -577,37 +586,9 @@ impl App {
             let style = ui.ctx().style();
             let font_id = &style.text_styles[&egui::TextStyle::Button];
             let font_size = font_id.size;
-            self.settings
-                .colorix
-                .light_dark_toggle_button(ui, font_size);
+            self.colorix.light_dark_toggle_button(ui, font_size);
 
             ui.separator();
-
-            ui.menu_button(
-                RichText::new(format!("{} {}", egui_phosphor::bold::FILE, t!("File"))),
-                |ui| {
-                    if ui.button(t!("Save theme")).clicked() {
-                        self.config.set_theme(*self.settings.colorix.theme());
-                        if self.settings.colorix.dark_mode() {
-                            self.config.set_theme_mode(egui::Theme::Dark);
-                        } else {
-                            self.config.set_theme_mode(egui::Theme::Light);
-                        }
-                        ui.close();
-                    }
-
-                    if ui.button(t!("Revert theme")).clicked() {
-                        match self.config.get_theme_mode() {
-                            egui::Theme::Dark => self.settings.colorix.set_dark(ui),
-                            egui::Theme::Light => self.settings.colorix.set_light(ui),
-                        }
-                        self.settings
-                            .colorix
-                            .update_theme(ui.ctx(), *self.config.get_theme());
-                        ui.close();
-                    }
-                },
-            );
 
             ui.menu_button(
                 RichText::new(format!("{} {}", egui_phosphor::bold::GLOBE, t!("Language"))),
@@ -615,7 +596,7 @@ impl App {
                     for locale_code in rust_i18n::available_locales!() {
                         if let Some(locale) = LOCALES.get(locale_code) {
                             if ui.button(*locale).clicked() {
-                                self.config.set_locale(locale_code.to_string());
+                                self.config.locale = locale_code.to_owned();
                                 rust_i18n::set_locale(locale_code);
                                 ui.close();
                             }
@@ -624,19 +605,14 @@ impl App {
                 },
             );
 
-            if ui
-                .toggle_value(
-                    &mut self.settings.streamer_mode,
-                    RichText::new(format!(
-                        "{} {}",
-                        egui_phosphor::bold::VIDEO_CAMERA,
-                        t!("Streamer Mode")
-                    )),
-                )
-                .changed()
-            {
-                self.config.set_streamer_mode(self.settings.streamer_mode);
-            }
+            ui.toggle_value(
+                &mut self.config.streamer_mode,
+                RichText::new(format!(
+                    "{} {}",
+                    egui_phosphor::bold::VIDEO_CAMERA,
+                    t!("Streamer Mode")
+                )),
+            );
         });
 
         ui.separator();
@@ -647,7 +623,7 @@ impl App {
             .default_open(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.settings.defender_exclusion, t!("Add Defender Exclusion during update"));
+                    ui.checkbox(&mut self.config.defender_exclusion, t!("Add Defender Exclusion during update"));
                     ui.add(egui::widgets::Label::new(egui::RichText::new(egui_phosphor::regular::INFO).size(16.0))
                         .sense(egui::Sense::hover()))
                         .on_hover_text(t!(indoc::indoc!("
@@ -672,7 +648,7 @@ impl App {
                     {
                         if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
                             .download_update(
-                                self.settings.defender_exclusion,
+                                self.config.defender_exclusion,
                             )
                         {
                             self.notifs.error(format!("Update failed: {}", e));
@@ -697,31 +673,85 @@ impl App {
                 .id_salt("theme_header")
                 .show(ui, |ui| {
                     if self.state.use_custom_color {
-                        self.settings.colorix.twelve_from_custom(ui);
+                        self.colorix.twelve_from_custom(ui);
                     };
 
                     ui.horizontal(|ui| {
-                        self.settings.colorix.custom_picker(ui);
+                        self.colorix.custom_picker(ui);
                         ui.toggle_value(&mut self.state.use_custom_color, t!("Custom color"));
                     });
-                    self.settings.colorix.themes_dropdown(
-                        ui,
-                        Some((themes::THEME_NAMES.to_vec(), themes::THEMES.to_vec())),
-                        true,
-                    );
 
-                    self.settings.colorix.ui_combo_12(ui, false);
+                    if self.colorix.dark_mode() {
+                        self.colorix.themes_dropdown(
+                            ui,
+                            Some((themes::THEME_NAMES.to_vec(), themes::THEMES.to_vec())),
+                            true,
+                        );
+                    } else {
+                        self.colorix.themes_dropdown(ui, None, false);
+                    }
+
+                    self.colorix.ui_combo_12(ui, false);
                 });
 
-            if ui
-                .add(
-                    Slider::new(&mut self.settings.widget_opacity, 0.0..=1.0)
-                        .text(t!("Window Opacity")),
-                )
-                .changed()
-            {
-                self.config.set_widget_opacity(self.settings.widget_opacity);
-            };
+            ui.add(
+                Slider::new(&mut self.config.widget_opacity, 0.0..=1.0).text(t!("Window Opacity")),
+            );
+
+            ui.horizontal(|ui| {
+                ui.horizontal(|ui| {
+                    let all_text_styles = ui.style().text_styles();
+                    for style in all_text_styles {
+                        ui.selectable_value(
+                            &mut self.config.legend_text_style,
+                            style.clone(),
+                            style.to_string(),
+                        );
+                    }
+                });
+                ui.label(t!("Legend Text Style"));
+            });
+
+            ui.horizontal(|ui| {
+                ui.horizontal(|ui| {
+                    Corner::all().for_each(|position| {
+                        ui.selectable_value(
+                            &mut self.config.legend_position,
+                            position,
+                            format!("{position:?}"),
+                        );
+                    });
+                });
+                ui.label(t!("Legend Position"));
+            });
+
+            ui.horizontal(|ui| {
+                ui.add(egui::Slider::new(
+                    &mut self.config.legend_opacity,
+                    0.0..=1.0,
+                ));
+                ui.label(t!("Legend Opacity"));
+            });
+
+            ui.horizontal(|ui| {
+                ui.add(egui::Slider::new(
+                    &mut self.config.pie_chart_opacity,
+                    0.0..=1.0,
+                ));
+                ui.label(t!("Pie Chart Opacity"));
+            });
+
+            // TODO:
+            // Change using a grid like so:
+
+            // ui.label("Text style:");
+            // ui.horizontal(|ui| {
+            //     let all_text_styles = ui.style().text_styles();
+            //     for style in all_text_styles {
+            //         ui.selectable_value(&mut config.text_style, style.clone(), style.to_string());
+            //     }
+            // });
+            // ui.end_row();
 
             // if ui
             //     .add(
@@ -741,32 +771,20 @@ impl App {
             //     };
             // }
 
-            if ui
-                .add(
-                    Slider::new(&mut self.settings.streamer_msg_size_pt, 0.5..=2.0)
-                        .text(t!("Streamer Message Font Size%")),
-                )
-                .changed()
-            {
-                self.config
-                    .set_streamer_msg_size_pt(self.settings.streamer_msg_size_pt);
-            }
+            ui.add(
+                Slider::new(&mut self.config.streamer_msg_size_pt, 0.5..=2.0)
+                    .text(t!("Streamer Message Font Size%")),
+            );
 
-            if ui
-                .add(
-                    TextEdit::singleline(&mut self.settings.streamer_msg).hint_text(RichText::new(
-                        format!(
-                            "{} {}",
-                            t!("Streamer Message. Can also use Phosphor Icons!"),
-                            egui_phosphor::bold::RAINBOW
-                        ),
-                    )),
-                )
-                .changed()
-            {
-                self.config
-                    .set_streamer_msg(self.settings.streamer_msg.clone());
-            };
+            ui.add(
+                TextEdit::singleline(&mut self.config.streamer_msg).hint_text(RichText::new(
+                    format!(
+                        "{} {}",
+                        t!("Streamer Message. Can also use Phosphor Icons!"),
+                        egui_phosphor::bold::RAINBOW
+                    ),
+                )),
+            );
         });
     }
 }
