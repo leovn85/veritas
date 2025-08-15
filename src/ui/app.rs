@@ -279,7 +279,7 @@ impl Overlay for App {
             }
 
             if self.state.show_av_metrics {
-                egui::containers::Window::new(t!("Action Value Metrics"))
+                egui::containers::Window::new(t!("Battle Metrics"))
                     .id("action_value_metrics_window".into())
                     .frame(window_frame)
                     .resizable(true)

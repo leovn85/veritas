@@ -210,9 +210,8 @@ impl App {
                         ui.label(format!("{}", avatar.name));
 
                         ui.label(format!(
-                            "{:.2} {}",
+                            "{:.2}",
                             battle_context.real_time_damages[i],
-                            t!("DMG")
                         ));
 
                     });
@@ -237,10 +236,9 @@ impl App {
                             ui.label(format!("{}", avatar.name,));
 
                             ui.label(format!(
-                                "{:.2} {}",
+                                "{:.2}",
                                 battle_context.battle_avatars[i].battle_stats.av
                                     + current_action_value,
-                                t!("AV")
                             ));
                         });
                     }
@@ -252,7 +250,7 @@ impl App {
         } else {
             battle_context.total_damage
         };
-        egui::CollapsingHeader::new(format!("{}: {:.2}", t!("DpAV"), dpav))
+        egui::CollapsingHeader::new(format!("{}: {:.2}", t!("DPAV"), dpav))
             .id_salt("dpav_header")
             .show(ui, |ui| {
                 ui.vertical(|ui| {
@@ -264,7 +262,7 @@ impl App {
                         };
                         ui.horizontal(|ui| {
                             ui.label(format!("{}", avatar.name));
-                            ui.label(format!("{:.2} {}", dpav, t!("DpAV")));
+                            ui.label(format!("{:.2}", dpav));
                         });
                     }
                 });

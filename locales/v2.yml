@@ -249,20 +249,32 @@ Damage:
   vi: Sát thương
   zh: 伤害
   pl: Obrażenia
-DpAV:
-  en: DpAV
-  fr: DpAV
-  es: DpAV
-  de: DpAV
-  it: DpAV
-  ja: DpAV
-  nl: DpAV
-  pt: DpAV
-  ru: DpAV
-  # ar: DpAV
-  vi: DpAV
-  zh: DpAV
-  pl: DpWA
+38QgdoACZYdL:
+  en: Battle Metrics
+  de: Kampfmetriken
+  es: Métricas de Combate
+  fr: Métriques de Combat
+  it: Metriche di Battaglia
+  ja: 戦闘メトリクス
+  nl: Gevechtsmetriek
+  pl: Metryki Walki
+  pt: Métricas de Batalha
+  ru: Метрики Боя
+  vi: Thống Kê Chiến Đấu
+  zh: 战斗指标
+DPAV:
+  de: DPAV
+  en: DPAV
+  es: DPAV
+  fr: DPAV
+  it: DPAV
+  ja: DPAV
+  nl: DPAV
+  pl: DPAV
+  pt: DPAV
+  ru: DPAV
+  vi: DPAV
+  zh: DPAV
 HP:
   en: HP
   fr: HP
@@ -437,19 +449,6 @@ AV:
   ru: Размер шрифта сообщения стримера%
   vi: Kích thước phông chữ tin nhắn của người phát trực tuyến%
   zh: 直播消息字体大小%
-DMG:
-  de: DMG
-  en: DMG
-  es: DMG
-  fr: DMG
-  it: DMG
-  ja: DMG
-  nl: DMG
-  pl: DMG
-  pt: DMG
-  ru: DMG
-  vi: DMG
-  zh: DMG
 Theme:
   de: Thema
   en: Theme
