@@ -255,7 +255,7 @@ impl Overlay for App {
             }
 
             if self.state.show_damage_bars {
-                egui::containers::Window::new(t!("Damage by Character"))
+                egui::containers::Window::new(t!("Character Damage"))
                     .id("damage_by_character_window".into())
                     .frame(window_frame)
                     .resizable(true)

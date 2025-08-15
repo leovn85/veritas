@@ -151,20 +151,19 @@
   vi: Thống kê kẻ thù
   zh: 敌人统计
   pl: Statystyki wroga
-4dwgNbiO1HqM:
-  en: Damage by Character
-  fr: Dégâts par personnage
-  es: Daño por personaje
-  de: Schaden pro Charakter
-  it: Danni per personaggio
-  ja: キャラクター別のダメージ
-  pt: Dano por personagem
-  nl: Schade per personage
-  ru: Урон по персонажам
-  # ar: الضرر حسب الشخصية
-  vi: Sát thương theo nhân vật
+3paHYrdnyJf9:
+  en: Character Damage
+  fr: Dégâts du personnage
+  es: Daño del personaje
+  de: Charakter-Schaden
+  it: Danni del personaggio
+  ja: キャラクターのダメージ
+  pt: Dano do personagem
+  nl: Schade van personage
+  ru: Урон персонажа
+  vi: Sát thương của nhân vật
   zh: 角色伤害
-  pl: Obrżenia według postaci
+  pl: Obrażenia postaci
 6HKhJownFyls:
   en: Total Elapsed AV
   fr: AV total écoulé
