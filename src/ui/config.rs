@@ -13,39 +13,100 @@ const CONFIG_FILENAME: &'static str = "config.json";
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(default)]
     pub version: String,
+    #[serde(default = "default_locale")]
     pub locale: String,
     // pub fps: i32,
+    #[serde(default = "default_widget_opacity")]
     pub widget_opacity: f32,
+    #[serde(default = "default_streamer_mode")]
     pub streamer_mode: bool,
+    #[serde(default = "default_streamer_msg")]
     pub streamer_msg: String,
+    #[serde(default = "default_streamer_msg_size_pt")]
     pub streamer_msg_size_pt: f32,
+    #[serde(default = "default_theme")]
     pub theme: egui_colors::Theme,
+    #[serde(default = "default_theme_mode")]
     pub theme_mode: egui::Theme,
+    #[serde(default = "default_legend_text_style")]
     pub legend_text_style: egui::TextStyle,
+    #[serde(default = "default_legend_position")]
     pub legend_position: Corner,
+    #[serde(default = "default_legend_opacity")]
     pub legend_opacity: f32,
+    #[serde(default = "default_pie_chart_opacity")]
     pub pie_chart_opacity: f32,
+    #[serde(default = "default_defender_exclusion")]
     pub defender_exclusion: bool
+}
+
+fn default_locale() -> String {
+    rust_i18n::locale().to_string()
+}
+
+fn default_widget_opacity() -> f32 {
+    0.30
+}
+
+fn default_streamer_mode() -> bool {
+    true
+}
+
+fn default_streamer_msg() -> String {
+    env!("CARGO_PKG_NAME").to_string()
+}
+
+fn default_theme() -> egui_colors::Theme {
+    crate::ui::themes::EGUI_THEME
+}
+
+fn default_theme_mode() -> egui::Theme {
+    egui::Theme::Dark
+}
+
+fn default_streamer_msg_size_pt() -> f32 {
+    1.0
+}
+
+fn default_legend_text_style() -> egui::TextStyle {
+    egui::TextStyle::Small
+}
+
+fn default_legend_position() -> egui_plot::Corner {
+    egui_plot::Corner::RightTop
+}
+
+fn default_legend_opacity() -> f32 {
+    1.0
+}
+
+fn default_pie_chart_opacity() -> f32 {
+    0.05
+}
+
+fn default_defender_exclusion() -> bool {
+    true
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             version: String::new(),
-            locale: rust_i18n::locale().to_string(),
+            locale: default_locale(),
             // fps: 60,
-            widget_opacity: 0.30,
-            streamer_mode: true,
-            streamer_msg: env!("CARGO_PKG_NAME").to_string(),
-            theme: EGUI_THEME,
-            theme_mode: egui::Theme::Dark,
-            streamer_msg_size_pt: 1.0,
-            legend_text_style: egui::TextStyle::Small,
-            legend_position: Corner::RightTop,
-            legend_opacity: 1.0,
-            pie_chart_opacity: 0.05,
-            defender_exclusion: true,
+            widget_opacity: default_widget_opacity(),
+            streamer_mode: default_streamer_mode(),
+            streamer_msg: default_streamer_msg(),
+            theme: default_theme(),
+            theme_mode: default_theme_mode(),
+            streamer_msg_size_pt: default_streamer_msg_size_pt(),
+            legend_text_style: default_legend_text_style(),
+            legend_position: default_legend_position(),
+            legend_opacity: default_legend_opacity(),
+            pie_chart_opacity: default_pie_chart_opacity(),
+            defender_exclusion: default_defender_exclusion(),
         }
     }
 }
