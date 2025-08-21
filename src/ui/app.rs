@@ -151,7 +151,7 @@ impl Overlay for App {
             if self.state.show_menu {
                 CentralPanel::default()
                     .frame(Frame {
-                        fill: Color32::GRAY.gamma_multiply(0.25),
+                        fill: Color32::BLACK.gamma_multiply(0.25),
                         ..Default::default()
                     })
                     .show(ctx, |_ui: &mut egui::Ui| {
