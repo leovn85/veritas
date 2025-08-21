@@ -20,7 +20,8 @@ crate-type = ["cdylib"]
 # UI
 egui = { version = "0.32.0", features = ["serde", "persistence"] }
 egui_plot = { version = "0.33.0", features = ["serde"] }
-edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "1be4e8b" }
+edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "b623b96" }
+
 egui-phosphor = { version = "0.10.0", features = ["bold"]}
 egui_colors = { version = "0.9.0", features = ["serde"] }
 egui-notify = "0.20.0"
