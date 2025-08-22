@@ -54,7 +54,7 @@ fn setup_subscribers() -> anyhow::Result<()> {
         while GetModuleHandleW(windows::core::w!("GameAssembly")).is_err()
             || GetModuleHandleW(windows::core::w!("UnityPlayer")).is_err()
         {
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_secs(3));
         }
 
         kreide::il2cpp::init()?;
