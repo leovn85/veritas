@@ -118,9 +118,7 @@ impl Overlay for App {
             egui::TopBottomPanel::bottom("statusbar")
                 .resizable(true)
                 .show(ctx, |ui| {
-                    for (_text_style, font_id) in ui.style_mut().text_styles.iter_mut() {
-                        font_id.size *= self.config.streamer_msg_size_pt;
-                    }
+                    ui.style_mut().override_text_style = Some(egui::TextStyle::Body);
                     let label = Label::new(RichText::new(&self.config.streamer_msg).strong())
                         .selectable(false);
                     ui.add(label);
@@ -140,7 +138,6 @@ impl Overlay for App {
                             .id("menu_window".into())
                             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                             .collapsible(false)
-                            .resizable(false)
                             .show(ctx, |ui| {
                                 // Settings
                                 egui::Frame::default().inner_margin(5.0).show(ui, |ui| {
@@ -281,11 +278,10 @@ impl Overlay for App {
             }
 
             if self.state.show_character_legend {
-                egui::containers::Window::new("")
+                egui::containers::Window::new(t!("Character Legend"))
                     .id("character_legend_window".into())
                     .frame(window_frame)
                     .resizable(true)
-                    .collapsible(false)
                     .min_width(200.0)
                     .min_height(200.0)
                     .show(ctx, |ui| {
@@ -736,16 +732,22 @@ impl App {
                         self.state.update_bttn_enabled = false;
                         self.notifs.success(t!("Update in progress"));
                         RUNTIME.spawn(async move {
-                            if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
+                            let status = if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
                                 .download_update(defender_exclusion)
                                 .await
                             {
-                                if sender.send(Some(Update { new_version: Some(new_version.to_string()), status: Some(Status::Failed(e))})).is_err() {
-                                    let e = anyhow!("Failed to send update to inbox");
-                                    log::error!("{e}");
-                                    panic!("{e}");
-                                }
+                                Some(Status::Failed(e))
                             }
+                            else {
+                                Some(Status::Succeeded)
+                            };
+
+                            if sender.send(Some(Update { new_version: Some(new_version.to_string()), status})).is_err() {
+                                let e = anyhow!("Failed to send update to inbox");
+                                log::error!("{e}");
+                                panic!("{e}");
+                            }
+
                         });
                     }
 
@@ -816,6 +818,20 @@ impl App {
                 Slider::new(&mut self.config.widget_opacity, 0.0..=1.0).text(t!("Window Opacity")),
             );
 
+            CollapsingHeader::new(t!("Fonts"))
+                .id_salt("fonts_header")
+                .show(ui, |ui| {
+                    for (style, id) in &mut self.config.font_sizes {
+                        let label = format!("{:?}", style);
+                        ui.add(Slider::new(&mut id.size, 8.0..=48.0).text(label));
+                    }
+
+                    let font_sizes = self.config.font_sizes.clone();
+                    ui.ctx().all_styles_mut(move |style| {
+                        style.text_styles = font_sizes.clone();
+                    });
+                });
+
             ui.checkbox(
                 &mut self.config.auto_showhide_ui,
                 t!("Auto(show/hide) UI on battle (start/end)."),
@@ -850,11 +866,6 @@ impl App {
             //         )
             //     };
             // }
-
-            ui.add(
-                Slider::new(&mut self.config.streamer_msg_size_pt, 0.5..=2.0)
-                    .text(t!("Streamer Message Font Size%")),
-            );
 
             ui.add(
                 TextEdit::singleline(&mut self.config.streamer_msg).hint_text(RichText::new(

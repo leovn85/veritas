@@ -1,13 +1,14 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use directories::ProjectDirs;
-use egui::Theme;
+use egui::{
+    ahash::{HashMap, HashMapExt, RandomState}, FontFamily, FontId, TextStyle, Theme
+};
 use egui_plot::Corner;
 use serde::{Deserialize, Serialize};
 
 use crate::ui::themes::EGUI_THEME;
-
 
 const CONFIG_FILENAME: &'static str = "config.json";
 
@@ -24,8 +25,8 @@ pub struct Config {
     pub streamer_mode: bool,
     #[serde(default = "default_streamer_msg")]
     pub streamer_msg: String,
-    #[serde(default = "default_streamer_msg_size_pt")]
-    pub streamer_msg_size_pt: f32,
+    #[serde(default = "default_font_sizes")]
+    pub font_sizes: BTreeMap<egui::TextStyle, FontId>,
     #[serde(default = "default_theme")]
     pub theme: egui_colors::Theme,
     #[serde(default = "default_theme_mode")]
@@ -64,8 +65,15 @@ fn default_theme_mode() -> egui::Theme {
     egui::Theme::Dark
 }
 
-fn default_streamer_msg_size_pt() -> f32 {
-    1.0
+fn default_font_sizes() -> BTreeMap<egui::TextStyle, FontId> {
+    [
+        (TextStyle::Heading, FontId::new(30.0, FontFamily::Proportional)),
+        (TextStyle::Body, FontId::new(18.0, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(14.0, FontFamily::Monospace)),
+        (TextStyle::Button, FontId::new(14.0, FontFamily::Proportional)),
+        (TextStyle::Small, FontId::new(10.0, FontFamily::Proportional)),
+    ]
+    .into()
 }
 
 fn default_legend_text_style() -> egui::TextStyle {
@@ -95,7 +103,7 @@ impl Default for Config {
             streamer_msg: default_streamer_msg(),
             theme: default_theme(),
             theme_mode: default_theme_mode(),
-            streamer_msg_size_pt: default_streamer_msg_size_pt(),
+            font_sizes: default_font_sizes(),
             legend_text_style: default_legend_text_style(),
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),

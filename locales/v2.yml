@@ -434,19 +434,6 @@ AV:
   ru: AV
   vi: AV
   zh: AV
-2ewErlXDA0ed:
-  de: Streamer-Nachrichten-Schriftgröße%
-  en: Streamer Message Font Size%
-  es: Tamaño de fuente de mensaje de streamer%
-  fr: Taille de la police des messages du streamer%
-  it: Dimensione carattere messaggio streamer%
-  ja: ストリーマーメッセージフォントサイズ%
-  nl: Streamer-bericht lettertypegrootte%
-  pl: Rozmiar czcionki wiadomości streamera%
-  pt: Tamanho da fonte da mensagem do streamer%
-  ru: Размер шрифта сообщения стримера%
-  vi: Kích thước phông chữ tin nhắn của người phát trực tuyến%
-  zh: 直播消息字体大小%
 Theme:
   de: Thema
   en: Theme
@@ -669,4 +656,30 @@ Reset:
   ru: Показать легенду персонажей
   vi: Hiển thị chú giải nhân vật
   zh: 显示角色图例
+2LkJpspSxNNh:
+  de: Charakterlegende
+  en: Character Legend
+  es: Leyenda de personajes
+  fr: Légende des personnages
+  it: Legenda dei personaggi
+  ja: キャラクター凡例
+  nl: Personagelegenda
+  pl: Legenda postaci
+  pt: Legenda de personagens
+  ru: Легенда персонажей
+  vi: Chú giải nhân vật
+  zh: 角色图例
+Fonts:
+  de: Schriftarten
+  en: Fonts
+  es: Fuentes
+  fr: Polices
+  it: Caratteri
+  ja: フォント
+  nl: Lettertypen
+  pl: Czcionki
+  pt: Fontes
+  ru: Шрифты
+  vi: Phông chữ
+  zh: 字体
 _version: 2
