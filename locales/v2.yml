@@ -40,20 +40,19 @@
   vi: Hiển thị phân bố sát thương
   zh: 显示伤害分布
   pl: Pokaż dystrybucję obrażeń
-2GmyOmLjedCr:
-  en: Show AV Metrics
-  fr: Afficher les métriques AV
-  es: Mostrar métricas de AV
-  de: AV-Metriken anzeigen
-  it: Mostra metriche AV
-  ja: AVメトリクスの表示
-  pt: Mostrar métricas de AV
-  nl: Toon AV-metrieken
-  ru: Показать метрики AV
-  # ar: عرض مقاييس AV
-  vi: Hiển thị số liệu AV
-  zh: 显示行动值指标
-  pl: Pokaż wskaźniki WA
+5iwKh0bbRLxl:
+  de: Kampfmetriken anzeigen
+  en: Show Battle Metrics
+  es: Mostrar métricas de batalla
+  fr: Afficher les métriques de combat
+  it: Mostra metriche di battaglia
+  ja: 戦闘メトリクスを表示
+  nl: Toon gevechtsstatistieken
+  pl: Pokaż metryki bitwy
+  pt: Mostrar métricas de batalha
+  ru: Показать метрики боя
+  vi: Hiển thị chỉ số trận chiến
+  zh: 显示战斗指标
 2cuU8okyUVvn:
   en: Action Value Metrics
   fr: Métriques de la valeur d'action
@@ -657,4 +656,17 @@ Reset:
   ru: Сброс
   vi: Đặt lại
   zh: 重置
+4NXFaKg3jdcA:
+  de: Charakterlegende anzeigen
+  en: Show Character Legend
+  es: Mostrar leyenda de personajes
+  fr: Afficher la légende des personnages
+  it: Mostra legenda dei personaggi
+  ja: キャラクター凡例を表示
+  nl: Toon personagelegenda
+  pl: Pokaż legendę postaci
+  pt: Mostrar legenda de personagens
+  ru: Показать легенду персонажей
+  vi: Hiển thị chú giải nhân vật
+  zh: 显示角色图例
 _version: 2

@@ -6,8 +6,6 @@ use anyhow::Result;
 use anyhow::anyhow;
 use directories::ProjectDirs;
 use edio11::{Overlay, WindowMessage, WindowProcessOptions, input::InputResult};
-use egui::layers::GraphicLayers;
-use egui::util::IdTypeMap;
 use egui::CollapsingHeader;
 use egui::Key;
 use egui::KeyboardShortcut;
@@ -20,6 +18,8 @@ use egui::Stroke;
 use egui::TextEdit;
 use egui::Ui;
 use egui::UiBuilder;
+use egui::layers::GraphicLayers;
+use egui::util::IdTypeMap;
 use egui::{
     CentralPanel, Color32, Context, Frame, Slider, Window,
     epaint::text::{FontInsert, InsertFontFamily},
@@ -63,13 +63,14 @@ pub struct AppState {
     pub show_damage_bars: bool,
     pub show_real_time_damage: bool,
     pub show_enemy_stats: bool,
-    pub show_av_metrics: bool,
+    pub show_battle_metrics: bool,
     pub should_hide: bool,
     pub graph_x_unit: GraphUnit,
     #[serde(skip)]
     pub use_custom_color: bool,
     #[serde(skip)]
     pub update_bttn_enabled: bool,
+    show_character_legend: bool,
 }
 
 pub struct App {
@@ -153,12 +154,15 @@ impl Overlay for App {
                                             )),
                                         );
 
-                                        if ui.button(RichText::new(format!(
+                                        if ui
+                                            .button(RichText::new(format!(
                                                 "{} {}",
                                                 egui_phosphor::bold::ARROW_COUNTER_CLOCKWISE,
                                                 t!("Reset")
-                                            ))).clicked() {
-                                                ctx.memory_mut(|writer| *writer = Memory::default());
+                                            )))
+                                            .clicked()
+                                        {
+                                            ctx.memory_mut(|writer| *writer = Memory::default());
                                         }
 
                                         // ui.menu_button(RichText::new(format!(
@@ -191,6 +195,10 @@ impl Overlay for App {
                                     ui.add_space(5.);
                                     ui.checkbox(&mut self.state.show_console, t!("Show Logs"));
                                     ui.checkbox(
+                                        &mut self.state.show_character_legend,
+                                        t!("Show Character Legend"),
+                                    );
+                                    ui.checkbox(
                                         &mut self.state.show_damage_distribution,
                                         t!("Show Damage Distribution"),
                                     );
@@ -208,8 +216,8 @@ impl Overlay for App {
                                     );
 
                                     ui.checkbox(
-                                        &mut self.state.show_av_metrics,
-                                        t!("Show AV Metrics"),
+                                        &mut self.state.show_battle_metrics,
+                                        t!("Show Battle Metrics"),
                                     );
 
                                     ui.add_space(5.);
@@ -272,6 +280,19 @@ impl Overlay for App {
                     });
             }
 
+            if self.state.show_character_legend {
+                egui::containers::Window::new("")
+                    .id("character_legend_window".into())
+                    .frame(window_frame)
+                    .resizable(true)
+                    .collapsible(false)
+                    .min_width(200.0)
+                    .min_height(200.0)
+                    .show(ctx, |ui| {
+                        self.show_character_legend(ui);
+                    });
+            }
+
             if self.state.show_damage_bars {
                 egui::containers::Window::new(t!("Character Damage"))
                     .id("damage_by_character_window".into())
@@ -296,7 +317,7 @@ impl Overlay for App {
                     });
             }
 
-            if self.state.show_av_metrics {
+            if self.state.show_battle_metrics {
                 egui::containers::Window::new(t!("Battle Metrics"))
                     .id("action_value_metrics_window".into())
                     .frame(window_frame)
@@ -781,19 +802,6 @@ impl App {
                     }
                 });
                 ui.label(t!("Legend Text Style"));
-            });
-
-            ui.horizontal(|ui| {
-                ui.horizontal(|ui| {
-                    Corner::all().for_each(|position| {
-                        ui.selectable_value(
-                            &mut self.config.legend_position,
-                            position,
-                            format!("{position:?}"),
-                        );
-                    });
-                });
-                ui.label(t!("Legend Position"));
             });
 
             ui.horizontal(|ui| {

@@ -1,5 +1,5 @@
 use crate::ui::app::GraphUnit;
-use egui::{Stroke, TextStyle, Ui};
+use egui::{Painter, Sense, Stroke, TextStyle, Ui, Vec2, epaint::CircleShape};
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::{battle::BattleContext, models::misc::Avatar};
@@ -16,11 +16,11 @@ impl App {
         let available = ui.available_size();
 
         Plot::new("damage_pie")
-            .legend(
-                Legend::default()
-                    .position(self.config.legend_position)
-                    .text_style(self.config.legend_text_style.clone()),
-            )
+            // .legend(
+            //     Legend::default()
+            //         .position(self.config.legend_position)
+            //         .text_style(self.config.legend_text_style.clone()),
+            // )
             .height(available.y)
             .width(available.x)
             .data_aspect(1.0)
@@ -29,7 +29,7 @@ impl App {
             .show_background(false)
             .show_axes([false; 2])
             // .allow_drag(false)
-            .allow_zoom(false)
+            // .allow_zoom(false)
             .allow_scroll(false)
             .show(ui, |plot_ui: &mut egui_plot::PlotUi<'_>| {
                 let battle_context = BattleContext::get_instance();
@@ -48,14 +48,14 @@ impl App {
                         let polygon = Polygon::new("Damage Pie", plot_points)
                             .stroke(Stroke::new(1.5, color))
                             .fill_color(color.linear_multiply(self.config.pie_chart_opacity))
-                            .id(avatar.name.clone())
-                            .name(format!(
-                                "{}: {:.0}% | {} DMG | {:.0} DPAV",
-                                avatar.name,
-                                percentage,
-                                helpers::format_damage(segment.value),
-                                segment.value / battle_context.action_value
-                            ));
+                            .id(avatar.name.clone());
+                            // .name(format!(
+                            //     "{}: {:.0}% | {} DMG | {:.0} DPAV",
+                            //     avatar.name,
+                            //     percentage,
+                            //     helpers::format_damage(segment.value),
+                            //     segment.value / battle_context.action_value
+                            // ));
 
                         plot_ui.polygon(polygon);
                     }
@@ -63,9 +63,45 @@ impl App {
             });
     }
 
+    pub fn show_character_legend(&mut self, ui: &mut Ui) {
+        let battle_context = &BattleContext::get_instance();
+
+        // I need to make separate DPAV calcs in the battle context
+        for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let style = ui.style_mut();
+                style.override_text_style = Some(self.config.legend_text_style.clone());
+                let (res, painter) = ui.allocate_painter(Vec2::splat(12.), Sense::empty());
+                let rect = res.rect;
+                let radius = rect.width() / 2.0 - 1.0;
+                painter.circle_filled(rect.center(), radius, helpers::get_character_color(i));
+
+                let dmg = battle_context.real_time_damages[i];
+
+                let percentage = dmg / battle_context.total_damage * 100.0;
+
+                
+                let dpav = if battle_context.action_value > 0.0 {
+                    dmg / battle_context.action_value
+                } else {
+                    dmg
+                };
+
+                ui.label(format!(
+                    "{}: {:.1}% | {} DMG | {} DPAV",
+                    avatar.name,
+                    percentage,
+                    helpers::format_damage(dmg),
+                    helpers::format_damage(dpav)
+                ));
+            });
+        }
+
+    }
+
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
         let available = ui.available_size();
-        
+
         let (num_characters, avatar_lineup, real_time_damages) = {
             let battle_context = BattleContext::get_instance();
             (
@@ -74,18 +110,18 @@ impl App {
                 battle_context.real_time_damages.clone(),
             )
         };
-        
+
         let char_width_per_bar = available.x / num_characters;
         let max_chars_per_line = ((char_width_per_bar / 8.0).max(8.0).min(15.0)) as usize;
-        
+
         let avatar_lineup_for_formatter = avatar_lineup.clone();
-        
+
         Plot::new("damage_bars")
-            .legend(
-                Legend::default()
-                    .position(self.config.legend_position)
-                    .text_style(self.config.legend_text_style.clone()),
-            )
+            // .legend(
+            //     Legend::default()
+            //         .position(self.config.legend_position)
+            //         .text_style(self.config.legend_text_style.clone()),
+            // )
             .height(available.y)
             .width(available.x)
             .allow_drag(false)
@@ -101,10 +137,7 @@ impl App {
                     .unwrap_or_default()
             })
             .show(ui, |plot_ui| {
-                let bars_data = create_bar_data(
-                    &real_time_damages,
-                    &avatar_lineup,
-                );
+                let bars_data = create_bar_data(&real_time_damages, &avatar_lineup);
                 let bars: Vec<Bar> = bars_data
                     .iter()
                     .enumerate()
@@ -115,7 +148,7 @@ impl App {
                             .width(0.7)
                     })
                     .collect();
-    
+
                 plot_ui.bar_chart(BarChart::new("", bars).id("bar_chart"));
             });
     }
@@ -124,11 +157,11 @@ impl App {
         let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
         Plot::new("damage_plot")
-            .legend(
-                Legend::default()
-                    .position(self.config.legend_position)
-                    .text_style(self.config.legend_text_style.clone()),
-            )
+            // .legend(
+            //     Legend::default()
+            //         .position(self.config.legend_position)
+            //         .text_style(self.config.legend_text_style.clone()),
+            // )
             .height(available.y)
             .width(available.x)
             .include_y(0.0)
@@ -162,11 +195,11 @@ impl App {
         let battle_context = BattleContext::get_instance();
         let available = ui.available_size();
         Plot::new("damage_plot")
-            .legend(
-                Legend::default()
-                    .position(self.config.legend_position)
-                    .text_style(self.config.legend_text_style.clone()),
-            )
+            // .legend(
+            //     Legend::default()
+            //         .position(self.config.legend_position)
+            //         .text_style(self.config.legend_text_style.clone()),
+            // )
             .height(available.y)
             .width(available.x)
             .include_y(0.0)
@@ -227,11 +260,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.label(format!("{}", avatar.name));
 
-                        ui.label(format!(
-                            "{:.2}",
-                            battle_context.real_time_damages[i],
-                        ));
-
+                        ui.label(format!("{:.2}", battle_context.real_time_damages[i],));
                     });
                 }
             });
@@ -285,7 +314,6 @@ impl App {
                     }
                 });
             });
-
     }
 
     pub fn show_enemy_stats_widget(&mut self, ui: &mut Ui) {

@@ -32,8 +32,6 @@ pub struct Config {
     pub theme_mode: egui::Theme,
     #[serde(default = "default_legend_text_style")]
     pub legend_text_style: egui::TextStyle,
-    #[serde(default = "default_legend_position")]
-    pub legend_position: Corner,
     #[serde(default = "default_pie_chart_opacity")]
     pub pie_chart_opacity: f32,
     #[serde(default = "default_defender_exclusion")]
@@ -74,10 +72,6 @@ fn default_legend_text_style() -> egui::TextStyle {
     egui::TextStyle::Small
 }
 
-fn default_legend_position() -> egui_plot::Corner {
-    egui_plot::Corner::RightTop
-}
-
 fn default_pie_chart_opacity() -> f32 {
     0.05
 }
@@ -103,7 +97,6 @@ impl Default for Config {
             theme_mode: default_theme_mode(),
             streamer_msg_size_pt: default_streamer_msg_size_pt(),
             legend_text_style: default_legend_text_style(),
-            legend_position: default_legend_position(),
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),
             auto_showhide_ui: default_auto_showhide_ui(),
