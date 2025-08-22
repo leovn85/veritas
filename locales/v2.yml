@@ -619,8 +619,8 @@ yNEe4qFICqIA:
   zh: 更新日志
 _version: 2
 1VjDdmM0wZzg:
-  de: Version {version} ist verfügbar! Klicken Sie hier, um die Einstellungen zu öffnen und zu aktualisieren.
-  en: Version {version} is available! Click here to open settings and update.
+  de: Version %{version} ist verfügbar! Klicken Sie hier, um die Einstellungen zu öffnen und zu aktualisieren.
+  en: Version %{version} is available! Click here to open settings and update.
   es: ¡La versión %{version} está disponible! Haz clic aquí para abrir la configuración y actualizar.
   fr: La version %{version} est disponible ! Cliquez ici pour ouvrir les paramètres et mettre à jour.
   it: La versione %{version} è disponibile! Clicca qui per aprire le impostazioni e aggiornare.
@@ -644,4 +644,17 @@ _version: 2
   ru: Автопоказ/скрытие интерфейса в бою (начало/конец).
   vi: Tự động hiển thị/ẩn giao diện khi chiến đấu (bắt đầu/kết thúc).
   zh: 战斗时自动显示/隐藏界面（开始/结束）。
+Reset:
+  de: Zurücksetzen
+  en: Reset
+  es: Restablecer
+  fr: Réinitialiser
+  it: Reimposta
+  ja: リセット
+  nl: Resetten
+  pl: Resetuj
+  pt: Redefinir
+  ru: Сброс
+  vi: Đặt lại
+  zh: 重置
 _version: 2

@@ -6,13 +6,15 @@ use anyhow::Result;
 use anyhow::anyhow;
 use directories::ProjectDirs;
 use edio11::{Overlay, WindowMessage, WindowProcessOptions, input::InputResult};
-use egui::Checkbox;
+use egui::layers::GraphicLayers;
+use egui::util::IdTypeMap;
 use egui::CollapsingHeader;
 use egui::Key;
 use egui::KeyboardShortcut;
 use egui::Label;
 use egui::Memory;
 use egui::Modifiers;
+use egui::Options;
 use egui::RichText;
 use egui::Stroke;
 use egui::TextEdit;
@@ -150,6 +152,14 @@ impl Overlay for App {
                                                 t!("Settings")
                                             )),
                                         );
+
+                                        if ui.button(RichText::new(format!(
+                                                "{} {}",
+                                                egui_phosphor::bold::ARROW_COUNTER_CLOCKWISE,
+                                                t!("Reset")
+                                            ))).clicked() {
+                                                ctx.memory_mut(|writer| *writer = Memory::default());
+                                        }
 
                                         // ui.menu_button(RichText::new(format!(
                                         //         "{} {}",
@@ -344,7 +354,7 @@ impl Overlay for App {
                     None => {
                         self.notifs
                             .info(t!(
-                                "Version %{version} is available! Click here to open settings and update.", ver = new_version
+                                "Version %{version} is available! Click here to open settings and update.", version = new_version
                             ))
                             .closable(true)
                             .show_progress_bar(false)
@@ -798,10 +808,10 @@ impl App {
                 Slider::new(&mut self.config.widget_opacity, 0.0..=1.0).text(t!("Window Opacity")),
             );
 
-            ui.add(Checkbox::new(
+            ui.checkbox(
                 &mut self.config.auto_showhide_ui,
                 t!("Auto(show/hide) UI on battle (start/end)."),
-            ));
+            );
 
             // TODO:
             // Change using a grid like so:
