@@ -18,18 +18,32 @@ mod updater;
 
 use phf::phf_map;
 use std::sync::LazyLock;
-use windows::{Win32::System::LibraryLoader::GetModuleHandleW, core::w};
+use tokio::runtime::Runtime;
+use widestring::u16str;
+use windows::{Win32::System::LibraryLoader::GetModuleHandleW, core::PCWSTR};
 
-pub static GAMEASSEMBLY_HANDLE: LazyLock<usize> = LazyLock::new(|| unsafe {
-    GetModuleHandleW(w!("GameAssembly"))
-        .expect("GameAssembly was not found in the game process")
-        .0 as usize
-});
+fn get_module_handle(name: &widestring::U16Str) -> usize {
+    unsafe {
+        GetModuleHandleW(PCWSTR(name.as_ptr()))
+            .map(|v| v.0 as usize)
+            .unwrap_or_else(|e| {
+                log::error!("{e}");
+                panic!("{e}");
+            })
+    }
+}
 
-pub static UNITYPLAYER_HANDLE: LazyLock<usize> = LazyLock::new(|| unsafe {
-    GetModuleHandleW(w!("UnityPlayer"))
-        .expect("UnityPlayer was not found in the game process")
-        .0 as usize
+pub static GAMEASSEMBLY_HANDLE: LazyLock<usize> =
+    LazyLock::new(|| get_module_handle(u16str!("GameAssembly")));
+
+pub static UNITYPLAYER_HANDLE: LazyLock<usize> =
+    LazyLock::new(|| get_module_handle(u16str!("UnityPlayer")));
+
+pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
+    Runtime::new().unwrap_or_else(|e| {
+        log::error!("{e}");
+        panic!("{e}");
+    })
 });
 
 pub const CHANGELOG: &str = include_str!("../CHANGELOG.MD");

@@ -3,7 +3,7 @@ name = "veritas"
 edition = "2024"
 license-file = "LICENSE"
 repository = "https://github.com/hessiser/veritas/"
-version = "0.2.31"
+version = "0.2.30"
 
 [package.metadata.i18n]
 available-locales = ["en", "fr", "es", "de", "it", "ja", "pt", "nl", "ru", "vi", "zh", "pl"]
@@ -60,6 +60,7 @@ indoc = "2.0.6"
 widestring = "1.2.0"
 ron = "0.10.1"
 parse-changelog = { version = "0.6.12", default-features = false }
+egui_inbox = "0.9.0"
 
 [dependencies.windows]
 version = "0.61.3"

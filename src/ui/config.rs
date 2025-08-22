@@ -34,12 +34,12 @@ pub struct Config {
     pub legend_text_style: egui::TextStyle,
     #[serde(default = "default_legend_position")]
     pub legend_position: Corner,
-    #[serde(default = "default_legend_opacity")]
-    pub legend_opacity: f32,
     #[serde(default = "default_pie_chart_opacity")]
     pub pie_chart_opacity: f32,
     #[serde(default = "default_defender_exclusion")]
-    pub defender_exclusion: bool
+    pub defender_exclusion: bool,
+    #[serde(default = "default_auto_showhide_ui")]
+    pub auto_showhide_ui: bool,
 }
 
 fn default_locale() -> String {
@@ -78,16 +78,16 @@ fn default_legend_position() -> egui_plot::Corner {
     egui_plot::Corner::RightTop
 }
 
-fn default_legend_opacity() -> f32 {
-    1.0
-}
-
 fn default_pie_chart_opacity() -> f32 {
     0.05
 }
 
 fn default_defender_exclusion() -> bool {
     true
+}
+
+fn default_auto_showhide_ui() -> bool {
+    false
 }
 
 impl Default for Config {
@@ -104,9 +104,9 @@ impl Default for Config {
             streamer_msg_size_pt: default_streamer_msg_size_pt(),
             legend_text_style: default_legend_text_style(),
             legend_position: default_legend_position(),
-            legend_opacity: default_legend_opacity(),
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),
+            auto_showhide_ui: default_auto_showhide_ui(),
         }
     }
 }

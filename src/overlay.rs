@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use edio11::Overlay;
 use egui_notify::Toast;
 use std::{
     ffi::c_void,
@@ -44,8 +43,9 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         let window_class = WNDCLASSEXW {
             cbSize: mem::size_of::<WNDCLASSEXW>() as _,
             style: CS_HREDRAW | CS_VREDRAW,
+            // This is fine as the wrapper sig matches the imported sig
             lpfnWndProc: Some(mem::transmute(DefWindowProcW as *const c_void)),
-            lpszClassName: PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            lpszClassName: PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             ..Default::default()
         };
 
@@ -54,7 +54,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         let window = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             window_class.lpszClassName,
-            PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             WS_OVERLAPPEDWINDOW,
             0,
             0,

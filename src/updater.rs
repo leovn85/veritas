@@ -1,19 +1,21 @@
 use anyhow::{Context, Result, anyhow};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    env, ffi::OsString, os::windows::{ffi::OsStringExt, process::CommandExt}, process::Command,
+    env,
+    ffi::OsString,
+    os::windows::{ffi::OsStringExt, process::CommandExt},
+    process::Command,
 };
 use windows::Win32::{
     Foundation::{GetLastError, HMODULE, MAX_PATH},
-    System::
-        LibraryLoader::{
-            GetModuleFileNameW, GetModuleHandleExA, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT
-        }, UI::WindowsAndMessaging::SW_HIDE
-    ,
+    System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleFileNameW, GetModuleHandleExA,
+    },
+    UI::WindowsAndMessaging::SW_HIDE,
 };
-
 
 #[derive(Clone, Debug, Deserialize)]
 struct GithubRelease {
@@ -33,21 +35,35 @@ pub struct Updater {
     current_version: String,
 }
 
+pub enum Status {
+    Failed(anyhow::Error),
+    Succeeded
+}
+
+pub struct Update {
+    pub new_version: Option<String>,
+    pub status: Option<Status>
+}
+
 impl Updater {
     pub fn new(current_version: &str) -> Self {
         Self {
-            client: Client::builder().user_agent(env!("CARGO_PKG_NAME")).build().unwrap(),
+            client: Client::builder()
+                .user_agent(env!("CARGO_PKG_NAME"))
+                .build()
+                .unwrap(),
             current_version: current_version.to_string(),
         }
     }
 
-    pub fn check_update(&self) -> Result<Option<String>> {
+    pub async fn check_update(&self) -> Result<Option<String>> {
         let response = self
             .client
             .get("https://api.github.com/repos/hessiser/veritas/releases/latest")
-            .send()?;
+            .send()
+            .await?;
 
-        let release = response.json::<GithubRelease>()?;
+        let release = response.json::<GithubRelease>().await?;
 
         // unnecessary but good anyways
         let latest_tag = release.tag_name.trim_start_matches('v').trim();
@@ -85,18 +101,20 @@ impl Updater {
         }
     }
 
-    pub fn download_update(&self, defender_exclusion: bool) -> Result<()> {
+    pub async fn download_update(&self, defender_exclusion: bool) -> Result<()> {
         let response = self
             .client
             .get("https://api.github.com/repos/hessiser/veritas/releases/latest")
-            .send()?;
+            .send()
+            .await?;
 
-        let release = response.json::<GithubRelease>()?;
+
+        let release = response.json::<GithubRelease>().await?;
 
         let dll_asset = release
             .assets
             .iter()
-            .find(|a| a.name == "veritas.dll")
+            .find(|a| a.name == format!("{}.dll", env!("CARGO_PKG_NAME")))
             .ok_or_else(|| anyhow::anyhow!("DLL not found in release"))?;
 
         let dll_path = unsafe {
@@ -126,11 +144,16 @@ impl Updater {
 
         let tmp_dll_path = format!("{}.tmp", dll_path);
 
-        let dll_bytes = self
+        let response = self
             .client
             .get(&dll_asset.browser_download_url)
-            .send()?
-            .bytes()?;
+            .send()
+            .await?;
+
+        let dll_bytes = response
+            .bytes()
+            .await?;
+
         std::fs::write(&tmp_dll_path, dll_bytes)?;
 
         let pid = std::process::id();
@@ -139,12 +162,15 @@ impl Updater {
         let mut script = String::new();
 
         if defender_exclusion {
-            script.push_str(&indoc::formatdoc!(r#"
+            script.push_str(&indoc::formatdoc!(
+                r#"
                 Add-MpPreference -ExclusionPath {tmp_dll_path}
-            "#));
+            "#
+            ));
         }
 
-        script.push_str(&indoc::formatdoc!(r#"
+        script.push_str(&indoc::formatdoc!(
+            r#"
             Stop-Process -Id {pid}
             while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{
                 Start-Sleep -Milliseconds 200
@@ -155,12 +181,15 @@ impl Updater {
                 Pause
                 Exit 1
             }}
-        "#));
+        "#
+        ));
 
         if defender_exclusion {
-            script.push_str(&indoc::formatdoc!(r#"
+            script.push_str(&indoc::formatdoc!(
+                r#"
                 Remove-MpPreference -ExclusionPath "{tmp_dll_path}"
-            "#));
+            "#
+            ));
         }
 
         let env_args = env::args_os()

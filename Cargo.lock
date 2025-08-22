@@ -936,6 +936,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_inbox"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8031fefc60b0170b304a8b12df0bd3531359410c3e709a2ccf33f7f58f856428"
+dependencies = [
+ "egui",
+ "parking_lot",
+]
+
+[[package]]
 name = "egui_logger"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3617,7 +3627,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "veritas"
-version = "0.2.31"
+version = "0.2.30"
 dependencies = [
  "anyhow",
  "axum",
@@ -3629,6 +3639,7 @@ dependencies = [
  "egui-notify",
  "egui-phosphor",
  "egui_colors",
+ "egui_inbox",
  "egui_logger",
  "egui_plot",
  "function_name",

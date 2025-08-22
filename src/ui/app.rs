@@ -6,6 +6,7 @@ use anyhow::Result;
 use anyhow::anyhow;
 use directories::ProjectDirs;
 use edio11::{Overlay, WindowMessage, WindowProcessOptions, input::InputResult};
+use egui::Checkbox;
 use egui::CollapsingHeader;
 use egui::Key;
 use egui::KeyboardShortcut;
@@ -22,6 +23,7 @@ use egui::{
     epaint::text::{FontInsert, InsertFontFamily},
 };
 use egui_colors::Colorix;
+use egui_inbox::UiInbox;
 use egui_notify::Toasts;
 use egui_plot::Corner;
 use serde::Deserialize;
@@ -33,7 +35,11 @@ use windows::Win32::{
 
 use crate::CHANGELOG;
 use crate::LOCALES;
+use crate::RUNTIME;
+use crate::battle::BattleContext;
 use crate::ui::themes;
+use crate::updater::Status;
+use crate::updater::Update;
 use crate::updater::Updater;
 
 use super::config::Config;
@@ -60,10 +66,8 @@ pub struct AppState {
     pub graph_x_unit: GraphUnit,
     #[serde(skip)]
     pub use_custom_color: bool,
-    pub update_checked: bool,
-    pub update_available: Option<String>,
-    pub update_toast_shown: bool,
-    pub update_toast_id: Option<egui::Id>,
+    #[serde(skip)]
+    pub update_bttn_enabled: bool,
 }
 
 pub struct App {
@@ -71,6 +75,8 @@ pub struct App {
     pub config: Config,
     pub notifs: Toasts,
     pub colorix: Colorix,
+    pub update_inbox: UiInbox<Option<Update>>,
+    pub update: Option<Update>,
     is_state_loaded: bool,
 }
 
@@ -79,34 +85,6 @@ pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers
 
 impl Overlay for App {
     fn update(&mut self, ctx: &egui::Context) {
-        if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI)) {
-            self.state.should_hide = !self.state.should_hide;
-        }
-
-        if let Some(_toast_id) = &self.state.update_toast_id {
-            // let message = format!("Version {} is available! Click here to open settings and update.",
-            //     self.state.update_available.as_ref().unwrap());
-
-            if let Some(screen_rect) = ctx.input(|i| i.pointer.hover_pos()) {
-                if ctx.input(|i| i.pointer.primary_clicked()) {
-                    let notification_area = egui::Rect::from_min_max(
-                        egui::pos2(ctx.screen_rect().right() - 200.0, ctx.screen_rect().top()),
-                        egui::pos2(ctx.screen_rect().right(), ctx.screen_rect().top() + 50.0),
-                    );
-
-                    if notification_area.contains(screen_rect) {
-                        self.state.show_menu = true;
-                        self.state.show_settings = true;
-                        self.notifs.dismiss_all_toasts();
-                        self.state.update_toast_id = None;
-                        self.state.update_toast_shown = false;
-                    }
-                }
-            }
-        }
-
-        self.notifs.show(ctx);
-
         if self.state.show_changelog {
             let changelog = parse_changelog::parse(CHANGELOG).unwrap();
 
@@ -340,30 +318,80 @@ impl Overlay for App {
                 log::error!("{x}");
                 AppState::default()
             });
-
-            let updater = Updater::new(env!("CARGO_PKG_VERSION"));
-            if let Ok(Some(new_version)) = updater.check_update() {
-                self.state.update_available = Some(new_version.clone());
-                self.state.update_checked = true;
-                let toast_id = egui::Id::new("update_available");
-                self.notifs
-                    .info(format!(
-                        "Version {} is available! Click here to open settings and update.",
-                        new_version
-                    ))
-                    .closable(true)
-                    .show_progress_bar(false)
-                    .duration(None);
-                self.state.update_toast_shown = true;
-                self.state.update_toast_id = Some(toast_id);
-            } else {
-                self.state.update_checked = true;
-            }
-
             if env!("CARGO_PKG_VERSION") != self.config.version {
                 self.state.show_changelog = true
             }
         }
+
+        if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI)) {
+            self.state.should_hide = !self.state.should_hide;
+            if self.state.should_hide == true {
+                self.state.show_menu = false;
+            }
+        }
+
+        if let Some(Some(update)) = self.update_inbox.read(ctx).last() {
+            if let Some(new_version) = &update.new_version {
+                match &update.status {
+                    Some(status) => {
+                        match status {
+                            Status::Failed(e) => {
+                                self.notifs.error(t!("Update failed: %{error}", error = e))
+                            }
+                            Status::Succeeded => self.notifs.success(t!("Update succeeded")),
+                        };
+                    }
+                    None => {
+                        self.notifs
+                            .info(t!(
+                                "Version %{version} is available! Click here to open settings and update.", ver = new_version
+                            ))
+                            .closable(true)
+                            .show_progress_bar(false)
+                            .duration(None);
+                    }
+                }
+            }
+            self.state.update_bttn_enabled = true;
+            self.update = Some(update);
+        }
+
+        if self.update.is_some() {
+            // let message = format!("Version {} is available! Click here to open settings and update.",
+            //     self.state.update_available.as_ref().unwrap());
+
+            if let Some(screen_rect) = ctx.input(|i| i.pointer.hover_pos()) {
+                if ctx.input(|i| i.pointer.primary_clicked()) {
+                    let notification_area = egui::Rect::from_min_max(
+                        egui::pos2(
+                            ctx.screen_rect().right() - 200.0,
+                            ctx.screen_rect().top() * self.notifs.len() as f32,
+                        ),
+                        egui::pos2(
+                            ctx.screen_rect().right(),
+                            (ctx.screen_rect().top() + 50.0) * self.notifs.len() as f32,
+                        ),
+                    );
+
+                    if notification_area.contains(screen_rect) {
+                        self.state.show_menu = true;
+                        self.state.show_settings = true;
+                        self.notifs.dismiss_all_toasts();
+                    }
+                }
+            }
+        }
+
+        if self.config.auto_showhide_ui {
+            if let Some(state) = BattleContext::get_instance().state.take() {
+                self.state.should_hide = match state {
+                    crate::battle::BattleState::Started => false,
+                    crate::battle::BattleState::Ended => true,
+                }
+            }
+        }
+
+        self.notifs.show(ctx);
     }
 
     fn window_process(
@@ -563,6 +591,8 @@ impl App {
             config,
             notifs: Toasts::default(),
             state: AppState::default(),
+            update_inbox: UiInbox::new(),
+            update: None,
             is_state_loaded: false,
         };
 
@@ -577,6 +607,28 @@ impl App {
                     .set_light(&mut Ui::new(ctx.clone(), "".into(), UiBuilder::new()))
             }
         }
+
+        let updater = Updater::new(env!("CARGO_PKG_VERSION"));
+
+        let sender = app.update_inbox.sender();
+        RUNTIME.spawn(async move {
+            let new_ver = updater.check_update().await.unwrap_or_else(|e| {
+                log::error!("{e}");
+                panic!("{e}");
+            });
+
+            if sender
+                .send(Some(Update {
+                    new_version: new_ver,
+                    status: None,
+                }))
+                .is_err()
+            {
+                let e = anyhow!("Failed to send update to inbox");
+                log::error!("{e}");
+                panic!("{e}");
+            }
+        });
 
         app
     }
@@ -633,8 +685,9 @@ impl App {
                 });
 
                 let current_version = env!("CARGO_PKG_VERSION");
-                if let Some(new_version) = &self.state.update_available {
-                    ui.colored_label(Color32::GREEN, t!("Version {version} is available!", version = new_version));
+                if let Some(new_update) = &self.update {
+                    if let Some(new_version) = &new_update.new_version {
+                    ui.colored_label(Color32::GREEN, t!("Version %{version} is available!", version = new_version));
                     ui.horizontal(|ui| {
                         ui.label(format!(
                             "{} ➡ {}",
@@ -643,24 +696,33 @@ impl App {
                         ));
                     });
                     if ui
-                        .add(egui::Button::new(t!("Update")))
+                        .add_enabled(self.state.update_bttn_enabled, egui::Button::new(t!("Update")))
                         .clicked()
                     {
-                        if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
-                            .download_update(
-                                self.config.defender_exclusion,
-                            )
-                        {
-                            self.notifs.error(format!("Update failed: {}", e));
-                        }
+                        let defender_exclusion = self.config.defender_exclusion;
+                        let new_version = new_version.clone();
+                        let sender = self.update_inbox.sender();
+                        self.state.update_bttn_enabled = false;
+                        self.notifs.success(t!("Update in progress"));
+                        RUNTIME.spawn(async move {
+                            if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
+                                .download_update(defender_exclusion)
+                                .await
+                            {
+                                if sender.send(Some(Update { new_version: Some(new_version.to_string()), status: Some(Status::Failed(e))})).is_err() {
+                                    let e = anyhow!("Failed to send update to inbox");
+                                    log::error!("{e}");
+                                    panic!("{e}");
+                                }
+                            }
+                        });
                     }
-                } else if self.state.update_checked {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{} (latest)", current_version));
-                    });
-                    ui.colored_label(Color32::GREEN, t!("Up to date"));
+
+                    }
                 } else {
-                    ui.label(t!("Checking for update..."));
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{}", current_version));
+                    });
                 }
             });
 
@@ -678,7 +740,10 @@ impl App {
 
                     ui.horizontal(|ui| {
                         self.colorix.custom_picker(ui);
-                        ui.toggle_value(&mut self.state.use_custom_color, t!("Custom color"));
+                        ui.toggle_value(
+                            &mut self.state.use_custom_color,
+                            t!("Custom color. Click here to enable."),
+                        );
                     });
 
                     if self.colorix.dark_mode() {
@@ -693,10 +758,6 @@ impl App {
 
                     self.colorix.ui_combo_12(ui, false);
                 });
-
-            ui.add(
-                Slider::new(&mut self.config.widget_opacity, 0.0..=1.0).text(t!("Window Opacity")),
-            );
 
             ui.horizontal(|ui| {
                 ui.horizontal(|ui| {
@@ -727,19 +788,20 @@ impl App {
 
             ui.horizontal(|ui| {
                 ui.add(egui::Slider::new(
-                    &mut self.config.legend_opacity,
-                    0.0..=1.0,
-                ));
-                ui.label(t!("Legend Opacity"));
-            });
-
-            ui.horizontal(|ui| {
-                ui.add(egui::Slider::new(
                     &mut self.config.pie_chart_opacity,
                     0.0..=1.0,
                 ));
                 ui.label(t!("Pie Chart Opacity"));
             });
+
+            ui.add(
+                Slider::new(&mut self.config.widget_opacity, 0.0..=1.0).text(t!("Window Opacity")),
+            );
+
+            ui.add(Checkbox::new(
+                &mut self.config.auto_showhide_ui,
+                t!("Auto(show/hide) UI on battle (start/end)."),
+            ));
 
             // TODO:
             // Change using a grid like so:

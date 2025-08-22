@@ -11,10 +11,8 @@ use crate::{
     server,
 };
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum BattleState {
-    #[default]
-    Preparing,
     Started,
     Ended,
 }
@@ -27,7 +25,7 @@ pub enum BattleState {
 
 #[derive(Default, Clone)]
 pub struct BattleContext {
-    pub state: BattleState,
+    pub state: Option<BattleState>,
     pub avatar_lineup: Vec<Avatar>,
     pub battle_avatars: Vec<BattleEntity>,
     pub enemies: Vec<Enemy>,
@@ -122,7 +120,6 @@ impl BattleContext {
         e: OnBattleBeginEvent,
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
-        battle_context.state = BattleState::Started;
         log::info!("Battle has started");
         log::info!("Max Waves: {}", e.max_waves);
         battle_context.max_waves = e.max_waves;
@@ -140,6 +137,7 @@ impl BattleContext {
         e: OnSetLineupEvent,
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
+        battle_context.state = Some(BattleState::Started);
         Self::initialize_battle_context(&mut battle_context);
         battle_context.current_turn_info.avatars_turn_damage = vec![0f64; e.avatars.len()];
         battle_context.real_time_damages = vec![0f64; e.avatars.len()];
@@ -271,7 +269,7 @@ impl BattleContext {
     fn handle_on_battle_end_event(
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
-        battle_context.state = BattleState::Ended;
+        battle_context.state = Some(BattleState::Ended);
 
         Ok(Packet::OnBattleEnd {
             avatars: battle_context.avatar_lineup.clone(),

@@ -344,19 +344,19 @@ Language:
   ru: Язык
   vi: Ngôn ngữ
   zh: 语言
-2XYLA4lq9ByQ:
-  de: Benutzerdefinierte Farbe
-  en: Custom color
-  es: Color personalizado
-  fr: Couleur personnalisée
-  it: Colore personalizzato
-  ja: カスタムカラー
-  nl: Aangepaste kleur
-  pl: Niestandardowy kolor
-  pt: Cor personalizada
-  ru: Пользовательский цвет
-  vi: Màu tùy chỉnh
-  zh: 自定义颜色
+2kdBcJcbifMo:
+  de: Benutzerdefinierte Farbe. Klicken Sie hier, um sie zu aktivieren.
+  en: Custom color. Click here to enable.
+  es: Color personalizado. Haz clic aquí para habilitarlo.
+  fr: Couleur personnalisée. Cliquez ici pour l’activer.
+  it: Colore personalizzato. Clicca qui per abilitarlo.
+  ja: カスタムカラー。クリックして有効にしてください。
+  nl: Aangepaste kleur. Klik hier om in te schakelen.
+  pl: Kolor niestandardowy. Kliknij tutaj, aby włączyć.
+  pt: Cor personalizada. Clique aqui para ativar.
+  ru: Пользовательский цвет. Нажмите здесь, чтобы включить.
+  vi: Màu tùy chỉnh. Nhấp vào đây để bật.
+  zh: 自定义颜色。点击此处启用。
 36924knYADMN:
   de: Design zurücksetzen
   en: Revert theme
@@ -474,19 +474,19 @@ Theme:
   ru: Распределение Урона
   vi: Phân Phối Sát Thương
   zh: 伤害分配
-2ex8FbVERHgW:
-  de: Version {version} ist verfügbar!
-  en: Version {version} is available!
-  es: La versión {version} está disponible.
-  fr: La version {version} est disponible !
-  it: Versione {version} disponibile!
-  ja: バージョン {version} が利用可能です！
-  nl: Versie {version} is beschikbaar!
-  pl: Wersja {version} jest dostępna!
-  pt: Versão {version} disponível!
-  ru: Версия {version} доступна!
-  vi: Phiên bản {version} đã có sẵn!
-  zh: 版本 {version} 已发布！
+4B3xFEpF2UYe:
+  de: Version %{version} ist verfügbar!
+  en: Version %{version} is available!
+  es: La versión %{version} está disponible.
+  fr: La version %{version} est disponible !
+  it: Versione %{version} disponibile!
+  ja: バージョン %{version} が利用可能です！
+  nl: Versie %{version} is beschikbaar!
+  pl: Wersja %{version} jest dostępna!
+  pt: Versão %{version} disponível!
+  ru: Версия %{version} доступна!
+  vi: Phiên bản %{version} đã có sẵn!
+  zh: 版本 %{version} 已发布！
 2mpZHk13uu0E:
   de: Während des Updates Defender-Ausschluss hinzufügen
   en: Add Defender Exclusion during update
@@ -500,32 +500,6 @@ Theme:
   ru: Добавить исключение защитника во время обновления
   vi: Thêm ngoại lệ Defender trong quá trình cập nhật
   zh: 在更新期间添加 Defender 排除
-4WDJuTVMeg1s:
-  de: Auf dem neuesten Stand
-  en: Up to date
-  es: Actualizado
-  fr: À jour
-  it: Aggiornato
-  ja: 最新
-  nl: Up-to-date
-  pl: Aktualny
-  pt: Atualizado
-  ru: Обновлено
-  vi: Đã cập nhật
-  zh: 已更新
-5VhpZGQr1sOt:
-  de: Nach Updates suchen...
-  en: Checking for update...
-  es: Buscando actualizaciones...
-  fr: Recherche de mises à jour...
-  it: Controllo aggiornamenti...
-  ja: アップデートを確認中...
-  nl: Zoeken naar updates...
-  pl: Sprawdzanie aktualizacji...
-  pt: Verificando atualização...
-  ru: Проверка обновлений...
-  vi: Kiểm tra cập nhật...
-  zh: 正在检查更新...
 Update:
   de: Aktualisierung
   en: Update
@@ -591,4 +565,83 @@ yNEe4qFICqIA:
   ru: Стиль текста легенды
   vi: Kiểu chữ chú giải
   zh: 图例文本样式
+2hrxlXWDW861:
+  de: Update läuft
+  en: Update in progress
+  es: Actualización en curso
+  fr: Mise à jour en cours
+  it: Aggiornamento in corso
+  ja: 更新中
+  nl: Update bezig
+  pl: Aktualizacja w toku
+  pt: Atualização em andamento
+  ru: Обновление выполняется
+  vi: Đang cập nhật
+  zh: 更新中
+146gvC2AztNb:
+  de: 'Update fehlgeschlagen: %{error}'
+  en: 'Update failed: %{error}'
+  es: 'Error de actualización: %{error}'
+  fr: 'Échec de la mise à jour : %{error}'
+  it: 'Aggiornamento non riuscito: %{error}'
+  ja: '更新に失敗しました: %{error}'
+  nl: 'Update mislukt: %{error}'
+  pl: 'Aktualizacja nie powiodła się: %{error}'
+  pt: 'Falha na atualização: %{error}'
+  ru: 'Ошибка обновления: %{error}'
+  vi: 'Cập nhật thất bại: %{error}'
+  zh: '更新失败: %{error}'
+51cjPM9p8lZ8:
+  de: Update erfolgreich
+  en: Update succeeded
+  es: Actualización completada
+  fr: Mise à jour réussie
+  it: Aggiornamento riuscito
+  ja: 更新に成功しました
+  nl: Update geslaagd
+  pl: Aktualizacja zakończona sukcesem
+  pt: Atualização concluída com sucesso
+  ru: Обновление успешно
+  vi: Cập nhật thành công
+  zh: 更新成功
+590Q9gx4Jpac:
+  de: Änderungsprotokoll
+  en: Changelog
+  es: Registro de cambios
+  fr: Journal des modifications
+  it: Registro delle modifiche
+  ja: 変更履歴
+  nl: Wijzigingslogboek
+  pl: Dziennik zmian
+  pt: Registro de alterações
+  ru: Журнал изменений
+  vi: Nhật ký thay đổi
+  zh: 更新日志
+_version: 2
+1VjDdmM0wZzg:
+  de: Version {version} ist verfügbar! Klicken Sie hier, um die Einstellungen zu öffnen und zu aktualisieren.
+  en: Version {version} is available! Click here to open settings and update.
+  es: ¡La versión %{version} está disponible! Haz clic aquí para abrir la configuración y actualizar.
+  fr: La version %{version} est disponible ! Cliquez ici pour ouvrir les paramètres et mettre à jour.
+  it: La versione %{version} è disponibile! Clicca qui per aprire le impostazioni e aggiornare.
+  ja: バージョン %{version} が利用可能です！設定を開いて更新するにはここをクリックしてください。
+  nl: Versie %{version} is beschikbaar! Klik hier om de instellingen te openen en bij te werken.
+  pl: Wersja %{version} jest dostępna! Kliknij tutaj, aby otworzyć ustawienia i zaktualizować.
+  pt: A versão %{version} está disponível! Clique aqui para abrir as configurações e atualizar.
+  ru: Доступна версия %{version}! Нажмите здесь, чтобы открыть настройки и обновить.
+  vi: Phiên bản %{version} đã có sẵn! Nhấp vào đây để mở cài đặt và cập nhật.
+  zh: 版本 %{version} 可用！点击此处打开设置并更新。
+44F8tHHIKdMP:
+  de: Automatisches Anzeigen/Ausblenden der UI beim Kampf (Start/Ende).
+  en: Auto(show/hide) UI on battle (start/end).
+  es: Mostrar/ocultar automáticamente la interfaz en batalla (inicio/fin).
+  fr: Affichage/masquage automatique de l’UI lors du combat (début/fin).
+  it: Mostra/nascondi automaticamente l’interfaccia in battaglia (inizio/fine).
+  ja: 戦闘時にUIを自動表示/非表示（開始/終了）。
+  nl: UI automatisch tonen/verbergen bij gevecht (begin/einde).
+  pl: Automatyczne pokazanie/ukrycie interfejsu podczas bitwy (początek/koniec).
+  pt: Mostrar/ocultar automaticamente a interface na batalha (início/fim).
+  ru: Автопоказ/скрытие интерфейса в бою (начало/конец).
+  vi: Tự động hiển thị/ẩn giao diện khi chiến đấu (bắt đầu/kết thúc).
+  zh: 战斗时自动显示/隐藏界面（开始/结束）。
 _version: 2

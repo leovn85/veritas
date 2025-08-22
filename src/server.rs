@@ -1,40 +1,48 @@
-use std::{net::SocketAddr, str::FromStr, sync::{LazyLock, OnceLock}};
-use axum::{response::Redirect, routing::get, Router};
-use socketioxide::{extract::SocketRef, SocketIo};
-use tokio::runtime::Runtime;
+use axum::{Router, response::Redirect, routing::get};
+use socketioxide::{SocketIo, extract::SocketRef};
+use std::{net::SocketAddr, str::FromStr, sync::OnceLock};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
+use anyhow::{anyhow, Context, Result};
 
-use crate::models::packets::Packet;
+use crate::{RUNTIME, models::packets::Packet};
 
 const SERVER_ADDR: &str = "127.0.0.1:1305";
 
 static SOCKET_IO: OnceLock<SocketIo> = OnceLock::new();
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| Runtime::new().expect("Failed to create Tokio runtime"));
 
 pub fn start_server() {
     RUNTIME.block_on(async {
         let (layer, io) = SocketIo::new_layer();
         io.ns("/", on_connect);
-        SOCKET_IO.set(io).unwrap();
+        if SOCKET_IO.set(io).is_err() {
+            let e = anyhow!("Failed to initialize SocketIO");
+            log::error!("{e}");
+            panic!("{e}");
+        }
 
-        let app = Router::new()
-            .route("/", get(redirect_to_new_page))
-            .layer(
-                ServiceBuilder::new()
-                    .layer(CorsLayer::new()
+        let app = Router::new().route("/", get(redirect_to_new_page)).layer(
+            ServiceBuilder::new()
+                .layer(
+                    CorsLayer::new()
                         .allow_origin(Any)
                         .allow_methods(Any)
-                        .allow_headers(Any)
-                    )
-                    .layer(layer)
-            );
+                        .allow_headers(Any),
+                )
+                .layer(layer),
+        );
 
         // HTTP
-        axum_server::bind(SocketAddr::from_str(SERVER_ADDR).unwrap())
-            .serve(app.into_make_service())
-            .await
-            .expect("Failed to start server");
+        axum_server::bind(SocketAddr::from_str(SERVER_ADDR).unwrap_or_else(|e| {
+            log::error!("{e}");
+            panic!("{e}");
+        }))
+        .serve(app.into_make_service())
+        .await
+        .unwrap_or_else(|e| {
+            log::error!("{e}");
+            panic!("{e}");
+        });
     });
 }
 
@@ -43,14 +51,22 @@ async fn redirect_to_new_page() -> Redirect {
 }
 
 fn on_connect(socket: SocketRef) {
-    let packet = Packet::Connected { version: env!("CARGO_PKG_VERSION").to_string() };
+    let packet = Packet::Connected {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
     socket.emit(&packet.name(), &packet.payload()).ok();
 }
 
 pub fn broadcast(packet: Packet) {
     RUNTIME.spawn(async move {
         if let Some(io) = SOCKET_IO.get() {
-            io.broadcast().emit(&packet.name(), &packet.payload()).await.unwrap();
+            io.broadcast()
+                .emit(&packet.name(), &packet.payload())
+                .await
+                .unwrap_or_else(|e| {
+                    log::error!("{e}");
+                    panic!("{e}");
+                });
         }
     });
 }
