@@ -412,9 +412,6 @@ impl Overlay for App {
 
         if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI)) {
             self.state.should_hide = !self.state.should_hide;
-            if self.state.should_hide == true {
-                self.state.show_menu = false;
-            }
         }
 
         if let Some(Some(update)) = self.update_inbox.read(ctx).last() {
@@ -522,7 +519,7 @@ impl Overlay for App {
             _ => {}
         };
 
-        if self.state.show_menu {
+        if !self.state.should_hide && self.state.show_menu {
             Some(WindowProcessOptions {
                 should_capture_all_input: true,
                 ..Default::default()
