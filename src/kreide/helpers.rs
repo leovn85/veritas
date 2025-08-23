@@ -1,28 +1,25 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
-    sync::{LazyLock, OnceLock},
+    sync::LazyLock,
 };
 
 use crate::{
     kreide::{
-        il2cpp::native::{Il2CppObject, List, RuntimeType},
+        il2cpp::native::{Il2CppObject, RuntimeType},
         types::{
             RPG_Client_AvatarData, RPG_Client_GlobalVars, RPG_Client_ModuleManager,
-            RPG_Client_UIGameEntityUtils, RPG_GameCore_AbilityComponent,
-            RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent,
-            RPG_GameCore_StatusExcelTable, RPG_GameCore_TurnBasedModifierInstance,
+            RPG_Client_UIGameEntityUtils, RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent,
         },
     },
     models::misc::{Avatar, Skill},
 };
 use anyhow::{anyhow, Context, Result};
 use function_name::named;
-use serde_json::{json, Value};
 
 use super::types::{
     RPG_GameCore_FixPoint, RPG_Client_TextID_Boxed, RPG_Client_TextmapStatic, RPG_GameCore_AbilityProperty,
-    RPG_GameCore_AttackType, RPG_GameCore_BattleInstance,
+    RPG_GameCore_BattleInstance,
     RPG_GameCore_GameEntity, RPG_GameCore_SkillData, RPG_GameCore_TurnBasedAbilityComponent,
     RPG_Client_TextID,
 };

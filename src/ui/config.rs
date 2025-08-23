@@ -3,12 +3,9 @@ use std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf};
 use anyhow::{Result, anyhow};
 use directories::ProjectDirs;
 use egui::{
-    ahash::{HashMap, HashMapExt, RandomState}, FontFamily, FontId, TextStyle, Theme
+    FontFamily, FontId, TextStyle, Theme
 };
-use egui_plot::Corner;
 use serde::{Deserialize, Serialize};
-
-use crate::ui::themes::EGUI_THEME;
 
 const CONFIG_FILENAME: &'static str = "config.json";
 

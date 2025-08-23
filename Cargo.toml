@@ -20,17 +20,18 @@ crate-type = ["cdylib"]
 # UI
 egui = { version = "0.32.0", features = ["serde", "persistence"] }
 egui_plot = { version = "0.33.0", features = ["serde"] }
-edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "b623b96" }
-
+edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "1d9e387" }
 egui-phosphor = { version = "0.10.0", features = ["bold"]}
 egui_colors = { version = "0.9.0", features = ["serde"] }
 egui-notify = "0.20.0"
+egui_logger = "0.8.0"
+egui_inbox = "0.9.0"
+egui_commonmark = "0.21.1"
 
 # Logging
 log = "0.4"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_trace"] }
 slog-term = "2.9.1"
-egui_logger = "0.8.0"
 
 # Server
 axum = { version = "0.8.4" }
@@ -60,7 +61,6 @@ indoc = "2.0.6"
 widestring = "1.2.0"
 ron = "0.10.1"
 parse-changelog = { version = "0.6.12", default-features = false }
-egui_inbox = "0.9.0"
 
 [dependencies.windows]
 version = "0.61.3"

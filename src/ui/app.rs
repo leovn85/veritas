@@ -12,22 +12,21 @@ use egui::KeyboardShortcut;
 use egui::Label;
 use egui::Memory;
 use egui::Modifiers;
-use egui::Options;
 use egui::RichText;
+use egui::ScrollArea;
 use egui::Stroke;
 use egui::TextEdit;
 use egui::Ui;
 use egui::UiBuilder;
-use egui::layers::GraphicLayers;
-use egui::util::IdTypeMap;
 use egui::{
     CentralPanel, Color32, Context, Frame, Slider, Window,
     epaint::text::{FontInsert, InsertFontFamily},
 };
 use egui_colors::Colorix;
+use egui_commonmark::CommonMarkCache;
+use egui_commonmark::CommonMarkViewer;
 use egui_inbox::UiInbox;
 use egui_notify::Toasts;
-use egui_plot::Corner;
 use serde::Deserialize;
 use serde::Serialize;
 use windows::Win32::{
@@ -57,6 +56,7 @@ pub enum GraphUnit {
 pub struct AppState {
     pub show_menu: bool,
     pub show_changelog: bool,
+    pub show_help: bool,
     pub show_settings: bool,
     pub show_console: bool,
     pub show_damage_distribution: bool,
@@ -96,22 +96,71 @@ impl Overlay for App {
                     .id("changelog_window".into())
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .collapsible(false)
-                    .resizable(false)
+                    .resizable(true)
                     .frame(Frame::window(&ctx.style()).inner_margin(5.))
                     .show(ctx, |ui| {
-                        ui.vertical_centered(|ui| {
-                            ui.heading(release.title);
-                            ui.label(release.notes);
+                        ScrollArea::new([false, true]).show(ui, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.heading(release.title);
 
-                            ui.add_space(5.);
+                                let mut cache = CommonMarkCache::default();
+                                CommonMarkViewer::new().show(ui, &mut cache, release.notes);
 
-                            if ui.button(t!("Close")).clicked() {
-                                self.state.show_changelog = false;
-                                self.config.version = env!("CARGO_PKG_VERSION").to_string();
-                            }
+                                ui.add_space(5.);
+
+                                if ui.button(t!("Close")).clicked() {
+                                    self.state.show_changelog = false;
+                                    self.config.version = env!("CARGO_PKG_VERSION").to_string();
+                                }
+                            });
                         });
                     });
             }
+        }
+
+        if self.state.show_help {
+            Window::new(t!("Help"))
+            .id("help_window".into())
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false)
+            .resizable(true)
+            .frame(Frame::window(&ctx.style()).inner_margin(5.))
+            .show(ctx, |ui| {
+                ScrollArea::new([false, true]).show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        let markup = indoc::indoc!("
+                            # [Shortcuts](https://github.com/hessiser/veritas/wiki/Home/#shortcuts)
+                            - `Ctrl` + `M` to toggle menu
+                            - `Ctrl` + `H` to hide the UI
+                            - `Ctrl` + `+` to zoom in
+                            - `Ctrl` + `-` to zoom out
+                            - `Ctrl` + `0` to reset zoom
+
+                            # [FAQ](https://github.com/hessiser/veritas/wiki/Home/#troubleshooting)
+                            - **How do I reset my graphs?**
+
+                            Double-click the graph to reset. Alternatively, can delete `persistence` in `appdata/local/veritas/data` and restart.
+
+                            - **The game is not processing keyboard/mouse inputs.**
+
+                            If your mouse is hovering over the overlay, it will consume all mouse inputs. If the overlay is taking keyboard inputs, it will consume all keyboard inputs as well. Either move your mouse away or click around the overlay, or use the hide UI shortcut.
+
+                            - **`[Error] Client is damaged, please reinstall the client.` on official servers.**
+
+                            Follow instructions [here](https://github.com/hessiser/veritas/wiki/Home/#method-1-recommended-for-official-servers).
+                        ");
+                        let mut cache = CommonMarkCache::default();
+                        CommonMarkViewer::new().show(ui, &mut cache, markup);
+
+                        ui.add_space(5.);
+
+                        if ui.button(t!("Close")).clicked() {
+                            self.state.show_help = false;
+                            self.config.version = env!("CARGO_PKG_VERSION").to_string();
+                        }
+                    });
+                });
+            });
         }
 
         if self.config.streamer_mode {
@@ -160,6 +209,17 @@ impl Overlay for App {
                                             .clicked()
                                         {
                                             ctx.memory_mut(|writer| *writer = Memory::default());
+                                        }
+
+                                        if ui
+                                            .button(RichText::new(format!(
+                                                "{} {}",
+                                                egui_phosphor::bold::QUESTION,
+                                                t!("Help")
+                                            )))
+                                            .clicked()
+                                        {
+                                            self.state.show_help = !self.state.show_help;
                                         }
 
                                         // ui.menu_button(RichText::new(format!(
@@ -819,7 +879,7 @@ impl App {
             );
 
             CollapsingHeader::new(t!("Fonts"))
-                .id_salt("fonts_header")
+                .id_salt("fonts_header  ")
                 .show(ui, |ui| {
                     for (style, id) in &mut self.config.font_sizes {
                         let label = format!("{:?}", style);

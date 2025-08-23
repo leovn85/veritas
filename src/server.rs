@@ -3,7 +3,7 @@ use socketioxide::{SocketIo, extract::SocketRef};
 use std::{net::SocketAddr, str::FromStr, sync::OnceLock};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
-use anyhow::{anyhow, Context, Result};
+use anyhow::anyhow;
 
 use crate::{RUNTIME, models::packets::Packet};
 

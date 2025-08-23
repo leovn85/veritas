@@ -1,6 +1,6 @@
 use crate::ui::app::GraphUnit;
-use egui::{Painter, Sense, Stroke, TextStyle, Ui, Vec2, epaint::CircleShape};
-use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
+use egui::{Sense, Stroke, Ui, Vec2};
+use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints, Polygon};
 
 use crate::{battle::BattleContext, models::misc::Avatar};
 
@@ -42,7 +42,7 @@ impl App {
                     );
                     for (avatar, segment, i) in segments {
                         let color = helpers::get_character_color(i);
-                        let percentage = segment.value / total_damage * 100.0;
+                        // let percentage = segment.value / total_damage * 100.0;
 
                         let plot_points = PlotPoints::new(segment.points);
                         let polygon = Polygon::new("Damage Pie", plot_points)
