@@ -64,17 +64,17 @@ fn default_theme_mode() -> egui::Theme {
 
 fn default_font_sizes() -> BTreeMap<egui::TextStyle, FontId> {
     [
-        (TextStyle::Heading, FontId::new(30.0, FontFamily::Proportional)),
-        (TextStyle::Body, FontId::new(18.0, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(14.0, FontFamily::Monospace)),
-        (TextStyle::Button, FontId::new(14.0, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(10.0, FontFamily::Proportional)),
+        (TextStyle::Heading, FontId::new(18.0, FontFamily::Proportional)),
+        (TextStyle::Body, FontId::new(12.5, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace)),
+        (TextStyle::Button, FontId::new(12.5, FontFamily::Proportional)),
+        (TextStyle::Small, FontId::new(9.0, FontFamily::Proportional)),
     ]
     .into()
 }
 
 fn default_legend_text_style() -> egui::TextStyle {
-    egui::TextStyle::Small
+    egui::TextStyle::Body
 }
 
 fn default_pie_chart_opacity() -> f32 {
