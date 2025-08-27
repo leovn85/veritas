@@ -99,40 +99,44 @@ impl Il2CppClass {
 
     pub fn find_method(&self, name: &str, arg_types: &[&str]) -> Result<Il2CppMethod> {
         let qualified_name = format!("{}::{}", self.name(), name);
-        if let Some(method) = self.methods().iter().find(|method| method.name() == name) {
+        let mut last_error: Option<anyhow::Error> = None;
+
+        for method in self.methods().iter().filter(|m| m.name() == name) {
             let count = method.args_cnt() as usize;
+
             if count == arg_types.len() {
                 let mut fail = false;
-                let mut mistmatched_index = 0;
+                let mut mismatched_index = 0;
+
                 for (i, arg_type) in arg_types.iter().enumerate() {
                     if *arg_type != method.arg_type_formatted(i as u32) {
                         fail = true;
-                        mistmatched_index = i;
+                        mismatched_index = i;
                         break;
                     }
                 }
 
                 if !fail {
-                    Ok(*method)
+                    return Ok(*method);
                 } else {
-                    Err(anyhow!(
+                    last_error = Some(anyhow!(
                         "Method {} arg {} should be {}",
                         qualified_name,
-                        arg_types[mistmatched_index],
-                        method.arg_type_formatted(mistmatched_index as u32)
-                    ))
+                        arg_types[mismatched_index],
+                        method.arg_type_formatted(mismatched_index as u32)
+                    ));
                 }
             } else {
-                Err(anyhow!(
+                last_error = Some(anyhow!(
                     "Method {} contains {} args and not {} args",
                     qualified_name,
                     count,
                     arg_types.len()
-                ))
+                ));
             }
-        } else {
-            Err(anyhow!("Could not find method {}", qualified_name))
         }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("No method named {}", qualified_name)))
     }
 
     pub fn find_method_full(
@@ -142,49 +146,63 @@ impl Il2CppClass {
         ret_type: &str,
     ) -> Result<Il2CppMethod> {
         let qualified_name = format!("{}::{}", self.name(), name);
-        if let Some(method) = self.methods().iter().find(|method| method.name() == name) {
+        let mut last_error: Option<anyhow::Error> = None;
+        let mut name_matched = false;
+
+        for method in self.methods().iter().filter(|m| m.name() == name) {
+            name_matched = true;
+
             let ret = il2cpp_method_get_return_type(*method);
             let count = method.args_cnt() as usize;
-            if count == arg_types.len() {
-                if ret.formatted_name() == ret_type {
-                    let mut fail = false;
-                    let mut mistmatched_index = 0;
-                    for (i, arg_type) in arg_types.iter().enumerate() {
-                        if *arg_type != method.arg_type_formatted(i as u32) {
-                            fail = true;
-                            mistmatched_index = i;
-                            break;
-                        }
-                    }
 
-                    if !fail {
-                        Ok(*method)
-                    } else {
-                        Err(anyhow!(
-                            "Method {} arg {} should be {}",
-                            qualified_name,
-                            arg_types[mistmatched_index],
-                            method.arg_type_formatted(mistmatched_index as u32)
-                        ))
-                    }
-                } else {
-                    Err(anyhow!(
-                        "Method {} returns {} and not {}",
-                        qualified_name,
-                        ret.formatted_name(),
-                        ret_type
-                    ))
-                }
-            } else {
-                Err(anyhow!(
+            if count != arg_types.len() {
+                last_error = Some(anyhow!(
                     "Method {} contains {} args and not {} args",
                     qualified_name,
                     count,
                     arg_types.len()
-                ))
+                ));
+                continue;
             }
+
+            if ret.formatted_name() != ret_type {
+                last_error = Some(anyhow!(
+                    "Method {} returns {} and not {}",
+                    qualified_name,
+                    ret.formatted_name(),
+                    ret_type
+                ));
+                continue;
+            }
+
+            let mut fail = false;
+            let mut mismatched_index = 0;
+            for (i, arg_type) in arg_types.iter().enumerate() {
+                if *arg_type != method.arg_type_formatted(i as u32) {
+                    fail = true;
+                    mismatched_index = i;
+                    break;
+                }
+            }
+
+            if fail {
+                last_error = Some(anyhow!(
+                    "Method {} arg {} should be {}",
+                    qualified_name,
+                    arg_types[mismatched_index],
+                    method.arg_type_formatted(mismatched_index as u32)
+                ));
+                continue;
+            }
+
+            return Ok(*method);
+        }
+
+        if !name_matched {
+            Err(anyhow!("No method name matched {}", qualified_name))
         } else {
-            Err(anyhow!("Could not find method {}", qualified_name))
+            Err(last_error
+                .unwrap_or_else(|| anyhow!("No overload of {} matched signature", qualified_name)))
         }
     }
 }
