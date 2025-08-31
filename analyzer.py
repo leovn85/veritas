@@ -140,7 +140,7 @@ class InteractiveAnalyzer:
         ax1.bar(labels_dpav, df_dpav_sorted["total_dpav"], color=dpav_colors)
         ax1.set_title("Performance Comparison (DpAV - Higher is Better)", fontsize=12)
         ax1.set_ylabel("Damage Per Action Value (DpAV)")
-        ax1.tick_params(axis='x', labelsize=9)
+        ax1.tick_params(axis='x', rotation=40, labelsize=9)
         if not df_dpav_sorted.empty:
             max_dpav = df_dpav_sorted["total_dpav"].max()
             ax1.set_ylim(top=max_dpav * 1.3)
@@ -157,7 +157,7 @@ class InteractiveAnalyzer:
         ax2.bar(labels_av, df_av_sorted["total_av"], color=av_colors)
         ax2.set_title("Total Action Value Comparison (AV - Lower is Better)", fontsize=12)
         ax2.set_ylabel("Total Action Value (AV)")
-        ax2.tick_params(axis='x', labelsize=9)
+        ax2.tick_params(axis='x', rotation=40, labelsize=9)
         if not df_av_sorted.empty:
             max_av = df_av_sorted["total_av"].max()
             ax2.set_ylim(top=max_av * 1.3)
