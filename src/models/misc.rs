@@ -1,4 +1,5 @@
 use std::fmt;
+use std::collections::HashMap;
 
 use serde::{
     Deserialize,
@@ -283,4 +284,22 @@ pub struct TurnInfo {
     pub wave: u32,
     pub avatars_turn_damage: Vec<f64>,
     pub total_damage: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CharacterSummary {
+    pub total_damage: f64,
+    pub dpav: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BattleSummary {
+    pub team_name: String,
+    pub lineup: Vec<String>,
+    pub lineup_details: Vec<Avatar>,
+    pub timestamp: String,
+    pub total_damage: f64,
+    pub total_av: f64,
+    pub total_dpav: f64,
+    pub characters: HashMap<String, CharacterSummary>,
 }

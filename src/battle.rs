@@ -2,8 +2,12 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 
 //new import for reading json file to get battle mode
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::Path;
+use chrono::Local;
 
+use crate::models::misc::{BattleSummary, CharacterSummary};
 use anyhow::{Context, Result};
 
 use crate::{
@@ -89,7 +93,7 @@ pub struct BattleContext {
     // pub internal: BattleContextInternal,
 }
 
-#[derive(Default, Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
 pub enum BattleMode {
     MOC,
     PF,
