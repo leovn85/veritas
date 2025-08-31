@@ -18,7 +18,7 @@ class InteractiveAnalyzer:
         
         self.create_widgets()
         if self.summaries_data:
-            self.create_comparison_plots()
+            self.create_comparison_plots(self.summaries_data)
 
     def load_all_summaries(self, directory="battle_summaries"):
         summary_files = glob.glob(os.path.join(directory, "SUMMARY_*.json"))
@@ -54,6 +54,7 @@ class InteractiveAnalyzer:
                         "filepath": filepath,
                         "session_id": session_id,
                         "timestamp": timestamp_str,
+                        "battle_mode": battle_mode,
                         "total_dpav": data.get("total_dpav", 0),
                         "total_av": data.get("total_av", 0)
                     })
@@ -117,12 +118,35 @@ class InteractiveAnalyzer:
         plot_frame = ttk.LabelFrame(main_frame, text="Overall Comparison", padding=10)
         plot_frame.pack(fill=tk.BOTH, expand=True)
 
+        filter_frame = ttk.Frame(plot_frame)
+        filter_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(filter_frame, text="Filter by Battle Mode:").pack(side=tk.LEFT, padx=(0, 5))
+
+        self.filter_var = tk.StringVar()
+        battle_modes = ["All", "MOC", "PF", "AS", "AA"]
+        self.filter_combobox = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_var,
+            values=battle_modes,
+            state="readonly"
+        )
+        self.filter_combobox.pack(side=tk.LEFT)
+        self.filter_combobox.set("All")
+
+        self.filter_var.trace_add("write", self.on_filter_change)
+
         self.fig_comparison = Figure(figsize=(10, 8), dpi=100)
         self.canvas_comparison = FigureCanvasTkAgg(self.fig_comparison, master=plot_frame)
         self.canvas_comparison.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-    def create_comparison_plots(self):
-        df = pd.DataFrame(self.summaries_data)
+    def create_comparison_plots(self, data_to_plot):
+        if not data_to_plot:
+            self.fig_comparison.clear()
+            self.canvas_comparison.draw()
+            return
+    
+        df = pd.DataFrame(data_to_plot)
         self.fig_comparison.clear()
         
         ax1, ax2 = self.fig_comparison.subplots(2, 1)
@@ -206,6 +230,22 @@ class InteractiveAnalyzer:
 
         fig_detail.tight_layout(pad=3.0, rect=[0, 0, 1, 0.95])
         canvas_detail.draw()
+    def on_filter_change(self, *args):
+        """Called when the filter combobox value changes."""
+        selected_mode = self.filter_var.get()
+        
+        if not self.summaries_data:
+            return
+
+        if selected_mode == "All":
+            data_to_plot = self.summaries_data
+        else:
+            data_to_plot = [
+                summary for summary in self.summaries_data 
+                if summary.get("battle_mode") == selected_mode
+            ]
+        
+        self.create_comparison_plots(data_to_plot)
 
 if __name__ == "__main__":
     root = tk.Tk()
