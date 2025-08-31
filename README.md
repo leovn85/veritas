@@ -27,7 +27,7 @@ This is a fork of the original [hessiser/veritas](https://github.com/hessiser/ve
     **Step 2: Visualize and Compare with `analyzer.py`**
     Included in this project is an `analyzer.py` script, a tool to parse, visualize, and compare the data from your battle summaries. 
     
-    ![Analyzer Screenshot](img/analyzer.jpg)
+    [Click here to view a screenshot of the analyzer](img/analyzer.jpg)
 
     To use it, follow these instructions:
 
