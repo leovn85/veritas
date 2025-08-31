@@ -269,13 +269,13 @@ impl App {
         let current_action_value =
             battle_context.action_value - battle_context.last_wave_action_value;
 
-        egui::CollapsingHeader::new(format!("{}: {:.2}", t!("AV"), current_action_value))
+        egui::CollapsingHeader::new(format!("{}: {:.2}", t!("Total AV"), battle_context.action_value))
             .id_salt("action_value_header")
             .show(ui, |ui| {
                 ui.label(format!(
                     "{}: {:.2}",
-                    t!("Total Elapsed AV"),
-                    battle_context.action_value
+                    t!("AV"),
+                    current_action_value
                 ));
                 ui.vertical(|ui| {
                     for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
