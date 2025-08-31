@@ -21,7 +21,6 @@ class InteractiveAnalyzer:
             self.create_comparison_plots()
 
     def load_all_summaries(self, directory="battle_summaries"):
-        """Tải tất cả file summary và lưu lại cả đường dẫn file."""
         summary_files = glob.glob(os.path.join(directory, "SUMMARY_*.json"))
         if not summary_files:
             print(f"No summary files found in '{directory}'.")
@@ -48,7 +47,6 @@ class InteractiveAnalyzer:
                     session_id = f"{team_name} [{battle_mode}] - {date_str} {time_str}"
                     timestamp_str = f"{date_part}{time_part}" 
                     
-                    
                 with open(filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     
@@ -62,7 +60,7 @@ class InteractiveAnalyzer:
             except Exception as e:
                 print(f"Error processing file {filepath}: {e}")
         if all_data:
-            all_data.sort(key=lambda x: x['timestamp'], reverse=True)        
+            all_data.sort(key=lambda x: x['timestamp'], reverse=True)
         return all_data
 
     def create_widgets(self):
@@ -76,12 +74,10 @@ class InteractiveAnalyzer:
             ttk.Label(list_frame, text="No summary files found.").pack()
             return
 
-        # --- IMPROVED: Bỏ màu nền xám và viền ---
         canvas = tk.Canvas(list_frame, height=100, bg='white', highlightthickness=0)
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
-        # --- IMPROVED: Thêm style cho frame bên trong canvas để có nền trắng ---
         style = ttk.Style()
         style.configure("White.TFrame", background="white")
         scrollable_frame.configure(style="White.TFrame")
@@ -95,7 +91,6 @@ class InteractiveAnalyzer:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # --- IMPROVED: Bật cuộn chuột ---
         def _on_mousewheel(event):
             # For Windows/Linux
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -105,14 +100,13 @@ class InteractiveAnalyzer:
         style.configure("Hyperlink.TLabel", foreground="blue", background="white")
         hyperlink_font = font.Font(family="Segoe UI", size=9, underline=True)
 
-        # --- IMPROVED: Quay lại layout 2 cột ---
         num_columns = 2
         for i, summary in enumerate(self.summaries_data):
             row = i // num_columns
             col = i % num_columns
             link_text = f"View Detail - {os.path.basename(summary['filepath'])}"
             link = ttk.Label(scrollable_frame, text=link_text, style="Hyperlink.TLabel", cursor="hand2", font=hyperlink_font)
-            link.grid(row=row, column=col, padx=10, pady=3, sticky="w") # sticky="w" để căn lề trái
+            link.grid(row=row, column=col, padx=10, pady=3, sticky="w")
             link.bind("<Button-1>", lambda e, s=summary: self.show_detail_window(s))
             scrollable_frame.grid_columnconfigure(col, weight=1)
 
@@ -134,15 +128,13 @@ class InteractiveAnalyzer:
         ax1, ax2 = self.fig_comparison.subplots(2, 1)
         
         window_title = "Honkai: Star Rail - Damage Analyzer"
-        # FIXED: Removed the line that caused the crash. The main window title is already set in __init__.
+
         self.fig_comparison.suptitle(window_title, fontsize=16, weight='bold')
 
-        # --- DpAV plot with highlight ---
         df_dpav_sorted = df.sort_values(by="total_dpav", ascending=False)
         best_dpav_session = df_dpav_sorted.iloc[0]['session_id'] if not df_dpav_sorted.empty else None
         dpav_colors = ['gold' if session == best_dpav_session else 'skyblue' for session in df_dpav_sorted["session_id"]]
         
-        # THAY ĐỔI: Tạo nhãn 2 dòng cho DpAV plot
         labels_dpav = [s.replace(' - ', '\n', 1) for s in df_dpav_sorted["session_id"]]
         
         ax1.bar(labels_dpav, df_dpav_sorted["total_dpav"], color=dpav_colors)
@@ -160,7 +152,6 @@ class InteractiveAnalyzer:
         best_av_session = df_av_sorted.iloc[0]['session_id'] if not df_av_sorted.empty else None
         av_colors = ['limegreen' if session == best_av_session else 'lightcoral' for session in df_av_sorted["session_id"]]
 
-        # THAY ĐỔI: Tạo nhãn 2 dòng cho AV plot
         labels_av = [s.replace(' - ', '\n', 1) for s in df_av_sorted["session_id"]]
 
         ax2.bar(labels_av, df_av_sorted["total_av"], color=av_colors)
