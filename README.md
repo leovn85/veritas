@@ -1,4 +1,4 @@
-# veritas (Modified by leovn85)
+# veritas
 
 [![veritas](https://img.shields.io/badge/veritas-Discord-%235865F2.svg)](https://discord.gg/Y9kSnPk95H) [![GitHub Releases](https://img.shields.io/github/downloads/hessiser/veritas/total.svg)]()
 
