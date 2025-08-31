@@ -1,5 +1,9 @@
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
+//new import for reading json file to get battle mode
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
+
 use anyhow::{Context, Result};
 
 use crate::{
@@ -20,6 +24,24 @@ pub struct SkillHistoryEntry {
     pub damage_detail: Vec<(f64, isize)>,
     pub turn_battle_id: u32,
 }
+static BATTLE_MODE_DATA: LazyLock<HashMap<String, HashSet<u32>>> = LazyLock::new(|| {
+
+    File::open("battle_modes.json")
+        .and_then(|file| {
+            let data: HashMap<String, Vec<u32>> = serde_json::from_reader(file)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            
+            let processed_data = data.into_iter()
+                .map(|(mode, ids)| (mode, ids.into_iter().collect()))
+                .collect();
+            
+            Ok(processed_data)
+        })
+        .unwrap_or_else(|err| {
+            log::error!("Could not load battle_modes.json: {}. Falling back to default mode.", err);
+            HashMap::new()
+        })
+});
 
 #[derive(Clone, Copy)]
 pub enum BattleState {
@@ -72,6 +94,7 @@ pub enum BattleMode {
     MOC,
     PF,
     AS,
+	AA,
     #[default]
     Other,
 }
@@ -133,18 +156,22 @@ impl BattleContext {
     }
 
     fn get_battle_mode(stage_id: u32) -> BattleMode {
-        match stage_id {
-            30010000..=31000000 => {
-                match stage_id % 100 {
-                    21 | 22 => BattleMode::MOC,
-                    41 | 42 => BattleMode::PF,
-                    _ => BattleMode::Other,
-                }
-            }
-            420101..=420999 => BattleMode::AS,
-            _ => BattleMode::Other,
-        }
-    }
+		for (mode_name, id_set) in BATTLE_MODE_DATA.iter() {
+			if id_set.contains(&stage_id) {
+				return match mode_name.as_str() {
+					"MOC" => BattleMode::MOC,
+					"PF" => BattleMode::PF,
+					"AA" => BattleMode::AA,
+					_ => continue,
+				};
+			}
+		}
+		
+		match stage_id {
+			420101..=420999 => BattleMode::AS,
+			_ => BattleMode::Other,
+		}
+	}
 
     // A word of caution:
     // The lineup is setup first
@@ -155,6 +182,8 @@ impl BattleContext {
         log::info!("Battle has started");
         log::info!("Max Waves: {}", e.max_waves);
         battle_context.max_waves = e.max_waves;
+		
+		battle_context.stage_id = e.stage_id; 
 
         battle_context.battle_mode = BattleContext::get_battle_mode(e.stage_id);
 
@@ -342,6 +371,10 @@ impl BattleContext {
             }
         }
 
+		if let Err(e) = Self::save_battle_summary(&battle_context) {
+			log::error!("Failed to save battle summary: {}", e);
+		}
+
         Ok(Packet::OnBattleEnd {
             avatars: battle_context.avatar_lineup.clone(),
             turn_history: battle_context.turn_history.clone(),
@@ -527,5 +560,82 @@ impl BattleContext {
             }
             Err(e) => log::error!("Packet Error: {}", e),
         };
+    }
+	fn save_battle_summary(battle_context: &MutexGuard<'static, BattleContext>) -> Result<()> {
+        if battle_context.avatar_lineup.is_empty() {
+            log::warn!("Attempted to save battle summary, but lineup is empty. Skipping.");
+            return Ok(());
+        }
+
+        // 1. Create directory if not exist
+        fs::create_dir_all("battle_summaries")
+            .context("Failed to create battle_summaries directory")?;
+
+        // 2. Create filename
+        let now_str = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let team_name = &battle_context.avatar_lineup[0].name;
+        let battle_mode_str = format!("{:?}", battle_context.battle_mode); // Get Battle Mode (MOC, PF, AS, AA, Other)
+		let stage_id = battle_context.stage_id;
+		let summary_filename = format!(
+			"SUMMARY_{}_{}_Stage{}_{}.json",
+			team_name,
+			battle_mode_str,
+			stage_id,
+			now_str
+		);
+        let path = Path::new("battle_summaries").join(&summary_filename);
+
+        // 3. Build summary data
+        let total_av = battle_context.action_value;
+        let total_damage = battle_context.total_damage;
+
+        let mut characters = HashMap::new();
+        for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
+            let char_damage = battle_context.real_time_damages.get(i).cloned().unwrap_or(0.0);
+            let char_dpav = if total_av > 0.0 {
+                char_damage / total_av
+            } else {
+                0.0
+            };
+
+            characters.insert(
+                avatar.name.clone(),
+                CharacterSummary {
+                    total_damage: char_damage,
+                    dpav: char_dpav,
+                },
+            );
+        }
+
+        let total_dpav = if total_av > 0.0 {
+            total_damage / total_av
+        } else {
+            0.0
+        };
+
+        let summary_data = BattleSummary {
+            team_name: team_name.clone(),
+            lineup: battle_context.avatar_lineup.iter().map(|a| a.name.clone()).collect(),
+            lineup_details: battle_context.avatar_lineup.clone(),
+            timestamp: now_str,
+            total_damage,
+            total_av,
+            total_dpav,
+            characters,
+        };
+
+        // 4. Serialize to JSON and write file
+        let json_string = serde_json::to_string_pretty(&summary_data)
+            .context("Failed to serialize battle summary to JSON")?;
+
+        let mut file = File::create(&path)
+            .with_context(|| format!("Failed to create summary file at {:?}", path))?;
+
+        file.write_all(json_string.as_bytes())
+            .with_context(|| format!("Failed to write to summary file at {:?}", path))?;
+
+        log::info!("Battle summary saved to: {}", path.display());
+
+        Ok(())
     }
 }

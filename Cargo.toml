@@ -14,6 +14,7 @@ minify-key-len = 12
 minify-key-thresh = 8
 
 [lib]
+name = "xluau"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -42,6 +43,7 @@ tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors"] }
 
 # Misc
+chrono = { version = "0.4.41", features = ["serde"] }
 retour = { version = "0.3", features = ["static-detour"] }
 ctor = "0.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
