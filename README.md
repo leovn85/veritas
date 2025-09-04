@@ -12,7 +12,7 @@ This is a fork of the original [hessiser/veritas](https://github.com/hessiser/ve
 ## ✨ Modifications in This Version
 
 * **Simplified DLL Naming:**
-    The core file has been renamed from `veritas.dll` to **`xluau.dll`**. This is to make the process of copying the file for injection easier and more convenient.
+    The core file has been renamed. This is to make the process of copying the file for injection easier and more convenient.
 
 * **Improved Battle Mode Detection:**
     The logic for detecting battle modes has been enhanced for greater accuracy, please copy `battle_modes.json` to your game installation folder.
