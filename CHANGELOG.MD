@@ -1,5 +1,9 @@
+# 0.2.34 - 2025-09-26
+  - Fixed for live
+
 # 0.2.33 - 2025-09-25
   - Fixed for 3.6.51
+  - Added a new **Help** window
 
 # 0.2.32 - 2025-08-22
   - Slight delay in loading to accomodate official server users using injectors. Follow the wiki for new [instructions](https://github.com/hessiser/veritas/wiki).
