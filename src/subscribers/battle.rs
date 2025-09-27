@@ -1521,15 +1521,14 @@ pub fn subscribe() -> Result<()> {
         subscribe_function!(
             ON_STAT_CHANGE_Detour,
             RPG_GameCore_TurnBasedAbilityComponent::get_class()?
-                .find_method_full(
+                .find_method(
                     "ModifyProperty",
                     &[
                         "RPG.GameCore.AbilityProperty",
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
                         "JIFOMIOBMDL"
-                    ],
-                    "bool"
+                    ]
                 )?
                 .va(),
             on_stat_change
