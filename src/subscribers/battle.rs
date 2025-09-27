@@ -660,7 +660,7 @@ pub fn on_stat_change(
     a2: i32,
     new_stat: RPG_GameCore_FixPoint,
     a4: *const c_void,
-) {
+) -> bool {
     log::debug!(function_name!());
     let res = ON_STAT_CHANGE_Detour.call(instance, property, a2, new_stat, a4);
     safe_call!(unsafe {
@@ -1384,7 +1384,7 @@ retour::static_detour! {
     static ON_UPDATE_CYCLE_Detour: fn(RPG_GameCore_TurnBasedGameMode) -> u32;
     static ON_DIRECT_CHANGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, *const c_void);
     static ON_DIRECT_DAMAGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_FixPoint, i32, *const c_void, RPG_GameCore_FixPoint, *const c_void);
-    static ON_STAT_CHANGE_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_AbilityProperty, i32, RPG_GameCore_FixPoint, *const c_void);
+    static ON_STAT_CHANGE_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_AbilityProperty, i32, RPG_GameCore_FixPoint, *const c_void) -> bool;
     static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, HBIAGLPHICO) -> bool;
     static ON_UPDATE_TEAM_FORMATION_Detour: fn(RPG_GameCore_TeamFormationComponent);
     static ON_INITIALIZE_ENEMY_Detour: fn(RPG_GameCore_MonsterDataComponent, RPG_GameCore_TurnBasedAbilityComponent);
@@ -1521,15 +1521,14 @@ pub fn subscribe() -> Result<()> {
         subscribe_function!(
             ON_STAT_CHANGE_Detour,
             RPG_GameCore_TurnBasedAbilityComponent::get_class()?
-                .find_method_full(
+                .find_method(
                     "ModifyProperty",
                     &[
                         "RPG.GameCore.AbilityProperty",
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
                         "JIFOMIOBMDL"
-                    ],
-                    "void"
+                    ]
                 )?
                 .va(),
             on_stat_change

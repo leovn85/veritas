@@ -659,6 +659,31 @@ impl App {
             ),
         }
 
+        let path2 = r"StarRail_Data\StreamingAssets\MiHoYoSDKRes\HttpServerResources\font\ja-jp.ttf";
+        match std::fs::read(path2) {
+            Ok(font) => {
+                ctx.add_font(FontInsert::new(
+                    "game_font_jp",
+                    egui::FontData::from_owned(font),
+                    vec![
+                        InsertFontFamily {
+                            family: egui::FontFamily::Proportional,
+                            priority: egui::epaint::text::FontPriority::Lowest,
+                        },
+                        InsertFontFamily {
+                            family: egui::FontFamily::Monospace,
+                            priority: egui::epaint::text::FontPriority::Lowest,
+                        },
+                    ],
+                ));
+            }
+            Err(e) => log::warn!(
+                "{} : Could not locate {}.",
+                e,
+                path2
+            ),
+        }
+
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
