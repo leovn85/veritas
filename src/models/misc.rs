@@ -302,4 +302,6 @@ pub struct BattleSummary {
     pub total_av: f64,
     pub total_dpav: f64,
     pub characters: HashMap<String, CharacterSummary>,
+	pub turn_history: Vec<TurnInfo>,
+    pub av_history: Vec<TurnInfo>,
 }
