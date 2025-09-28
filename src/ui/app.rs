@@ -401,8 +401,8 @@ impl Overlay for App {
         // This is a weird quirk of immediate mode where we must initialize our state a frame later
         if !self.is_state_loaded {
             self.is_state_loaded = !self.is_state_loaded;
-            self.state = AppState::load().unwrap_or_else(|x| {
-                log::error!("{x}");
+            self.state = AppState::load().unwrap_or_else(|e| {
+                log::error!("{e}");
                 AppState::default()
             });
             if env!("CARGO_PKG_VERSION") != self.config.version {
@@ -721,21 +721,31 @@ impl App {
 
         let sender = app.update_inbox.sender();
         RUNTIME.spawn(async move {
-            let new_ver = updater.check_update().await.unwrap_or_else(|e| {
-                log::error!("{e}");
-                panic!("{e}");
-            });
-
-            if sender
-                .send(Some(Update {
-                    new_version: new_ver,
-                    status: None,
-                }))
-                .is_err()
-            {
-                let e = anyhow!("Failed to send update to inbox");
-                log::error!("{e}");
-                panic!("{e}");
+            match updater.check_update().await {
+                Ok(new_ver) => {
+                    if sender
+                        .send(Some(Update {
+                            new_version: new_ver,
+                            status: None,
+                        }))
+                        .is_err()
+                    {
+                        log::error!("Failed to send update to inbox");
+                    }
+                }
+                Err(e) => {
+                    log::error!("Update check failed: {e}");
+                    // Try to notify the UI that update check failed
+                    if sender
+                        .send(Some(Update {
+                            new_version: None,
+                            status: Some(Status::Failed(e)),
+                        }))
+                        .is_err()
+                    {
+                        log::error!("Failed to send update-failure to inbox");
+                    }
+                }
             }
         });
 
@@ -827,7 +837,6 @@ impl App {
                             if sender.send(Some(Update { new_version: Some(new_version.to_string()), status})).is_err() {
                                 let e = anyhow!("Failed to send update to inbox");
                                 log::error!("{e}");
-                                panic!("{e}");
                             }
 
                         });
