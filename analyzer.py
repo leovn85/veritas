@@ -201,19 +201,20 @@ class InteractiveAnalyzer:
 
         detail_window = tk.Toplevel(self.master)
         detail_window.title(f"Team Detail: {summary_info['session_id']}")
-        detail_window.geometry("800x600")
+        detail_window.geometry("800x800") 
 
-        fig_detail = Figure(figsize=(8, 6), dpi=100)
+        fig_detail = Figure(figsize=(8, 8), dpi=100) 
         canvas_detail = FigureCanvasTkAgg(fig_detail, master=detail_window)
         canvas_detail.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        ax1, ax2 = fig_detail.subplots(1, 2)
+        (ax1, ax2), (ax3, _) = fig_detail.subplots(2, 2, gridspec_kw={'height_ratios': [1, 1]})
+        _.set_visible(False) 
+
         fig_detail.suptitle(f"Battle Analysis for {data.get('team_name', 'Unknown')} Team", fontsize=14)
 
         characters = data.get("characters", {})
         char_names = list(characters.keys())
         char_damages = [d['total_damage'] for d in characters.values()]
-
         ax1.pie(char_damages, labels=char_names, autopct='%1.1f%%', startangle=90)
         ax1.set_title("Damage Distribution")
         ax1.axis('equal')
@@ -227,6 +228,28 @@ class InteractiveAnalyzer:
             ax2.set_ylim(top=max_dmg * 1.3)
         for i, v in enumerate(char_damages):
             ax2.text(i, v, f"{v:,.0f}", ha='center', va='bottom', fontsize=9)
+
+        turn_history = data.get("turn_history", [])
+        if turn_history:
+            # Data for X
+            turns = range(1, len(turn_history) + 1)
+            # Data for Y
+            total_damage_per_turn = [turn['total_damage'] for turn in turn_history]
+            
+            # Draw total damage
+            ax3.plot(turns, total_damage_per_turn, marker='o', linestyle='-', label='Total Damage')
+            
+            # Draw damage of each char
+            lineup = data.get("lineup", [])
+            for i, char_name in enumerate(lineup):
+                char_damage_per_turn = [turn['avatars_turn_damage'][i] for turn in turn_history]
+                ax3.plot(turns, char_damage_per_turn, marker='.', linestyle='--', label=char_name)
+
+            ax3.set_title("Damage Per Turn")
+            ax3.set_xlabel("Turn Number")
+            ax3.set_ylabel("Damage")
+            ax3.grid(True, linestyle='--', alpha=0.6)
+            ax3.legend()
 
         fig_detail.tight_layout(pad=3.0, rect=[0, 0, 1, 0.95])
         canvas_detail.draw()

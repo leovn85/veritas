@@ -626,6 +626,8 @@ impl BattleContext {
             total_av,
             total_dpav,
             characters,
+            turn_history: battle_context.turn_history.clone(),
+            av_history: battle_context.av_history.clone(),
         };
 
         // 4. Serialize to JSON and write file
