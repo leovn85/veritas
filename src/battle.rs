@@ -11,6 +11,16 @@ use crate::{
     server,
 };
 
+#[derive(Clone, Debug)]
+pub struct SkillHistoryEntry {
+    pub avatar_id: u32,
+    pub skill_name: String,
+    pub skill_type: u32,
+    pub total_damage: f64,
+    pub damage_detail: Vec<(f64, isize)>,
+    pub turn_battle_id: u32,
+}
+
 #[derive(Clone, Copy)]
 pub enum BattleState {
     Started,
@@ -33,6 +43,9 @@ pub struct BattleContext {
     pub battle_enemies: Vec<BattleEntity>,
     pub turn_history: Vec<TurnInfo>,
     pub av_history: Vec<TurnInfo>,
+    pub entity_turn_history: Vec<(Entity, f64, u32, u32)>,
+    pub skill_history: Vec<SkillHistoryEntry>,
+    pub current_turn_battle_id: u32,
     // This is really only relevant for MOC and 
     // is the relative AV
     pub last_wave_action_value: f64,
@@ -46,6 +59,7 @@ pub struct BattleContext {
     pub max_waves: u32,
     pub wave: u32,
     pub cycle: u32,
+    pub max_cycle: u32,
     pub stage_id: u32,
     pub battle_mode: BattleMode,
 
@@ -65,9 +79,23 @@ pub enum BattleMode {
 static BATTLE_CONTEXT: LazyLock<Mutex<BattleContext>> =
     LazyLock::new(|| Mutex::new(BattleContext::default()));
 
+static EXPORT_DATA_READY: LazyLock<Mutex<Option<crate::export::ExportBattleData>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+static CSV_DATA_READY: LazyLock<Mutex<Option<Vec<crate::export::ComprehensiveData>>>> =
+    LazyLock::new(|| Mutex::new(None));
+
 impl BattleContext {
     pub fn get_instance() -> MutexGuard<'static, Self> {
         BATTLE_CONTEXT.lock().unwrap()
+    }
+
+    pub fn take_prepared_export_data() -> Option<crate::export::ExportBattleData> {
+        EXPORT_DATA_READY.lock().ok()?.take()
+    }
+
+    pub fn take_prepared_csv_data() -> Option<Vec<crate::export::ComprehensiveData>> {
+        CSV_DATA_READY.lock().ok()?.take()
     }
 
     fn find_lineup_index_by_avatar_id(
@@ -86,6 +114,9 @@ impl BattleContext {
         battle_context.current_turn_info = TurnInfo::default();
         battle_context.turn_history = Vec::new();
         battle_context.av_history = Vec::new();
+        battle_context.entity_turn_history = Vec::new();
+        battle_context.skill_history = Vec::new();
+        battle_context.current_turn_battle_id = 0;
 
         battle_context.enemies = Vec::new();
         battle_context.battle_enemies = Vec::new();
@@ -95,6 +126,7 @@ impl BattleContext {
         battle_context.last_wave_action_value = 0.;
         battle_context.action_value = 0.;
         battle_context.max_waves = 0;
+        battle_context.max_cycle = 0;
         battle_context.wave = 0;
         battle_context.cycle = 0;
         battle_context.stage_id = 0;
@@ -176,6 +208,11 @@ impl BattleContext {
         battle_context.real_time_damages[lineup_index] += e.damage as f64;
         battle_context.total_damage += e.damage as f64;
 
+        if let Some(last_skill) = battle_context.skill_history.iter_mut().rev().find(|skill| skill.avatar_id == e.attacker.uid) {
+            last_skill.damage_detail.push((e.damage as f64, e.damage_type as isize));
+            last_skill.total_damage += e.damage as f64;
+        }
+
         Ok(Packet::OnDamage {
             attacker: e.attacker,
             damage: e.damage,
@@ -189,6 +226,19 @@ impl BattleContext {
     ) -> Result<Packet> {
         battle_context.action_value = e.action_value;
         battle_context.current_turn_info.action_value = e.action_value;
+
+        battle_context.current_turn_battle_id += 1;
+
+        if let Some(turn_owner) = &e.turn_owner {
+            let wave = battle_context.wave;
+            let cycle = battle_context.cycle;
+            battle_context.entity_turn_history.push((
+                turn_owner.clone(),
+                e.action_value,
+                wave,
+                cycle,
+            ));
+        }
 
         log::info!("AV: {:.2}", e.action_value);
 
@@ -270,6 +320,27 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.state = Some(BattleState::Ended);
+        
+        let exporter = crate::export::BattleDataExporter::new();
+        
+        match std::panic::catch_unwind(|| {
+            let export_data = exporter.export_battle_data(&battle_context);
+            let csv_data = exporter.generate_comprehensive_chart_data(&battle_context);
+            (export_data, csv_data)
+        }) {
+            Ok((export_data, csv_data)) => {
+                if let Ok(mut export_storage) = EXPORT_DATA_READY.lock() {
+                    *export_storage = Some(export_data);
+                }
+                if let Ok(mut csv_storage) = CSV_DATA_READY.lock() {
+                    *csv_storage = Some(csv_data);
+                }
+                log::info!("Export data prepared successfully");
+            }
+            Err(e) => {
+                log::error!("Failed to prepare export data: {:?}", e);
+            }
+        }
 
         Ok(Packet::OnBattleEnd {
             avatars: battle_context.avatar_lineup.clone(),
@@ -286,9 +357,18 @@ impl BattleContext {
 
     fn handle_on_use_skill_event(
         e: OnUseSkillEvent,
-        mut _battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
-        // log::info!("{} has used {}", e.avatar, e.skill);
+        let turn_battle_id = battle_context.entity_turn_history.len() as u32;
+        
+        battle_context.skill_history.push(SkillHistoryEntry {
+            avatar_id: e.avatar.uid,
+            skill_name: e.skill.name.clone(),
+            skill_type: e.skill.skill_type as u32,
+            total_damage: 0.0,
+            damage_detail: Vec::new(),
+            turn_battle_id,
+        });
 
         Ok(Packet::OnUseSkill {
             avatar: e.avatar,
@@ -317,6 +397,9 @@ impl BattleContext {
         log::info!("Cycle: {}", e.cycle);
 
         battle_context.cycle = e.cycle;
+        if e.cycle > battle_context.max_cycle {
+            battle_context.max_cycle = e.cycle;
+        }
         Ok(Packet::OnUpdateCycle { cycle: e.cycle })
     }
 
