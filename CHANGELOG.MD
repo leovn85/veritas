@@ -1,3 +1,8 @@
+# 0.2.35 - 2025-10-11
+  - Added battle data export functionality
+  - Moved Updater and Export to their own windows
+  - Some other minor improvements and refactoring
+
 # 0.2.34 - 2025-09-26
   - Fixed for live
 

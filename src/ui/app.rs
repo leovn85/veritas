@@ -224,7 +224,7 @@ impl Overlay for App {
                                         ui.toggle_value(
                                             &mut self.state.show_updater_window,
                                             RichText::new(format!(
-                                                "{} Updater",
+                                                "{} Updates",
                                                 egui_phosphor::bold::DOWNLOAD,
                                             )),
                                         );
@@ -290,7 +290,7 @@ impl Overlay for App {
 
                                 let mut show_updater_window = self.state.show_updater_window;
                                 if show_updater_window {
-                                    Window::new(format!("{} Updater", egui_phosphor::bold::DOWNLOAD))
+                                    Window::new(format!("{} Updates", egui_phosphor::bold::DOWNLOAD))
                                         .id("updater_window".into())
                                         .open(&mut show_updater_window)
                                         .show(ctx, |ui| {
