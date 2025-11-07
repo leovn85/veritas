@@ -1,3 +1,6 @@
+# 0.2.37 - 2025-11-07
+  - Fixed for 3.7.51
+
 # 0.2.36 - 2025-11-07
   - Added local config for updater allowing/disallowing updating to pre-release releases on GitHub
 
