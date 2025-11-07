@@ -48,5 +48,5 @@ jobs:
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           files: target/release/veritas.dll
-          make_latest: true
+          make_latest: ${{ steps.prerelease.outputs.is_prerelease }}
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
