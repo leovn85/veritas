@@ -28,18 +28,18 @@ jobs:
 
       - name: Determine if prerelease
         id: prerelease
+        shell: bash
         run: |
-          echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
-          echo "GITHUB_BASE_REF=${GITHUB_BASE_REF}"
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # Check what branch the tag was created from (if available)
-            BRANCH=$(git branch -r --contains ${{ github.sha }} | grep origin/beta || true)
-            if [[ -n "$BRANCH" ]]; then
-              echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            else
-              echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            fi
+          echo "Checking if tag was created from beta branch..."
+          BRANCHES=$(git branch -r --contains ${{ github.sha }})
+          echo "Branches containing this commit:"
+          echo "$BRANCHES"
+          if echo "$BRANCHES" | grep -q "origin/beta"; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2

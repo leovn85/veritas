@@ -93,6 +93,7 @@ pub struct App {
     pub update_inbox: UiInbox<Option<Update>>,
     pub export_inbox: UiInbox<ExportNotification>,
     pub update: Option<Update>,
+    beta_channel: bool,
     is_state_loaded: bool,
 }
 
@@ -838,6 +839,8 @@ impl App {
             Config::default()
         });
 
+        let beta_channel = Updater::beta_channel_enabled();
+
         let mut app = Self {
             colorix: Colorix::global(&ctx, config.theme),
             config,
@@ -846,6 +849,7 @@ impl App {
             update_inbox: UiInbox::new(),
             export_inbox: UiInbox::new(),
             update: None,
+            beta_channel,
             is_state_loaded: false,
         };
 
@@ -1245,6 +1249,67 @@ impl App {
         
         ui.group(|ui| {
             ui.label(RichText::new(format!("{} Settings", egui_phosphor::regular::GEAR)).strong());
+            let prev_beta = self.beta_channel;
+            ui.horizontal(|ui| {
+                let mut changed = false;
+                if ui
+                    .checkbox(&mut self.beta_channel, "Check updates for beta (pre-release)")
+                    .changed()
+                {
+                    changed = true;
+                }
+
+                ui.add(
+                    egui::widgets::Label::new(
+                        egui::RichText::new(egui_phosphor::regular::INFO).size(16.0),
+                    )
+                    .sense(egui::Sense::hover()),
+                )
+                .on_hover_text(
+                    "Only enable this if you're running on a beta client, installing a DLL meant for the newest beta client on release client (current official version of the game) might break things",
+                );
+
+                if changed {
+                    if let Err(err) = Updater::set_beta_channel(self.beta_channel) {
+                        log::error!("failed to write beta toggle: {err}");
+                        self.beta_channel = prev_beta;
+                    } else {
+                        self.update = None;
+                        self.state.update_bttn_enabled = true;
+                        let sender = self.update_inbox.sender();
+                        RUNTIME.spawn(async move {
+                            match Updater::new(env!("CARGO_PKG_VERSION")).check_update().await {
+                                Ok(new_ver) => {
+                                    if sender
+                                        .send(Some(Update {
+                                            new_version: new_ver,
+                                            status: None,
+                                        }))
+                                        .is_err()
+                                    {
+                                        log::error!(
+                                            "update inbox dropped while broadcasting beta toggle"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    if sender
+                                        .send(Some(Update {
+                                            new_version: None,
+                                            status: Some(Status::Failed(e)),
+                                        }))
+                                        .is_err()
+                                    {
+                                        log::error!(
+                                            "update inbox dropped while broadcasting beta toggle failure"
+                                        );
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            });
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.config.defender_exclusion, t!("Add Defender Exclusion during update"));
                 ui.add(egui::widgets::Label::new(egui::RichText::new(egui_phosphor::regular::INFO).size(16.0))
