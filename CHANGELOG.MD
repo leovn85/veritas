@@ -1,3 +1,6 @@
+# 0.2.36 - 2025-11-07
+  - Added local config for updater allowing/disallowing updating to pre-release releases on GitHub
+
 # 0.2.35 - 2025-10-11
   - Added battle data export functionality
   - Moved Updater and Export to their own windows
