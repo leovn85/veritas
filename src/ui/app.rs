@@ -37,6 +37,7 @@ use windows::Win32::{
 use crate::CHANGELOG;
 use crate::LOCALES;
 use crate::RUNTIME;
+use crate::entry::InitErrorInfo;
 use crate::battle::BattleContext;
 use crate::export::BattleDataExporter;
 use crate::ui::themes;
@@ -77,6 +78,10 @@ pub struct AppState {
     pub use_custom_color: bool,
     #[serde(skip)]
     pub update_bttn_enabled: bool,
+    #[serde(skip)]
+    pub show_version_mismatch_popup: bool,
+    #[serde(skip)]
+    pub center_updater_window: bool,
     show_character_legend: bool,
     pub auto_save_battle_data: bool,
     pub show_export_window: bool,
@@ -94,7 +99,12 @@ pub struct App {
     pub export_inbox: UiInbox<ExportNotification>,
     pub update: Option<Update>,
     beta_channel: bool,
+    skip_version_mismatch_popup: bool,
+    reopen_changelog: bool,
+    init_err: Option<InitErrorInfo>,
     is_state_loaded: bool,
+    updater_hint: Option<String>,
+    updater_window_last_size: Option<egui::Vec2>,
 }
 
 pub const HIDE_UI: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
@@ -175,6 +185,23 @@ impl Overlay for App {
                     });
                 });
             });
+        }
+
+        if self.state.show_version_mismatch_popup {
+            // hacky fix
+            if self.state.show_changelog {
+                self.state.show_changelog = false;
+                self.reopen_changelog = true;
+            }
+            Window::new(RichText::new(format!("{} Version mismatch detected", egui_phosphor::bold::WARNING)).size(24.0))
+                .id("version_mismatch_popup".into())
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .default_width(440.0)
+                .min_width(320.0)
+                .frame(Frame::window(&ctx.style()).inner_margin(14.0))
+                .collapsible(false)
+                .resizable(true)
+            .show(ctx, |ui| self.show_version_mismatch_popup(ui));
         }
 
         if self.config.streamer_mode {
@@ -291,13 +318,35 @@ impl Overlay for App {
 
                                 let mut show_updater_window = self.state.show_updater_window;
                                 if show_updater_window {
-                                    Window::new(format!("{} Updates", egui_phosphor::bold::DOWNLOAD))
-                                        .id("updater_window".into())
-                                        .open(&mut show_updater_window)
-                                        .show(ctx, |ui| {
-                                            self.show_updater_window(ui);
-                                        });
+                                    let mut updater_window = Window::new(format!(
+                                        "{} Updates",
+                                        egui_phosphor::bold::DOWNLOAD
+                                    ))
+                                    .id("updater_window".into())
+                                    .open(&mut show_updater_window);
+
+                                    if self.state.center_updater_window {
+                                        let center = ctx.input(|input| input.screen_rect.center());
+                                        if let Some(size) = self.updater_window_last_size {
+                                            let top_left = center - size * 0.5;
+                                            updater_window = updater_window.current_pos(top_left);
+                                            self.state.center_updater_window = false;
+                                        } else {
+                                            updater_window = updater_window
+                                                .pivot(egui::Align2::CENTER_CENTER)
+                                                .current_pos(center);
+                                        }
+                                    }
+
+                                    if let Some(response) = updater_window.show(ctx, |ui| {
+                                        self.show_updater_window(ui);
+                                    }) {
+                                        self.updater_window_last_size = Some(response.response.rect.size());
+                                    }
                                     self.state.show_updater_window = show_updater_window;
+                                    if !self.state.show_updater_window {
+                                        self.updater_hint = None;
+                                    }
                                 }
 
                                 ui.vertical_centered(|ui| {
@@ -452,11 +501,15 @@ impl Overlay for App {
 
         // This is a weird quirk of immediate mode where we must initialize our state a frame later
         if !self.is_state_loaded {
+            let keep_popup = self.state.show_version_mismatch_popup;
             self.is_state_loaded = !self.is_state_loaded;
             self.state = AppState::load().unwrap_or_else(|e| {
                 log::error!("{e}");
                 AppState::default()
             });
+            if keep_popup {
+                self.state.show_version_mismatch_popup = true;
+            }
             if env!("CARGO_PKG_VERSION") != self.config.version {
                 self.state.show_changelog = true
             }
@@ -483,8 +536,8 @@ impl Overlay for App {
                                 "Version %{version} is available! Click here to open settings and update.", version = new_version
                             ))
                             .closable(true)
-                            .show_progress_bar(false)
-                            .duration(None);
+                            .show_progress_bar(true)
+                            .duration(Some(std::time::Duration::from_secs_f32(20.0)));
                     }
                 }
             }
@@ -682,6 +735,8 @@ impl Default for AppState {
             graph_x_unit: GraphUnit::default(),
             use_custom_color: false,
             update_bttn_enabled: false,
+            show_version_mismatch_popup: false,
+            center_updater_window: false,
             show_character_legend: false,
             auto_save_battle_data: false,
             show_export_window: false,
@@ -850,7 +905,12 @@ impl App {
             export_inbox: UiInbox::new(),
             update: None,
             beta_channel,
+            skip_version_mismatch_popup: false,
+            reopen_changelog: false,
+            init_err: None,
             is_state_loaded: false,
+            updater_hint: None,
+            updater_window_last_size: None,
         };
 
         rust_i18n::set_locale(&app.config.locale);
@@ -865,37 +925,15 @@ impl App {
             }
         }
 
-        let updater = Updater::new(env!("CARGO_PKG_VERSION"));
+        let init_err = crate::entry::take_init_error();
+        if app.config.nag_versions
+            && matches!(init_err, Some(InitErrorInfo::ObfuscationMismatch { .. }))
+        {
+            app.state.show_version_mismatch_popup = true;
+        }
+        app.init_err = init_err;
 
-        let sender = app.update_inbox.sender();
-        RUNTIME.spawn(async move {
-            match updater.check_update().await {
-                Ok(new_ver) => {
-                    if sender
-                        .send(Some(Update {
-                            new_version: new_ver,
-                            status: None,
-                        }))
-                        .is_err()
-                    {
-                        log::error!("Failed to send update to inbox");
-                    }
-                }
-                Err(e) => {
-                    log::error!("Update check failed: {e}");
-                    // Try to notify the UI that update check failed
-                    if sender
-                        .send(Some(Update {
-                            new_version: None,
-                            status: Some(Status::Failed(e)),
-                        }))
-                        .is_err()
-                    {
-                        log::error!("Failed to send update-failure to inbox");
-                    }
-                }
-            }
-        });
+        app.queue_update_check();
 
         app
     }
@@ -1011,6 +1049,18 @@ impl App {
                 &mut self.config.auto_showhide_ui,
                 t!("Auto(show/hide) UI on battle (start/end)."),
             );
+
+            if ui
+                .checkbox(
+                    &mut self.config.nag_versions,
+                    "Show version mismatch help when startup fails",
+                )
+                .changed()
+            {
+                if let Err(e) = self.config.save() {
+                    log::error!("{e}");
+                }
+            }
 
             // TODO:
             // Change using a grid like so:
@@ -1185,6 +1235,22 @@ impl App {
     }
 
     fn show_updater_window(&mut self, ui: &mut Ui) {
+        if let Some(hint) = self.updater_hint.as_deref() {
+            Frame::group(ui.style())
+                .inner_margin(10.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} Listen...", egui_phosphor::regular::LIGHTBULB))
+                                .strong(),
+                        );
+                    });
+                    ui.add(Label::new(hint).wrap());
+                });
+
+            ui.add_space(12.0);
+        }
+
         ui.group(|ui| {
             ui.label(RichText::new(format!("{} Version Information", egui_phosphor::regular::INFO)).strong());
             
@@ -1206,6 +1272,7 @@ impl App {
                         .add_enabled(self.state.update_bttn_enabled, egui::Button::new(format!("{} Update Now", egui_phosphor::bold::DOWNLOAD)))
                         .clicked()
                     {
+                        self.updater_hint = None;
                         let defender_exclusion = self.config.defender_exclusion;
                         let new_version = new_version.clone();
                         let sender = self.update_inbox.sender();
@@ -1251,13 +1318,9 @@ impl App {
             ui.label(RichText::new(format!("{} Settings", egui_phosphor::regular::GEAR)).strong());
             let prev_beta = self.beta_channel;
             ui.horizontal(|ui| {
-                let mut changed = false;
-                if ui
-                    .checkbox(&mut self.beta_channel, "Check updates for beta (pre-release)")
-                    .changed()
-                {
-                    changed = true;
-                }
+                let changed = ui
+                    .checkbox(&mut self.beta_channel, "Check beta updates (pre-release)")
+                    .changed();
 
                 ui.add(
                     egui::widgets::Label::new(
@@ -1269,45 +1332,8 @@ impl App {
                     "Only enable this if you're running on a beta client, installing a DLL meant for the newest beta client on release client (current official version of the game) might break things",
                 );
 
-                if changed {
-                    if let Err(err) = Updater::set_beta_channel(self.beta_channel) {
-                        log::error!("failed to write beta toggle: {err}");
-                        self.beta_channel = prev_beta;
-                    } else {
-                        self.update = None;
-                        self.state.update_bttn_enabled = true;
-                        let sender = self.update_inbox.sender();
-                        RUNTIME.spawn(async move {
-                            match Updater::new(env!("CARGO_PKG_VERSION")).check_update().await {
-                                Ok(new_ver) => {
-                                    if sender
-                                        .send(Some(Update {
-                                            new_version: new_ver,
-                                            status: None,
-                                        }))
-                                        .is_err()
-                                    {
-                                        log::error!(
-                                            "update inbox dropped while broadcasting beta toggle"
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    if sender
-                                        .send(Some(Update {
-                                            new_version: None,
-                                            status: Some(Status::Failed(e)),
-                                        }))
-                                        .is_err()
-                                    {
-                                        log::error!(
-                                            "update inbox dropped while broadcasting beta toggle failure"
-                                        );
-                                    }
-                                }
-                            }
-                        });
-                    }
+                if changed && !self.set_beta_flag(self.beta_channel) {
+                    self.beta_channel = prev_beta;
                 }
             });
             ui.horizontal(|ui| {
@@ -1319,6 +1345,200 @@ impl App {
                         This is recommended to be enabled (if disabled, Windows Defender may cause the update to fail) however you can disable it if you prefer. The exclusion is removed after the update is finished.
                     ")));
             });
+        });
+    }
+
+    fn show_version_mismatch_popup(&mut self, ui: &mut Ui) {
+        const POPUP_MIN_WIDTH: f32 = 320.0;
+        const POPUP_PREFERRED_WIDTH: f32 = 460.0;
+
+        ui.scope(|ui| {
+            {
+                let spacing = ui.spacing_mut();
+                spacing.item_spacing = egui::vec2(0.0, 12.0);
+                spacing.button_padding = egui::vec2(16.0, 8.0);
+            }
+
+            let available_width = ui.available_width();
+            let min_width = available_width.min(POPUP_MIN_WIDTH);
+            ui.set_min_width(min_width);
+            ui.set_max_width(POPUP_PREFERRED_WIDTH);
+
+            ui.add(
+                Label::new(
+                    RichText::new(format!(
+                        "{} Veritas couldn't start because the version you have was built for a different version of the game",
+                        egui_phosphor::regular::SMILEY_SAD
+                    ))
+                    .size(16.0)
+                    .strong(),
+                )
+                .wrap(),
+            );
+
+            if let Some(info) = &self.init_err {
+                let message = match info {
+                    InitErrorInfo::Other { message } => message,
+                    InitErrorInfo::ObfuscationMismatch { message, .. } => message,
+                };
+
+                if !message.is_empty() {
+                    CollapsingHeader::new("Error details")
+                        .show_unindented(ui, |ui| {
+                            ui.add(Label::new(message).wrap());
+                        });
+                }
+            }
+
+            ui.add(
+                Label::new(
+                    RichText::new(format!(
+                        "{} But don't worry, we can fix it!",
+                        egui_phosphor::regular::SMILEY
+                    ))
+                    .size(16.0)
+                    .strong(),
+                )
+                .wrap(),
+            );
+
+            ui.separator();
+            
+            ui.add(
+                Label::new(
+                    RichText::new("Pick the client you are currently playing on")
+                        .size(15.0)
+                        .strong(),
+                )
+                .wrap(),
+            );
+
+            ui.horizontal(|ui| {
+                {
+                    let spacing = ui.spacing_mut();
+                    spacing.item_spacing.x = 16.0;
+                }
+                let button_width = ((ui.available_width() - 16.0).max(0.0)) / 2.0;
+
+                if ui
+                    .add_sized([button_width, 36.0], egui::Button::new(RichText::new("I'm on live client").strong()))
+                    .clicked()
+                {
+                    self.pick_build(false);
+                }
+
+                if ui
+                    .add_sized([button_width, 36.0], egui::Button::new(RichText::new("I'm on beta client").strong()))
+                    .clicked()
+                {
+                    self.pick_build(true);
+                }
+            });
+
+            ui.add_space(6.0);
+
+            Frame::group(ui.style()).inner_margin(8.0).show(ui, |ui| {
+                CollapsingHeader::new(
+                    RichText::new(format!(
+                        "{} {}",
+                        egui_phosphor::regular::QUESTION,
+                        "How do I check?"
+                    ))
+                    .strong(),
+                )
+                .show_unindented(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 6.0;
+                    ui.add(Label::new(RichText::new("Look at the bottom-left corner of the screen when you have the game open").size(14.0).strong()).wrap());
+                    ui.add(Label::new("If the text has OSBETA or CNBETA, you are on the beta client and need the beta version").wrap());
+                    ui.add(Label::new("If the text has OSPROD or CNPROD, you are on the live client and need the live version").wrap());
+                });
+            });
+            ui.add(Label::new("We'll point the updater at the right download so you can install a version that works with your game version").wrap());
+
+            ui.checkbox(&mut self.skip_version_mismatch_popup, "Don't show this again");
+
+            if ui.button("I'll handle it later").clicked() {
+                self.close_version_mismatch_popup();
+            }
+        });
+    }
+
+    fn pick_build(&mut self, beta: bool) {
+        if self.set_beta_flag(beta) {
+            self.state.show_menu = true;
+            self.state.show_updater_window = true;
+            self.state.center_updater_window = true;
+            let channel = if beta { "beta" } else { "live" };
+
+            self.updater_hint = Some(
+                "Click Update Now so your version matches the correct version for the client you're running".to_owned(),
+            );
+
+            self.notifs.info(format!(
+                "Updates window opened on the {channel} channel. Click Update Now to download the version that matches your client"
+            ));
+            self.close_version_mismatch_popup();
+        }
+    }
+
+    fn close_version_mismatch_popup(&mut self) {
+        if self.skip_version_mismatch_popup && self.config.nag_versions {
+            self.config.nag_versions = false;
+            if let Err(e) = self.config.save() {
+                log::error!("{e}");
+            }
+        }
+        self.state.show_version_mismatch_popup = false;
+        self.skip_version_mismatch_popup = false;
+        if self.reopen_changelog {
+            self.state.show_changelog = true;
+            self.reopen_changelog = false;
+        }
+        self.init_err = None;
+    }
+
+    fn set_beta_flag(&mut self, enabled: bool) -> bool {
+        if let Err(err) = Updater::set_beta_channel(enabled) {
+            log::error!("failed to update beta toggle: {err}");
+            self.notifs.error("Failed to switch update channel. See logs for details.");
+            return false;
+        }
+
+        self.beta_channel = enabled;
+        self.update = None;
+        self.state.update_bttn_enabled = true;
+        self.queue_update_check();
+        true
+    }
+
+    fn queue_update_check(&self) {
+        let sender = self.update_inbox.sender();
+        RUNTIME.spawn(async move {
+            match Updater::new(env!("CARGO_PKG_VERSION")).check_update().await {
+                Ok(new_ver) => {
+                    if sender
+                        .send(Some(Update {
+                            new_version: new_ver,
+                            status: None,
+                        }))
+                        .is_err()
+                    {
+                        log::error!("Failed to send update to inbox");
+                    }
+                }
+                Err(e) => {
+                    log::error!("Update check failed: {e}");
+                    if sender
+                        .send(Some(Update {
+                            new_version: None,
+                            status: Some(Status::Failed(e)),
+                        }))
+                        .is_err()
+                    {
+                        log::error!("Failed to send update-failure to inbox");
+                    }
+                }
+            }
         });
     }
     
