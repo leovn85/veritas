@@ -92,18 +92,30 @@ impl Updater {
         let latest_ver = Version::parse(latest_tag);
         let current_ver = Version::parse(current_tag);
 
-        let update_needed = match (latest_ver, current_ver) {
-            (Ok(latest), Ok(current)) => {
-                log::debug!("semver compare: latest={:?}, current={:?}", latest, current);
-                latest > current
+        let tags_differ = latest_tag != current_tag;
+
+        let update_needed = if !self.allow_prereleases {
+            if tags_differ {
+                log::debug!(
+                    "stable channel mismatch: latest_tag='{}', current_tag='{}'",
+                    latest_tag, current_tag
+                );
             }
-            (Err(e1), Err(e2)) => {
-                log::debug!("semver parse failed: {:?}, {:?}", e1, e2);
-                latest_tag != current_tag
-            }
-            (Err(e), _) | (_, Err(e)) => {
-                log::debug!("semver parse failed: {:?}", e);
-                latest_tag != current_tag
+            tags_differ
+        } else {
+            match (latest_ver, current_ver) {
+                (Ok(latest), Ok(current)) => {
+                    log::debug!("semver compare: latest={:?}, current={:?}", latest, current);
+                    latest > current
+                }
+                (Err(e1), Err(e2)) => {
+                    log::debug!("semver parse failed: {:?}, {:?}", e1, e2);
+                    tags_differ
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    log::debug!("semver parse failed: {:?}", e);
+                    tags_differ
+                }
             }
         };
 

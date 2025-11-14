@@ -6,6 +6,23 @@ use std::{
     time::Duration,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use std::sync::{LazyLock, Mutex};
+
+#[derive(Clone, Debug)]
+pub enum InitErrorInfo {
+    ObfuscationMismatch { class_name: Option<String>, message: String },
+    Other { message: String },
+}
+
+pub static INIT_ERROR: LazyLock<Mutex<Option<InitErrorInfo>>> = LazyLock::new(|| Mutex::new(None));
+
+pub fn take_init_error() -> Option<InitErrorInfo> {
+    INIT_ERROR.lock().unwrap().take()
+}
+
+fn store_init_error(info: InitErrorInfo) {
+    *INIT_ERROR.lock().unwrap() = Some(info);
+}
 
 #[ctor]
 fn entry() {
@@ -30,6 +47,9 @@ fn init() {
         Err(e) => {
             let err = format!("{plugin_name} has been disabled: {e}");
             log::error!("{}", err);
+            if let Some(info) = classify_init_error(&e) {
+                store_init_error(info);
+            }
             let mut toast = Toast::error(err);
             toast.duration(None);
             toasts.push(toast);
@@ -62,4 +82,32 @@ fn setup_subscribers() -> anyhow::Result<()> {
         subscribers::enable_subscribers!()?;
         Ok(())
     }
+}
+
+fn classify_init_error(error: &anyhow::Error) -> Option<InitErrorInfo> {
+    let message = error.to_string();
+    if let Some(class_name) = extract_missing_class(&message) {
+        Some(InitErrorInfo::ObfuscationMismatch {
+            class_name: Some(class_name),
+            message,
+        })
+    } else {
+        Some(InitErrorInfo::Other { message })
+    }
+}
+
+fn extract_missing_class(message: &str) -> Option<String> {
+    let needle = "no such class";
+    if !message.contains(needle) {
+        return None;
+    }
+
+    let after = message.split(needle).nth(1)?;
+    let class_name = after
+        .trim()
+        .split(|c: char| c.is_whitespace() || c == ':' || c == ')')
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim_matches('"').to_string())?;
+    Some(class_name)
 }
