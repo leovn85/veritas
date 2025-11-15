@@ -1,3 +1,6 @@
+# 0.2.39 - 2025-11-14
+  - Add version mismatch popup
+
 # 0.2.38 - 2025-11-14
   - Add version mismatch popup
 
