@@ -1151,9 +1151,7 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(format!("{}", egui_phosphor::regular::FILE_TEXT));
                         ui.label("JSON format: Compatible with");
-                        if ui.link("Firefly Analysis").clicked() {
-                            self.open_url("https://sranalysis.kain.id.vn/");
-                        }
+                        ui.hyperlink_to("Firefly Analysis", "https://sranalysis.kain.id.vn/");
                         ui.label("for detailed battle analysis");
                     });
                     
@@ -1583,27 +1581,6 @@ impl App {
             {
                 self.notifs.error(format!("Failed to open folder: {}", e));
                 log::error!("Failed to open folder: {}", e);
-            }
-        }
-    }
-    
-    fn open_url(&self, url: &str) {
-        #[cfg(target_os = "windows")]
-        {
-            if let Err(e) = std::process::Command::new("cmd")
-                .args(["/C", "start", url])
-                .spawn()
-            {
-                log::error!("Failed to open browser: {}", e);
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Err(e) = std::process::Command::new("xdg-open")
-                .arg(url)
-                .spawn()
-            {
-                log::error!("Failed to open browser: {}", e);
             }
         }
     }
