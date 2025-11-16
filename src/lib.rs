@@ -66,3 +66,38 @@ static LOCALES: phf::Map<&'static str, &'static str> = phf_map! {
 };
 
 rust_i18n::i18n!();
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    use edio11::Overlay;
+    use eframe::EventLoopBuilderHook;
+
+    use crate::ui::{self, app::SHOW_MENU_SHORTCUT};
+
+    #[test]
+    fn egui_main() {
+        use winit::platform::windows::EventLoopBuilderExtWindows;
+        let handle = thread::spawn(|| {
+            let event_loop_builder: Option<EventLoopBuilderHook> =
+                Some(Box::new(|event_loop_builder| {
+                    event_loop_builder.with_any_thread(true);
+                }));
+            let native_options = eframe::NativeOptions {
+                event_loop_builder,
+                ..Default::default()
+            };
+
+            let mut app = ui::app::App::new(egui::Context::default());
+            eframe::run_simple_native(env!("CARGO_PKG_NAME"), native_options, move |ctx, _| {
+                if ctx.input_mut(|i| i.consume_shortcut(&SHOW_MENU_SHORTCUT)) {
+                    app.state.show_menu = !app.state.show_menu;
+                }
+
+                app.update(ctx);
+            }).expect("failed to run app");
+        });
+        handle.join().unwrap();
+    }
+}
