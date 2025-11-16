@@ -25,6 +25,7 @@ fn store_init_error(info: InitErrorInfo) {
 }
 
 #[ctor]
+#[cfg(not(test))]
 fn entry() {
     thread::spawn(|| init());
 }
