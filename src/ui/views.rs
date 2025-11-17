@@ -730,7 +730,7 @@ impl App {
             );
 
             CollapsingHeader::new(t!("Fonts"))
-                .id_salt("fonts_header  ")
+                .id_salt("fonts_header")
                 .show(ui, |ui| {
                     for (style, id) in &mut self.config.font_sizes {
                         let label = format!("{:?}", style);

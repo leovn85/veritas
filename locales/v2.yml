@@ -603,7 +603,6 @@ yNEe4qFICqIA:
   ru: Журнал изменений
   vi: Nhật ký thay đổi
   zh: 更新日志
-_version: 2
 1VjDdmM0wZzg:
   de: Version %{version} ist verfügbar! Klicken Sie hier, um die Einstellungen zu öffnen und zu aktualisieren.
   en: Version %{version} is available! Click here to open settings and update.
@@ -682,7 +681,7 @@ Fonts:
   ru: Шрифты
   vi: Phông chữ
   zh: 字体
-  Help:
+Help:
   de: Help
   en: Help
   es: Help
