@@ -65,14 +65,8 @@ fn default_theme_mode() -> egui::Theme {
 }
 
 fn default_font_sizes() -> BTreeMap<egui::TextStyle, FontId> {
-    [
-        (TextStyle::Heading, FontId::new(18.0, FontFamily::Proportional)),
-        (TextStyle::Body, FontId::new(12.5, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace)),
-        (TextStyle::Button, FontId::new(12.5, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(9.0, FontFamily::Proportional)),
-    ]
-    .into()
+    let ctx = egui::Context::default();
+    ctx.style().text_styles.clone()
 }
 
 fn default_legend_text_style() -> egui::TextStyle {

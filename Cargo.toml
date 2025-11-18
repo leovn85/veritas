@@ -65,6 +65,10 @@ widestring = "1.2.0"
 ron = "0.10.1"
 parse-changelog = { version = "0.6.12", default-features = false }
 
+[dev-dependencies]
+eframe = { version = "0.32.0", features = ["serde", "persistence"] }
+winit = { version = "0.30.12", default-features = false, features = ["wayland"] }
+
 [dependencies.windows]
 version = "0.61.3"
 features = [

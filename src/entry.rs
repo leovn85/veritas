@@ -25,6 +25,7 @@ fn store_init_error(info: InitErrorInfo) {
 }
 
 #[ctor]
+#[cfg(not(test))]
 fn entry() {
     thread::spawn(|| init());
 }
@@ -37,15 +38,16 @@ fn init() {
     }
 
     let mut toasts = Vec::<Toast>::new();
-    let plugin_name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    let plugin_name = format!("{} ({})", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    log::info!("{}", plugin_name);
     match setup_subscribers() {
         Ok(_) => {
-            let msg = format!("Finished setting up {plugin_name}");
+            let msg = format!("Core initialized successfully");
             log::info!("{}", msg);
             toasts.push(Toast::success(msg));
         }
         Err(e) => {
-            let err = format!("{plugin_name} has been disabled: {e}");
+            let err = format!("Core failed to initialize and has been disabled: {e}");
             log::error!("{}", err);
             if let Some(info) = classify_init_error(&e) {
                 store_init_error(info);
@@ -59,16 +61,13 @@ fn init() {
     thread::spawn(|| server::start_server());
 
     match overlay::initialize(toasts) {
-        Ok(_) => log::info!("Finished setting up overlay"),
-        Err(e) => log::error!("Failed to initialize overlay: {}", e),
+        Ok(_) => log::info!("Overlay initialized successfully"),
+        Err(e) => log::error!("Overlay failed to initialize: {}", e),
     }
 }
 
 fn setup_subscribers() -> anyhow::Result<()> {
     unsafe {
-        let plugin_name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-
-        log::info!("{plugin_name}");
         log::info!("Setting up...");
 
         while GetModuleHandleW(windows::core::w!("GameAssembly")).is_err()
