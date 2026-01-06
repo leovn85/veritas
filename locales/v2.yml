@@ -694,4 +694,17 @@ Help:
   ru: Помощь
   vi: Trợ giúp
   zh: 帮助
+3VI9Y3PK0tKz:
+  de: '`Hide UI` ist noch aktiv. Verwenden Sie die `Hide UI`-Tastenkombination, um die UI wieder einzublenden.'
+  en: '`Hide UI` is still active. Use the `Hide UI` shortcut to unhide the UI.'
+  es: '`Hide UI` sigue activo. Usa el atajo `Hide UI` para volver a mostrar la interfaz.'
+  fr: '`Hide UI` est toujours actif. Utilisez le raccourci `Hide UI` pour afficher l’interface.'
+  it: '`Hide UI` è ancora attivo. Usa la scorciatoia `Hide UI` per mostrare di nuovo l’interfaccia.'
+  ja: '`Hide UI` はまだ有効です。`Hide UI` のショートカットを使用して UI を表示してください。'
+  nl: '`Hide UI` is nog steeds actief. Gebruik de sneltoets `Hide UI` om de UI weer te tonen.'
+  pl: '`Hide UI` jest nadal aktywne. Użyj skrótu `Hide UI`, aby ponownie wyświetlić interfejs.'
+  pt: '`Hide UI` ainda está ativo. Use o atalho `Hide UI` para exibir a interface novamente.'
+  ru: '`Hide UI` всё ещё активно. Используйте сочетание клавиш `Hide UI`, чтобы снова показать интерфейс.'
+  vi: '`Hide UI` vẫn đang hoạt động. Sử dụng phím tắt `Hide UI` để hiển thị lại giao diện.'
+  zh: '`Hide UI` 仍处于启用状态。使用 `Hide UI` 快捷键以重新显示界面。'
 _version: 2
