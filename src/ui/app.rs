@@ -98,7 +98,7 @@ pub struct App {
     pub updater_window_last_size: Option<egui::Vec2>,
 }
 
-pub const HIDE_UI: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
+pub const HIDE_UI_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
 pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::M);
 
 static LOAD: Once = Once::new();
@@ -206,8 +206,14 @@ impl Overlay for App {
             }
         });
 
-        if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI)) {
+        if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI_SHORTCUT)) {
             self.state.should_hide = !self.state.should_hide;
+        }
+
+        if ctx.input_mut(|i| i.consume_shortcut(&SHOW_MENU_SHORTCUT)) {
+            if self.state.should_hide {
+                self.notifs.info(t!("`Hide UI` is still active. Use the `Hide UI` shortcut to unhide the UI."));
+            }
         }
 
         if let Some(Some(update)) = self.update_inbox.read(ctx).last() {
