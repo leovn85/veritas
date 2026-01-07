@@ -44,34 +44,34 @@ pub enum RPG_GameCore_AliveState {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// EIFLGPGKPNB
-pub struct EIFLGPGKPNB(pub usize);
-impl EIFLGPGKPNB {
-    cs_class!("EIFLGPGKPNB");
+// NMMHEOHJODF
+pub struct NMMHEOHJODF(pub usize);
+impl NMMHEOHJODF {
+    cs_class!("NMMHEOHJODF");
 
-    // EIFLGPGKPNB -> Type: string | Name: BOKMABDJOPJ | Offset: 0x8
-    cs_field!(BOKMABDJOPJ, "BOKMABDJOPJ", self, |v| -> Il2CppString {
+    // NMMHEOHJODF -> Type: string | Name: FJOOFKIADBC | Offset: 0x8
+    cs_field!(FJOOFKIADBC, "FJOOFKIADBC", self, |v| -> Il2CppString {
         Il2CppString(v.0)
     });
 }
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// EIFLGPGKPNB
-pub struct PPBGKDNMMEC(pub usize);
-impl PPBGKDNMMEC {
-    cs_class!("PPBGKDNMMEC");
+// NMMHEOHJODF
+pub struct DKKNECHPLHL(pub usize);
+impl DKKNECHPLHL {
+    cs_class!("DKKNECHPLHL");
 
     cs_field!(
-        GMKMPFOOKMK,
-        "GMKMPFOOKMK",
+        MKFOEBBAKJA,
+        "MKFOEBBAKJA",
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
     cs_field!(
-        KDGKOJAKNNH,
-        "KDGKOJAKNNH",
+        IENPEBIHOHF,
+        "IENPEBIHOHF",
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
@@ -812,15 +812,15 @@ pub struct RPG_GameCore_FixPoint {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// POOANBBGHIM
-pub struct POOANBBGHIM(pub usize);
-impl POOANBBGHIM {
-    cs_class!("POOANBBGHIM");
+// KCEKDANAOFI
+pub struct KCEKDANAOFI(pub usize);
+impl KCEKDANAOFI {
+    cs_class!("KCEKDANAOFI");
 
-    // POOANBBGHIM -> Type: FixPoint | Name: LJNNKADCCLM | Offset: 0x340
+    // KCEKDANAOFI -> Type: FixPoint | Name: JNMNJBHALMO | Offset: 0x340
     cs_field!(
-        LJNNKADCCLM,
-        "LJNNKADCCLM",
+        JNMNJBHALMO,
+        "JNMNJBHALMO",
         self,
         |v| -> RPG_GameCore_FixPoint {
             RPG_GameCore_FixPoint {
@@ -829,10 +829,10 @@ impl POOANBBGHIM {
         }
     );
 
-    // POOANBBGHIM -> Type: AttackType | Name: EKPIKGLMAPF | Offset: 0x434
+    // KCEKDANAOFI -> Type: AttackType | Name: IDFIOBDMLFF | Offset: 0x434
     cs_field!(
-        EKPIKGLMAPF,
-        "EKPIKGLMAPF",
+        IDFIOBDMLFF,
+        "IDFIOBDMLFF",
         self,
         |v| -> RPG_GameCore_AttackType { v.unbox::<RPG_GameCore_AttackType>() }
     );
@@ -949,28 +949,28 @@ impl RPG_Client_ModuleManager {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// ILENHAOCLJG
-pub struct ILENHAOCLJG(pub usize);
-impl ILENHAOCLJG {
-    cs_class!("ILENHAOCLJG");
+// MAJMDHFBJAB
+pub struct MAJMDHFBJAB(pub usize);
+impl MAJMDHFBJAB {
+    cs_class!("MAJMDHFBJAB");
 
-    // ILENHAOCLJG -> Type: EIFLGPGKPNB | Name: LEFJFNHILCG | Offset: 0x10
-    cs_field!(LEFJFNHILCG, "LEFJFNHILCG", self, |v| -> EIFLGPGKPNB {
-        EIFLGPGKPNB(v.0)
+    // MAJMDHFBJAB -> Type: NMMHEOHJODF | Name: MEPIIGLGKAG | Offset: 0x10
+    cs_field!(MEPIIGLGKAG, "MEPIIGLGKAG", self, |v| -> NMMHEOHJODF {
+        NMMHEOHJODF(v.0)
     });
 
-    // ILENHAOCLJG -> Type: SkillCharacterComponent | Name: HHGOFJKJNNM | Offset: 0x78
+    // MAJMDHFBJAB -> Type: SkillCharacterComponent | Name: FKAPBDFMDGA | Offset: 0x78
     cs_field!(
-        HHGOFJKJNNM,
-        "HHGOFJKJNNM",
+        FKAPBDFMDGA,
+        "FKAPBDFMDGA",
         self,
         |v| -> RPG_GameCore_SkillCharacterComponent { RPG_GameCore_SkillCharacterComponent(v.0) }
     );
 
-    // ILENHAOCLJG -> Type: TurnBasedAbilityComponent | Name: OLPKKABCPAI | Offset: 0x80
+    // MAJMDHFBJAB -> Type: TurnBasedAbilityComponent | Name: DMDLKCHDEAE | Offset: 0x80
     cs_field!(
-        OLPKKABCPAI,
-        "OLPKKABCPAI",
+        DMDLKCHDEAE,
+        "DMDLKCHDEAE",
         self,
         |v| -> RPG_GameCore_TurnBasedAbilityComponent {
             RPG_GameCore_TurnBasedAbilityComponent(v.0)
@@ -1099,10 +1099,10 @@ impl UnityEngine_Application {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// BLEJONLJCFJ
-pub struct BLEJONLJCFJ(pub usize);
-impl BLEJONLJCFJ {
-    cs_class!("BLEJONLJCFJ");
+// MFKHDKANHKP
+pub struct MFKHDKANHKP(pub usize);
+impl MFKHDKANHKP {
+    cs_class!("MFKHDKANHKP");
 }
 
 #[repr(transparent)]
