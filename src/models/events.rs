@@ -48,7 +48,8 @@ pub struct OnSetLineupEvent {
 pub struct OnDamageEvent {
     pub attacker: Entity,
     pub damage: f64,
-    pub damage_type: isize
+    pub damage_type: isize,
+    pub overkill_damage: f64
 }
 
 pub struct OnEntityDefeatedEvent {
