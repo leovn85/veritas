@@ -56,6 +56,9 @@ pub struct BattleContext {
     // Index w/ lineup index
     // Used to update UI damage when dmg occurs
     pub real_time_damages: Vec<f64>,
+    // Index w/ lineup index
+    // Used to update UI overkill damage when dmg occurs
+    pub real_time_overkill_damages: Vec<f64>,
     pub max_waves: u32,
     pub wave: u32,
     pub cycle: u32,
@@ -173,6 +176,7 @@ impl BattleContext {
         Self::initialize_battle_context(&mut battle_context);
         battle_context.current_turn_info.avatars_turn_damage = vec![0f64; e.avatars.len()];
         battle_context.real_time_damages = vec![0f64; e.avatars.len()];
+        battle_context.real_time_overkill_damages = vec![0f64; e.avatars.len()];
         battle_context.avatar_lineup = e.avatars;
 
         let mut battle_avatars = Vec::new();
@@ -206,6 +210,7 @@ impl BattleContext {
         // Record character damage chunk
         turn.avatars_turn_damage[lineup_index] += e.damage;
         battle_context.real_time_damages[lineup_index] += e.damage as f64;
+        battle_context.real_time_overkill_damages[lineup_index] += e.overkill_damage as f64;
         battle_context.total_damage += e.damage as f64;
 
         if let Some(last_skill) = battle_context.skill_history.iter_mut().rev().find(|skill| skill.avatar_id == e.attacker.uid) {

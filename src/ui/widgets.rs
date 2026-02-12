@@ -1,6 +1,6 @@
 use crate::ui::app::GraphUnit;
-use egui::{Sense, Stroke, Ui, Vec2};
-use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints, Polygon};
+use egui::{Color32, Sense, Stroke, Ui, Vec2};
+use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::{battle::BattleContext, models::misc::Avatar};
 
@@ -102,12 +102,13 @@ impl App {
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
         let available = ui.available_size();
 
-        let (num_characters, avatar_lineup, real_time_damages) = {
+        let (num_characters, avatar_lineup, real_time_damages, real_time_overkill_damages) = {
             let battle_context = BattleContext::get_instance();
             (
                 battle_context.avatar_lineup.len().max(1) as f32,
                 battle_context.avatar_lineup.clone(),
                 battle_context.real_time_damages.clone(),
+                battle_context.real_time_overkill_damages.clone(),
             )
         };
 
@@ -117,11 +118,10 @@ impl App {
         let avatar_lineup_for_formatter = avatar_lineup.clone();
 
         Plot::new("damage_bars")
-            // .legend(
-            //     Legend::default()
-            //         .position(self.config.legend_position)
-            //         .text_style(self.config.legend_text_style.clone()),
-            // )
+            .legend(
+                Legend::default()
+                    .text_style(self.config.legend_text_style.clone()),
+            )
             .height(available.y)
             .width(available.x)
             .allow_drag(false)
@@ -137,7 +137,12 @@ impl App {
                     .unwrap_or_default()
             })
             .show(ui, |plot_ui| {
-                let bars_data = create_bar_data(&real_time_damages, &avatar_lineup);
+                let adjusted_damages: Vec<f64> = real_time_damages
+                    .iter()
+                    .zip(real_time_overkill_damages.iter())
+                    .map(|(damage, overkill)| (damage - overkill).max(0.0))
+                    .collect();
+                let bars_data = create_bar_data(&adjusted_damages, &avatar_lineup);
                 let bars: Vec<Bar> = bars_data
                     .iter()
                     .enumerate()
@@ -149,7 +154,26 @@ impl App {
                     })
                     .collect();
 
-                plot_ui.bar_chart(BarChart::new("", bars).id("bar_chart"));
+                let overkill_bars_data = create_bar_data(&real_time_overkill_damages, &avatar_lineup);
+                let overkill_color = Color32::from_gray(140);
+                let overkill_bars: Vec<Bar> = overkill_bars_data
+                    .iter()
+                    .enumerate()
+                    .map(|(pos, (avatar, value, _color_idx))| {
+                        Bar::new(pos as f64, *value)
+                            .name(&avatar.name)
+                            .fill(overkill_color)
+                            .width(0.7)
+                    })
+                    .collect();
+                let dmg_bar_chart = BarChart::new("", bars).id("dmg_bar_chart");
+                let overkill_bar_chart = BarChart::new("Overkill", overkill_bars).color(overkill_color)
+                        .id("overkill_dmg_bar_chart")
+                        .stack_on(&[&dmg_bar_chart]);
+                plot_ui.bar_chart(dmg_bar_chart);
+                plot_ui.bar_chart(
+                    overkill_bar_chart
+                );
             });
     }
 
