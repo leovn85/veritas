@@ -160,6 +160,7 @@ impl BattleContext {
     }
 
     fn get_battle_mode(stage_id: u32) -> BattleMode {
+		log::info!("Processing stage_id: {stage_id}");
 		for (mode_name, id_set) in BATTLE_MODE_DATA.iter() {
 			if id_set.contains(&stage_id) {
 				return match mode_name.as_str() {
