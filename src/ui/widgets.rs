@@ -245,7 +245,7 @@ impl App {
         });
     }
 
-    pub fn show_av_metrics_widget(&mut self, ui: &mut Ui) {
+    pub fn show_battle_metrics_widget(&mut self, ui: &mut Ui) {
         let battle_context = BattleContext::get_instance();
 
         egui::CollapsingHeader::new(format!(

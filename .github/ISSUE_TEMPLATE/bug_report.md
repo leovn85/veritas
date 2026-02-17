@@ -7,11 +7,15 @@ assignees: ''
 
 ---
 
+<!--Anything inside this comment block will not show up! Also, PLEASE ADD A TITLE!-->
+
 **Version**
 
-Plugin: <!--(e.g.) 0.2.32!-->
+<!-- (e.g.) Plugin: 0.2.32!-->
+Plugin:
 
-Game: <!--(e.g.) 0.3.50!-->
+<!-- (e.g.) Game: 0.3.50!-->
+Game:
 
 **Describe the bug**
 
@@ -38,3 +42,5 @@ Steps to reproduce the behavior:
 **Additional context**
 
 <!--Add any other context about the problem here.!-->
+
+<!--Finished writing your issue? Make sure to review what you written to ensure it is written clearly for us to help you! You can always edit the issue once you have posted it. ALSO, ADD A DESCRIPTIVE TITLE!-->

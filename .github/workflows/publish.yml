@@ -14,17 +14,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-05-17
-      
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "shared"
           save-if: "false"
 
       - run: cargo build --release
+
+      - name: Determine if prerelease
+        id: prerelease
+        shell: bash
+        run: |
+          echo "Checking if tag was created from beta branch..."
+          BRANCHES=$(git branch -r --contains ${{ github.sha }})
+          echo "Branches containing this commit:"
+          echo "$BRANCHES"
+          if echo "$BRANCHES" | grep -q "origin/beta"; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
@@ -33,4 +48,5 @@ jobs:
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           files: target/release/veritas.dll
-          make_latest: true
+          make_latest: ${{ steps.prerelease.outputs.is_prerelease }}
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}

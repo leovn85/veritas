@@ -1,3 +1,23 @@
+# 0.2.41 - 2026-01-07
+  - Fixed for 3.8.51
+
+# 0.2.40 - 2026-XX-XX
+  - Added a localized notification that appears when the menu shortcut is used while the UI is hidden, making it clearer how to restore the interface.
+  - Improved the reliability of keyboard navigation by fixing an issue that could cause tabbing to become unresponsive in-game.
+  - Enhanced mouse input handling for Steam Deck by adding fallback support for additional system mouse events.
+
+# 0.2.39 - 2025-11-14
+  - Add version mismatch popup
+
+# 0.2.38 - 2025-11-14
+  - Add version mismatch popup
+
+# 0.2.37 - 2025-11-07
+  - Fixed for 3.7.51
+
+# 0.2.36 - 2025-11-07
+  - Added local config for updater allowing/disallowing updating to pre-release releases on GitHub
+
 # 0.2.35 - 2025-10-11
   - Added battle data export functionality
   - Moved Updater and Export to their own windows

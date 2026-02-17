@@ -36,6 +36,8 @@ pub struct Config {
     pub defender_exclusion: bool,
     #[serde(default = "default_auto_showhide_ui")]
     pub auto_showhide_ui: bool,
+    #[serde(default = "default_nag_versions")]
+    pub nag_versions: bool,
 }
 
 fn default_locale() -> String {
@@ -63,14 +65,8 @@ fn default_theme_mode() -> egui::Theme {
 }
 
 fn default_font_sizes() -> BTreeMap<egui::TextStyle, FontId> {
-    [
-        (TextStyle::Heading, FontId::new(18.0, FontFamily::Proportional)),
-        (TextStyle::Body, FontId::new(12.5, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace)),
-        (TextStyle::Button, FontId::new(12.5, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(9.0, FontFamily::Proportional)),
-    ]
-    .into()
+    let ctx = egui::Context::default();
+    ctx.style().text_styles.clone()
 }
 
 fn default_legend_text_style() -> egui::TextStyle {
@@ -89,6 +85,10 @@ fn default_auto_showhide_ui() -> bool {
     false
 }
 
+fn default_nag_versions() -> bool {
+    true
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -105,6 +105,7 @@ impl Default for Config {
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),
             auto_showhide_ui: default_auto_showhide_ui(),
+            nag_versions: default_nag_versions(),
         }
     }
 }
