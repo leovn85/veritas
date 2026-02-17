@@ -241,12 +241,14 @@ impl BattleContext {
         turn.avatars_turn_damage[lineup_index] += e.damage;
         battle_context.real_time_damages[lineup_index] += e.damage as f64;
         battle_context.total_damage += e.damage as f64;
-
+		
         if let Some(last_skill) = battle_context.skill_history.iter_mut().rev().find(|skill| skill.avatar_id == e.attacker.uid) {
             last_skill.damage_detail.push((e.damage as f64, e.damage_type as isize));
             last_skill.total_damage += e.damage as f64;
         }
-
+		
+		log::info!("Damage: {} dealt {:.0} damage (Type: {})", e.attacker.uid, e.damage, e.damage_type);
+		
         Ok(Packet::OnDamage {
             attacker: e.attacker,
             damage: e.damage,
@@ -343,6 +345,8 @@ impl BattleContext {
         mut _battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         // log::info!("{} has defeated {}", e.attacker);
+		
+		log::warn!("Defeated: {} has been eliminated by {}", e.entity_defeated.uid, e.killer.uid);
 
         Ok(Packet::OnEntityDefeated {
             killer: e.killer,
@@ -398,7 +402,7 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         let turn_battle_id = battle_context.entity_turn_history.len() as u32;
-        
+        log::info!("Skill Used: (ID: {}) used {} (Type: {})", e.avatar.uid, e.skill.name.clone(), e.skill.skill_type);
         battle_context.skill_history.push(SkillHistoryEntry {
             avatar_id: e.avatar.uid,
             skill_name: e.skill.name.clone(),
