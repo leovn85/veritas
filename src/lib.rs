@@ -11,6 +11,7 @@ mod kreide;
 mod logging;
 mod models;
 mod overlay;
+pub mod plugin;
 mod prelude;
 mod server;
 mod subscribers;
@@ -48,6 +49,34 @@ pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
 });
 
 pub const CHANGELOG: &str = include_str!("../CHANGELOG.MD");
+
+#[unsafe(no_mangle)]
+pub extern "C" fn veritas_log_record(
+    level: u8,
+    target_ptr: *const u8,
+    target_len: usize,
+    msg_ptr: *const u8,
+    msg_len: usize,
+) {
+    if target_ptr.is_null() || msg_ptr.is_null() {
+        return;
+    }
+    let target = unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(target_ptr, target_len))
+            .unwrap_or("plugin")
+    };
+    let msg = unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(msg_ptr, msg_len))
+            .unwrap_or("<invalid utf-8>")
+    };
+    match level {
+        1 => log::error!(target: target, "{}", msg),
+        2 => log::warn! (target: target, "{}", msg),
+        3 => log::info! (target: target, "{}", msg),
+        4 => log::debug!(target: target, "{}", msg),
+        _ => log::trace!(target: target, "{}", msg),
+    }
+}
 
 static LOCALES: phf::Map<&'static str, &'static str> = phf_map! {
     "en" => "English",

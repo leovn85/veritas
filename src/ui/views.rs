@@ -381,9 +381,11 @@ impl App {
                                 t!("Show Battle Metrics"),
                             );
 
-                            ui.add_space(5.);
-
                             ui.separator();
+
+                            crate::plugin::render_all_menu_sections(ui);
+
+                            ui.add_space(5.);
                             if ui.button(t!("Close")).clicked() {
                                 self.state.show_menu = false;
                             }

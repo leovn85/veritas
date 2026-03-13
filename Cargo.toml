@@ -84,6 +84,7 @@ features = [
     "Win32_Graphics_Direct3D11",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_ProcessStatus",
+    "Win32_System_Memory",
 ]
 
 [build-dependencies]

@@ -156,6 +156,9 @@ fn on_damage(
             }
             _ => {}
         }
+        if let Some(Ok(crate::models::events::Event::OnDamage(ref de))) = event {
+            crate::plugin::dispatch_on_damage(de.attacker.uid, de.damage as f64);
+        }
         if let Some(event) = event {
             BattleContext::handle_event(event);
         }
@@ -164,8 +167,6 @@ fn on_damage(
 
     res
 }
-
-// Called when a manual skill is used. Does not account for insert skills (out of turn automatic skills)
 #[named]
 fn on_use_skill(
     instance: RPG_GameCore_SkillCharacterComponent,
@@ -322,7 +323,7 @@ fn on_use_skill(
         }
         Ok(())
     });
-
+    crate::plugin::dispatch_on_use_skill(instance.0, skill_index, skill_extra_use_param);
     res
 }
 
@@ -516,6 +517,7 @@ fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: R
         BattleContext::handle_event(event);
         Ok(())
     });
+    crate::plugin::dispatch_on_set_lineup(instance.0, a2.0);
     ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5)
 }
 
@@ -531,6 +533,7 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
         })));
         Ok(())
     });
+    crate::plugin::dispatch_battle_begin(instance.0);
     res
 }
 
@@ -539,6 +542,12 @@ fn on_battle_end(instance: RPG_GameCore_TurnBasedGameMode) {
     log::debug!(function_name!());
     let res = ON_BATTLE_END_Detour.call(instance);
     BattleContext::handle_event(Ok(Event::OnBattleEnd));
+    let (total_damage, action_value, turn_count, cycle) = {
+        let ctx = BattleContext::get_instance();
+        (ctx.total_damage as f64, ctx.action_value, ctx.turn_count as u32, ctx.cycle)
+    };
+    crate::plugin::dispatch_battle_end();
+    crate::plugin::dispatch_battle_end_with_result(total_damage, action_value, turn_count, cycle);
     res
 }
 
@@ -588,6 +597,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
         }
         Ok(())
     });
+    crate::plugin::dispatch_on_turn_begin(instance.0);
     res
 }
 
@@ -1408,6 +1418,7 @@ pub fn on_initialize_enemy(
         })));
         Ok(())
     });
+    crate::plugin::dispatch_on_init_enemy(instance.0);
     res
 }
 

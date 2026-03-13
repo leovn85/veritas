@@ -106,6 +106,7 @@ static LOAD: Once = Once::new();
 impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn update(&mut self, ctx: &egui::Context) {
+        crate::plugin::update_current_style(ctx);
         // Get rid of this and just switch to egui-toast
         if self.update.is_some() {
             // let message = format!("Version {} is available! Click here to open settings and update.",
@@ -188,6 +189,10 @@ impl Overlay for App {
 
             if self.state.show_enemy_stats {
                 self.show_enemy_stats_window(ctx);
+            }
+
+            if crate::plugin::plugin_count() > 0 {
+                crate::plugin::render_all_plugin_panels(ctx);
             }
         }
 
@@ -358,7 +363,15 @@ impl Overlay for App {
                                 && *key == SHOW_MENU_SHORTCUT.logical_key
                                 && *pressed
                             {
-                                self.state.show_menu = !self.state.show_menu;
+                                let new_state = !self.state.show_menu;
+                                log::info!(
+                                    "[veritas::wndproc] Ctrl+M — toggling show_menu: {} → {} \
+                                     (plugins={})",
+                                    self.state.show_menu,
+                                    new_state,
+                                    crate::plugin::plugin_count(),
+                                );
+                                self.state.show_menu = new_state;
 
                                 return Some(WindowProcessOptions {
                                     // Simulate alt to get cursor
@@ -725,6 +738,10 @@ impl App {
             }
         }
     }
+}
+
+pub fn apply_theme_to_extern_ctx(ctx: &egui::Context) {
+    crate::plugin::apply_theme_to_extern_ctx(ctx);
 }
 
 fn export_json_data(

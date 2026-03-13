@@ -34,7 +34,7 @@ fn init() {
     logging::MultiLogger::init().unwrap();
     #[cfg(debug_assertions)]
     unsafe {
-        windows::Win32::System::Console::AllocConsole().unwrap();
+        let _ = windows::Win32::System::Console::AllocConsole();
     }
 
     let mut toasts = Vec::<Toast>::new();
@@ -59,6 +59,9 @@ fn init() {
     };
 
     thread::spawn(|| server::start_server());
+
+    crate::plugin::publish_bus();
+    thread::sleep(Duration::from_millis(500));
 
     match overlay::initialize(toasts) {
         Ok(_) => log::info!("Overlay initialized successfully"),
