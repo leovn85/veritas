@@ -113,14 +113,15 @@ impl Overlay for App {
 
             if let Some(screen_rect) = ctx.input(|i| i.pointer.hover_pos()) {
                 if ctx.input(|i| i.pointer.primary_clicked()) {
+                    let content_rect = ctx.content_rect();
                     let notification_area = egui::Rect::from_min_max(
                         egui::pos2(
-                            ctx.screen_rect().right() - 200.0,
-                            ctx.screen_rect().top() * self.notifs.len() as f32,
+                            content_rect.right() - 200.0,
+                            content_rect.top() * self.notifs.len() as f32,
                         ),
                         egui::pos2(
-                            ctx.screen_rect().right(),
-                            (ctx.screen_rect().top() + 50.0) * self.notifs.len() as f32,
+                            content_rect.right(),
+                            (content_rect.top() + 50.0) * self.notifs.len() as f32,
                         ),
                     );
 
@@ -341,6 +342,7 @@ impl Overlay for App {
         &mut self,
         input: &InputResult,
         input_events: &Vec<egui::Event>,
+        message: &WindowMessage,
     ) -> Option<WindowProcessOptions> {
         // Refactor later
         match input {
@@ -363,6 +365,7 @@ impl Overlay for App {
                                 return Some(WindowProcessOptions {
                                     // Simulate alt to get cursor
                                     window_message: Some(WindowMessage {
+                                        hwnd: message.hwnd,
                                         msg: WM_KEYDOWN,
                                         wparam: WPARAM(VK_MENU.0 as _),
                                         lparam: LPARAM(0),
