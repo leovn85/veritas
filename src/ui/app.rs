@@ -6,7 +6,7 @@ use std::sync::Once;
 use anyhow::Result;
 use anyhow::anyhow;
 use directories::ProjectDirs;
-use edio11::{Overlay, WindowMessage, WindowProcessOptions, input::InputResult};
+use edio11::{Overlay, PostRenderContext, WindowMessage, WindowProcessOptions, input::InputResult};
 use egui::Key;
 use egui::KeyboardShortcut;
 use egui::Label;
@@ -107,6 +107,7 @@ impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn update(&mut self, ctx: &egui::Context) {
         crate::plugin::update_current_style(ctx);
+        crate::plugin::update_window_opacity(self.config.widget_opacity);
         // Get rid of this and just switch to egui-toast
         if self.update.is_some() {
             // let message = format!("Version {} is available! Click here to open settings and update.",
@@ -191,9 +192,6 @@ impl Overlay for App {
                 self.show_enemy_stats_window(ctx);
             }
 
-            if crate::plugin::plugin_count() > 0 {
-                crate::plugin::render_all_plugin_panels(ctx);
-            }
         }
 
         // This is a weird quirk of immediate mode where we must initialize our state a frame later
@@ -342,10 +340,15 @@ impl Overlay for App {
         self.notifs.show(ctx);
     }
 
+    fn post_render(&mut self, ctx: PostRenderContext<'_>) {
+        crate::plugin::render_all_plugin_surfaces(&ctx);
+    }
+
     fn window_process(
         &mut self,
         input: &InputResult,
         input_events: &Vec<egui::Event>,
+        message: &WindowMessage,
     ) -> Option<WindowProcessOptions> {
         // Refactor later
         match input {
@@ -376,6 +379,7 @@ impl Overlay for App {
                                 return Some(WindowProcessOptions {
                                     // Simulate alt to get cursor
                                     window_message: Some(WindowMessage {
+                                        hwnd: message.hwnd,
                                         msg: WM_KEYDOWN,
                                         wparam: WPARAM(VK_MENU.0 as _),
                                         lparam: LPARAM(0),
@@ -397,7 +401,12 @@ impl Overlay for App {
                 ..Default::default()
             })
         } else {
-            Some(WindowProcessOptions::default())
+            let surface_input = crate::plugin::process_plugin_surface_message(message);
+            Some(WindowProcessOptions {
+                capture_pointer_input: surface_input.capture_pointer_input,
+                capture_keyboard_input: surface_input.capture_keyboard_input,
+                ..Default::default()
+            })
         }
     }
 
@@ -499,10 +508,21 @@ impl App {
                     let mut file = File::open(&persist_path)?;
                     let mut buffer = String::new();
                     file.read_to_string(&mut buffer)?;
-                    let memory: Memory = ron::from_str(&buffer)?;
-                    ctx.memory_mut(|writer| {
-                        *writer = memory;
-                    });
+                    match ron::from_str::<Memory>(&buffer) {
+                        Ok(memory) => {
+                            ctx.memory_mut(|writer| {
+                                *writer = memory;
+                            });
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "Ignoring stale persistence at {}: {}",
+                                persist_path.display(),
+                                error
+                            );
+                            let _ = std::fs::remove_file(&persist_path);
+                        }
+                    }
                 }
 
                 Ok(())

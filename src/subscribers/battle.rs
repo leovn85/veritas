@@ -517,8 +517,9 @@ fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: R
         BattleContext::handle_event(event);
         Ok(())
     });
+    let res = ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5);
     crate::plugin::dispatch_on_set_lineup(instance.0, a2.0);
-    ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5)
+    res
 }
 
 #[named]

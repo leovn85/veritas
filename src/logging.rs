@@ -20,7 +20,9 @@ impl log::Log for MultiLogger {
     }
 
     fn log(&self, record: &Record) {
-        self.egui_logger.log(record);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.egui_logger.log(record);
+        }));
 
         let fmt_log = if let Some(mod_path) = record.module_path() {
             format!("{} {}", mod_path, record.args())
@@ -28,13 +30,15 @@ impl log::Log for MultiLogger {
             format!("{}", record.args())
         };
         for slogger in &self.sloggers {
-            match record.level() {
-                Level::Error => slog::error!(slogger, "{}", fmt_log),
-                Level::Warn => slog::warn!(slogger, "{}", fmt_log),
-                Level::Info => slog::info!(slogger, "{}", fmt_log),
-                Level::Debug => slog::debug!(slogger, "{}", fmt_log),
-                Level::Trace => slog::trace!(slogger, "{}", fmt_log),
-            }
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                match record.level() {
+                    Level::Error => slog::error!(slogger, "{}", fmt_log),
+                    Level::Warn => slog::warn!(slogger, "{}", fmt_log),
+                    Level::Info => slog::info!(slogger, "{}", fmt_log),
+                    Level::Debug => slog::debug!(slogger, "{}", fmt_log),
+                    Level::Trace => slog::trace!(slogger, "{}", fmt_log),
+                }
+            }));
         }
     }
 
@@ -80,7 +84,7 @@ impl MultiLogger {
         }
 
         // Terminal
-        {
+        if cfg!(debug_assertions) || std::env::var_os("VERITAS_ENABLE_TERMINAL_LOG").is_some() {
             let decorator = slog_term::TermDecorator::new().build();
             let drain = slog_term::FullFormat::new(decorator).build().fuse();
             let drain = Mutex::new(drain).fuse();

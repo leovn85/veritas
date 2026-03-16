@@ -329,7 +329,7 @@ impl App {
                             .open(&mut show_updater_window);
 
                             if self.state.center_updater_window {
-                                let center = ctx.input(|input| input.screen_rect.center());
+                                let center = ctx.input(|input| input.screen_rect().center());
                                 if let Some(size) = self.updater_window_last_size {
                                     let top_left = center - size * 0.5;
                                     updater_window = updater_window.current_pos(top_left);
@@ -382,8 +382,6 @@ impl App {
                             );
 
                             ui.separator();
-
-                            crate::plugin::render_all_menu_sections(ui);
 
                             ui.add_space(5.);
                             if ui.button(t!("Close")).clicked() {
