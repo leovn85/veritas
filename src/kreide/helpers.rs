@@ -33,6 +33,14 @@ pub fn get_textmap_content_from_textid(hash: &RPG_Client_TextID) -> Result<Cow<'
         .map(|s| s.as_str())?)
 }
 
+fn sanitize_entity_name(name: &str) -> Cow<'_, str> {
+    if !name.contains("<ub>") && !name.contains("</ub>") {
+        return Cow::Borrowed(name);
+    }
+
+    Cow::Owned(name.replace("<ub>", "").replace("</ub>", ""))
+}
+
 #[named]
 pub fn get_module_manager() -> Result<RPG_Client_ModuleManager> {
     log::debug!(function_name!());
@@ -61,7 +69,7 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
 
     Ok(Avatar {
         id: avatar_id,
-        name: avatar_name.to_string(),
+        name: sanitize_entity_name(avatar_name.as_ref()).into_owned(),
     })
 }
 
@@ -108,7 +116,7 @@ pub unsafe fn get_avatar_from_entity(entity: RPG_GameCore_GameEntity) -> Result<
 
     Ok(Avatar {
         id,
-        name: name.to_string(),
+        name: sanitize_entity_name(name.as_ref()).into_owned(),
     })
 }
 
@@ -150,7 +158,7 @@ pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 
     Ok(Avatar {
         id: monster_id,
-        name: get_textmap_content(&monster_name)?.to_string(),
+        name: sanitize_entity_name(get_textmap_content(&monster_name)?.as_ref()).into_owned(),
     })
 }
 
@@ -171,7 +179,7 @@ pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 
     Ok(Avatar {
         id: servant_row.ServantID()?,
-        name: get_textmap_content(&servant_row.ServantName()?)?.to_string(),
+        name: sanitize_entity_name(get_textmap_content(&servant_row.ServantName()?)?.as_ref()).into_owned(),
     })
 }
 

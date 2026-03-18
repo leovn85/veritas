@@ -1,3 +1,6 @@
+# 0.2.44 - 2026-03-17
+  - Fixed for 4.1.51
+
 # 0.2.43 - 2026-02-14
   - Fixed for 4.0.51
   - Added overkill damage in damage chart
