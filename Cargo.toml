@@ -3,7 +3,7 @@ name = "veritas"
 edition = "2024"
 license-file = "LICENSE"
 repository = "https://github.com/hessiser/veritas/"
-version = "0.2.44"
+version = "0.2.45"
 
 [package.metadata.i18n]
 available-locales = ["en", "fr", "es", "de", "it", "ja", "pt", "nl", "ru", "vi", "zh", "pl"]
@@ -20,7 +20,7 @@ crate-type = ["cdylib"]
 # UI
 egui = { version = "0.33.3", features = ["serde", "persistence"] }
 egui_plot = { version = "0.34.1", features = ["serde"] }
-edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "1e90e0b" }
+edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "d1a66b6" }
 egui-phosphor = { version = "0.11.0", features = ["bold"]}
 egui_colors = { version = "0.10.0", features = ["serde"] }
 egui-notify = "0.21.0"
