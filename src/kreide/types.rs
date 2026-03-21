@@ -10,6 +10,11 @@ use std::ffi::c_void;
 use il2cpp_runtime::{il2cpp_enum_type, il2cpp_getter_property, il2cpp_value_type};
 use il2cpp_runtime::prelude::*;
 
+pub use super::obfuscated::{
+    EBKLINDPMKM, FHPFLNJLDHP, OHFGNONJNIG,
+    FGFFLOAEKKA,
+};
+
 
 #[il2cpp_value_type("RPG.Client.TextID")]
 pub struct RPG_Client_TextID {
@@ -44,30 +49,6 @@ pub enum RPG_GameCore_AliveState {
     WillBeDestroyed,
     Destroyed,
 }
-
-#[il2cpp_value_type("EIFLGPGKPNB")]
-pub struct EIFLGPGKPNB;
-
-impl EIFLGPGKPNB__Boxed {
-    #[il2cpp_field(name = "BOKMABDJOPJ")]
-    pub fn BOKMABDJOPJ(&self) -> Il2CppString {}
-}
-
-#[il2cpp_ref_type("PPBGKDNMMEC")]
-pub struct PPBGKDNMMEC;
-
-impl PPBGKDNMMEC {
-
-    #[il2cpp_field(name = "GMKMPFOOKMK")]
-    pub fn GMKMPFOOKMK(&self) -> RPG_GameCore_GameEntity {}
-
-    #[il2cpp_field(name = "KDGKOJAKNNH")]
-    pub fn KDGKOJAKNNH(&self) -> RPG_GameCore_GameEntity {}
-}
-
-#[il2cpp_ref_type("MCIDIPFLPCB", base(RPG_GameCore_GameComponentBase))]
-pub struct MCIDIPFLPCB;
-
 
 #[il2cpp_ref_type("RPG.GameCore.BattleLineupData")]
 pub struct RPG_GameCore_BattleLineupData;
@@ -526,16 +507,6 @@ pub struct RPG_GameCore_FixPoint {
     pub m_rawValue: i64,
 }
 
-#[il2cpp_ref_type("POOANBBGHIM")]
-pub struct POOANBBGHIM;
-impl POOANBBGHIM {
-    #[il2cpp_field(name = "LJNNKADCCLM")]
-    pub fn LJNNKADCCLM(&self) -> RPG_GameCore_FixPoint__Boxed {}
-
-    #[il2cpp_field(name = "EKPIKGLMAPF")]
-    pub fn EKPIKGLMAPF(&self) -> RPG_GameCore_AttackType__Boxed {}
-}
-
 #[il2cpp_enum_type(i32)]
 pub enum RPG_GameCore_AttackType {
     Unknown,
@@ -595,27 +566,6 @@ impl RPG_Client_ModuleManager {
 
     #[il2cpp_field(name = "AvatarModule")]
     pub fn AvatarModule(&self) -> RPG_Client_AvatarModule {}
-}
-
-
-#[il2cpp_ref_type("BJDPDBIIAIF")]
-pub struct BJDPDBIIAIF;
-impl BJDPDBIIAIF {
-    #[il2cpp_field(name = "BCKBIICBIIB")]
-    pub fn BCKBIICBIIB(&self) -> System_UInt32__Boxed {}
-}
-
-#[il2cpp_ref_type("ILENHAOCLJG")]
-pub struct ILENHAOCLJG;
-impl ILENHAOCLJG {
-    #[il2cpp_field(name = "LEFJFNHILCG")]
-    pub fn LEFJFNHILCG(&self) -> EIFLGPGKPNB__Boxed {}
-
-    #[il2cpp_field(name = "HHGOFJKJNNM")]
-    pub fn HHGOFJKJNNM(&self) -> RPG_GameCore_SkillCharacterComponent {}
-
-    #[il2cpp_field(name = "OLPKKABCPAI")]
-    pub fn OLPKKABCPAI(&self) -> RPG_GameCore_TurnBasedAbilityComponent {}
 }
 
 
@@ -685,9 +635,6 @@ impl RPG_GameCore_AbilityStatic {
     pub fn get_actual_owner(entity: RPG_GameCore_GameEntity) -> RPG_GameCore_GameEntity {}
 }
 
-
-#[il2cpp_ref_type("BLEJONLJCFJ")]
-pub struct BLEJONLJCFJ;
 
 #[il2cpp_ref_type("RPG.Client.BattleAssetPreload")]
 pub struct RPG_Client_BattleAssetPreload;
