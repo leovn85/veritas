@@ -57,7 +57,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             style: CS_HREDRAW | CS_VREDRAW,
             // This is fine as the wrapper sig matches the imported sig
             lpfnWndProc: Some(mem::transmute(DefWindowProcW as *const c_void)),
-            lpszClassName: PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            lpszClassName: PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             ..Default::default()
         };
 
@@ -66,12 +66,12 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         let window = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             window_class.lpszClassName,
-            PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             WS_OVERLAPPEDWINDOW,
             0,
             0,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            100,
+            100,
             None,
             None,
             Some(window_class.hInstance),
@@ -91,8 +91,8 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         };
 
         let buffer_desc = DXGI_MODE_DESC {
-            Width: 0,
-            Height: 0,
+            Width: 100,
+            Height: 100,
             RefreshRate: refresh_rate,
             Format: DXGI_FORMAT_R8G8B8A8_UNORM,
             ScanlineOrdering: DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED,
@@ -110,7 +110,6 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 1,
             OutputWindow: window,
-            // Windowed avoids fullscreen transitions on the dummy window.
             Windowed: true.into(),
             SwapEffect: DXGI_SWAP_EFFECT_DISCARD,
             Flags: DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH.0 as u32,
