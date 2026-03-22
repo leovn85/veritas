@@ -108,6 +108,7 @@ impl Overlay for App {
     fn update(&mut self, ctx: &egui::Context) {
         crate::plugin::update_current_style(ctx);
         crate::plugin::update_window_opacity(self.config.widget_opacity);
+        crate::fps::ensure_applied(self.config.fps);
         // Get rid of this and just switch to egui-toast
         if self.update.is_some() {
             // let message = format!("Version {} is available! Click here to open settings and update.",
@@ -634,6 +635,10 @@ impl App {
             app.state.show_version_mismatch = true;
         }
         app.init_err = init_err;
+
+        if let Err(error) = crate::fps::apply(app.config.fps) {
+            log::warn!("Failed to apply configured FPS during startup: {error}");
+        }
 
         app.queue_update_check();
 

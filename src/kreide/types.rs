@@ -44,12 +44,12 @@ pub enum RPG_GameCore_AliveState {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// AFBBBCMBEME
-pub struct AFBBBCMBEME(pub usize);
-impl AFBBBCMBEME {
-    cs_class!("AFBBBCMBEME");
+// OOMAKCLAFOH
+pub struct OOMAKCLAFOH(pub usize);
+impl OOMAKCLAFOH {
+    cs_class!("OOMAKCLAFOH");
 
-    // AFBBBCMBEME -> Type: string | Name: NPKHCIODJAF | Offset: 0x8
+    // OOMAKCLAFOH -> Type: string | Name: NPKHCIODJAF | Offset: 0x8
     cs_field!(NPKHCIODJAF, "NPKHCIODJAF", self, |v| -> Il2CppString {
         Il2CppString(v.0)
     });
@@ -57,10 +57,10 @@ impl AFBBBCMBEME {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// AFBBBCMBEME
-pub struct HIKJAFBBPIP(pub usize);
-impl HIKJAFBBPIP {
-    cs_class!("HIKJAFBBPIP");
+// OOMAKCLAFOH
+pub struct FGFFLOAEKKA(pub usize);
+impl FGFFLOAEKKA {
+    cs_class!("FGFFLOAEKKA");
 
     cs_field!(
         MKFOEBBAKJA,
@@ -79,10 +79,10 @@ impl HIKJAFBBPIP {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// EDJEDBLFIKE
-pub struct EDJEDBLFIKE(pub usize);
-impl EDJEDBLFIKE {
-    cs_class!("EDJEDBLFIKE");
+// GPFCKFCIKNI
+pub struct GPFCKFCIKNI(pub usize);
+impl GPFCKFCIKNI {
+    cs_class!("GPFCKFCIKNI");
 
     // RPG.GameCore.GameComponentBase -> Type: GameEntity | Name: _OwnerRef | Offset: 0x10
     cs_field!(
@@ -100,12 +100,12 @@ pub struct RPG_GameCore_BattleLineupData(pub usize);
 impl RPG_GameCore_BattleLineupData {
     cs_class!("RPG.GameCore.BattleLineupData");
 
-    // RPG.GameCore.BattleLineupData -> Type: LineUpCharacter[] | Name: LightTeam | Offset: 0x48
+    // RPG.GameCore.BattleLineupData -> Type: RPG.GameCore.LineUpCharacter[] | Name: LightTeam | Offset: 0x48
     cs_field!(LightTeam, "LightTeam", self, |v| -> Il2CppArray {
         Il2CppArray(v.0)
     });
 
-    // RPG.GameCore.BattleLineupData -> Type: LineUpCharacter[] | Name: ExtraTeam | Offset: 0x58
+    // RPG.GameCore.BattleLineupData -> Type: RPG.GameCore.LineUpCharacter[] | Name: ExtraTeam | Offset: 0x58
     cs_field!(ExtraTeam, "ExtraTeam", self, |v| -> Il2CppArray {
         Il2CppArray(v.0)
     });
@@ -118,34 +118,26 @@ pub struct RPG_GameCore_TurnBasedGameMode(pub usize);
 impl RPG_GameCore_TurnBasedGameMode {
     cs_class!("RPG.GameCore.TurnBasedGameMode");
 
-    // RPG.GameCore.TurnBasedGameMode -> Type: BattleInstance | Name: <OwnerBattleInstanceRef>k__BackingField | Offset: 0x20
-    cs_field!(
-        _OwnerBattleInstanceRef_k__BackingField,
-        "<OwnerBattleInstanceRef>k__BackingField",
+    // RPG.GameCore.TurnBasedGameMode -> Type: RPG.GameCore.BattleInstance | Name: <OwnerBattleInstanceRef>k__BackingField | Offset: 0x20
+    cs_field!(_OwnerBattleInstanceRef_k__BackingField, "<OwnerBattleInstanceRef>k__BackingField",
         self,
         |v| -> RPG_GameCore_BattleInstance { RPG_GameCore_BattleInstance(v.0) }
     );
 
-    // RPG.GameCore.TurnBasedGameMode -> Type: GameEntity | Name: _CurrentTurnActionEntity | Offset: 0x40
-    cs_field!(
-        _CurrentTurnActionEntity,
-        "_CurrentTurnActionEntity",
+    // RPG.GameCore.TurnBasedGameMode -> Type: RPG.GameCore.GameEntity | Name: _CurrentTurnActionEntity | Offset: 0x40
+    cs_field!(_CurrentTurnActionEntity, "_CurrentTurnActionEntity",
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
     // RPG.GameCore.TurnBasedGameMode -> Type: int | Name: _WaveMonsterCurrentCount | Offset: 0x2C8
-    cs_field!(
-        _WaveMonsterCurrentCount,
-        "_WaveMonsterCurrentCount",
+    cs_field!(_WaveMonsterCurrentCount, "_WaveMonsterCurrentCount",
         self,
         |v| -> i32 { v.unbox::<i32>() }
     );
 
-    // RPG.GameCore.TurnBasedGameMode -> Type: FixPoint | Name: <ElapsedActionDelay>k__BackingField | Offset: 0x290
-    cs_field!(
-        _ElapsedActionDelay_k__BackingField,
-        "<ElapsedActionDelay>k__BackingField",
+    // RPG.GameCore.TurnBasedGameMode -> Type: RPG.GameCore.FixPoint | Name: <ElapsedActionDelay>k__BackingField | Offset: 0x290
+    cs_field!(_ElapsedActionDelay_k__BackingField, "<ElapsedActionDelay>k__BackingField",
         self,
         |v| -> RPG_GameCore_FixPoint {
             RPG_GameCore_FixPoint {
@@ -155,25 +147,19 @@ impl RPG_GameCore_TurnBasedGameMode {
     );
 
     // RPG.GameCore.TurnBasedGameMode -> Type: int | Name: <WaveMonsterMaxCount>k__BackingField | Offset: 0x2E4
-    cs_field!(
-        _WaveMonsterMaxCount_k__BackingField,
-        "<WaveMonsterMaxCount>k__BackingField",
+    cs_field!(_WaveMonsterMaxCount_k__BackingField, "<WaveMonsterMaxCount>k__BackingField",
         self,
         |v| -> i32 { v.unbox::<i32>() }
     );
 
     // RPG.GameCore.TurnBasedGameMode -> Type: uint | Name: <ChallengeTurnLimit>k__BackingField | Offset: 0x344
-    cs_field!(
-        _ChallengeTurnLimit_k__BackingField,
-        "<ChallengeTurnLimit>k__BackingField",
+    cs_field!(_ChallengeTurnLimit_k__BackingField, "<ChallengeTurnLimit>k__BackingField",
         self,
         |v| -> u32 { v.unbox::<u32>() }
     );
 
     // RPG.GameCore.TurnBasedGameMode -> Type: uint | Name: <CurrentWaveStageID>k__BackingField | Offset: 0x354
-    cs_field!(
-        _CurrentWaveStageID_k__BackingField,
-        "<CurrentWaveStageID>k__BackingField",
+    cs_field!(_CurrentWaveStageID_k__BackingField, "<CurrentWaveStageID>k__BackingField",
         self,
         |v| -> u32 { v.unbox::<u32>() }
     );
@@ -198,10 +184,8 @@ impl RPG_GameCore_TurnBasedAbilityComponent {
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
-    // RPG.GameCore.TurnBasedAbilityComponent -> Type: LIIAAAMMJIM[] | Name: _AbilityProperties | Offset: 0x30
-    cs_field!(
-        _AbilityProperties,
-        "_AbilityProperties",
+    // RPG.GameCore.TurnBasedAbilityComponent -> Type: AFKEDIMIJPH[] | Name: _AbilityProperties | Offset: 0x30
+    cs_field!(_AbilityProperties, "_AbilityProperties",
         self,
         |v| -> Il2CppArray { Il2CppArray(v.0) }
     );
@@ -214,9 +198,7 @@ impl RPG_GameCore_TurnBasedAbilityComponent {
     );
 
     // RPG.GameCore.TurnBasedAbilityComponent -> Type: CharacterDataComponent | Name: _CharacterDataRef | Offset: 0x1C0
-    cs_field!(
-        _CharacterDataRef,
-        "_CharacterDataRef",
+    cs_field!(_CharacterDataRef, "_CharacterDataRef",
         self,
         |v| -> RPG_GameCore_CharacterDataComponent { RPG_GameCore_CharacterDataComponent(v.0) }
     );
@@ -257,10 +239,8 @@ impl RPG_GameCore_TeamFormationComponent {
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
-    // RPG.GameCore.TeamFormationComponent -> Type: List<EDJEDBLFIKE> | Name: _TeamFormationDatas | Offset: 0x98
-    cs_field!(
-        _TeamFormationDatas,
-        "_TeamFormationDatas",
+    // RPG.GameCore.TeamFormationComponent -> Type: System.Collections.Generic.List<GPFCKFCIKNI> | Name: _TeamFormationDatas | Offset: 0x98
+    cs_field!(_TeamFormationDatas, "_TeamFormationDatas",
         self,
         |v| -> List { List(v.0) }
     );
@@ -319,10 +299,8 @@ pub struct RPG_GameCore_MonsterRow(pub usize);
 impl RPG_GameCore_MonsterRow {
     cs_class!("RPG.GameCore.MonsterRow");
 
-    // RPG.GameCore.MonsterRow -> Type: TextID | Name: MonsterName | Offset: 0x90
-    cs_field!(
-        MonsterName,
-        "MonsterName",
+    // RPG.GameCore.MonsterRow -> Type: RPG.Client.TextID | Name: MonsterName | Offset: 0x90
+    cs_field!(MonsterName, "MonsterName",
         self,
         |v| -> RPG_Client_TextID_Boxed { RPG_Client_TextID_Boxed(v.0) }
     );
@@ -354,17 +332,13 @@ impl RPG_GameCore_MonsterDataComponent {
     );
 
     // RPG.GameCore.MonsterDataComponent -> Type: MonsterRowData | Name: _MonsterRowData | Offset: 0xE0
-    cs_field!(
-        _MonsterRowData,
-        "_MonsterRowData",
+    cs_field!(_MonsterRowData, "_MonsterRowData",
         self,
         |v| -> RPG_GameCore_MonsterRowData { RPG_GameCore_MonsterRowData(v.0) }
     );
 
-    // RPG.GameCore.MonsterDataComponent -> Type: FixPoint | Name: _DefaultMaxHP | Offset: 0x118
-    cs_field!(
-        _DefaultMaxHP,
-        "_DefaultMaxHP",
+    // RPG.GameCore.MonsterDataComponent -> Type: RPG.GameCore.FixPoint | Name: _DefaultMaxHP | Offset: 0x118
+    cs_field!(_DefaultMaxHP, "_DefaultMaxHP",
         self,
         |v| -> RPG_GameCore_FixPoint {
             RPG_GameCore_FixPoint {
@@ -624,9 +598,7 @@ impl RPG_GameCore_SkillCharacterComponent {
     );
 
     // RPG.GameCore.SkillCharacterComponent -> Type: CharacterDataComponent | Name: _CharacterDataRef | Offset: 0xE0
-    cs_field!(
-        _CharacterDataRef,
-        "_CharacterDataRef",
+    cs_field!(_CharacterDataRef, "_CharacterDataRef",
         self,
         |v| -> RPG_GameCore_CharacterDataComponent { RPG_GameCore_CharacterDataComponent(v.0) }
     );
@@ -663,16 +635,17 @@ pub enum RPG_GameCore_EntityType {
     PuzzleGameObjectProp = 25,
     PerformanceLevelGraph = 26,
     Group = 27,
-    ChessCharacter = 28,
-    ChessTerrain = 29,
-    SummonUnit = 30,
-    LittleGameInstance = 31,
-    Servant = 32,
-    PreviewShow = 33,
-    LittleGameContainer = 34,
-    LittleGameViewProxy = 35,
-    GridFightBackend = 36,
-    DummyEntity = 37,
+    RtCharacter = 28,
+    RtGrid = 29,
+    RtTrigger = 30,
+    SummonUnit = 31,
+    LittleGameInstance = 32,
+    Servant = 33,
+    PreviewShow = 34,
+    LittleGameContainer = 35,
+    LittleGameViewProxy = 36,
+    GridFightBackend = 37,
+    DummyEntity = 38,
 }
 
 #[repr(transparent)]
@@ -691,9 +664,7 @@ impl RPG_GameCore_BattleEventDataComponent {
     );
 
     // RPG.GameCore.BattleEventDataComponent -> Type: GameEntity | Name: <SourceCaster>k__BackingField | Offset: 0xF8
-    cs_field!(
-        _SourceCaster_k__BackingField,
-        "<SourceCaster>k__BackingField",
+    cs_field!(_SourceCaster_k__BackingField, "<SourceCaster>k__BackingField",
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
@@ -706,10 +677,8 @@ pub struct RPG_GameCore_SkillData(pub usize);
 impl RPG_GameCore_SkillData {
     cs_class!("RPG.GameCore.SkillData");
 
-    // RPG.GameCore.SkillData -> Type: ICharacterSkillRowData | Name: RowData | Offset: 0x20
-    cs_field!(
-        RowData,
-        "RowData",
+    // RPG.GameCore.SkillData -> Type: RPG.GameCore.ICharacterSkillRowData | Name: RowData | Offset: 0x20
+    cs_field!(RowData, "RowData",
         self,
         |v| -> RPG_GameCore_ICharacterSkillRowData { RPG_GameCore_ICharacterSkillRowData(v.0) }
     );
@@ -770,10 +739,8 @@ impl RPG_GameCore_CharacterDataComponent {
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
-    // RPG.GameCore.CharacterDataComponent -> Type: CharacterConfig | Name: <JsonConfig>k__BackingField | Offset: 0x88
-    cs_field!(
-        _JsonConfig_k__BackingField,
-        "<JsonConfig>k__BackingField",
+    // RPG.GameCore.CharacterDataComponent -> Type: RPG.GameCore.CharacterConfig | Name: <JsonConfig>k__BackingField | Offset: 0x88
+    cs_field!(_JsonConfig_k__BackingField, "<JsonConfig>k__BackingField",
         self,
         |v| -> RPG_GameCore_CharacterConfig { RPG_GameCore_CharacterConfig(v.0) }
     );
@@ -812,15 +779,14 @@ pub struct RPG_GameCore_FixPoint {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// BIHKCLPKJBC
-pub struct BIHKCLPKJBC(pub usize);
-impl BIHKCLPKJBC {
-    cs_class!("BIHKCLPKJBC");
-
-    // BIHKCLPKJBC -> Type: FixPoint | Name: GDMICPLJAKA | Offset: 0x340
+// OHFGNONJNIG
+pub struct OHFGNONJNIG(pub usize);
+impl OHFGNONJNIG {
+    cs_class!("OHFGNONJNIG");
+    // OHFGNONJNIG -> Type: FixPoint | Name: KJLBAGPFBDC | Offset: 0x340
     cs_field!(
-        GDMICPLJAKA,
-        "GDMICPLJAKA",
+        KJLBAGPFBDC,
+        "KJLBAGPFBDC",
         self,
         |v| -> RPG_GameCore_FixPoint {
             RPG_GameCore_FixPoint {
@@ -829,10 +795,10 @@ impl BIHKCLPKJBC {
         }
     );
 
-    // BIHKCLPKJBC -> Type: AttackType | Name: JDDOEMNAMFJ | Offset: 0x434
+    // OHFGNONJNIG -> Type: AttackType | Name: DOODKEMMAPK | Offset: 0x434
     cs_field!(
-        JDDOEMNAMFJ,
-        "JDDOEMNAMFJ",
+        DOODKEMMAPK,
+        "DOODKEMMAPK",
         self,
         |v| -> RPG_GameCore_AttackType { v.unbox::<RPG_GameCore_AttackType>() }
     );
@@ -864,10 +830,8 @@ pub struct RPG_GameCore_BattleInstance(pub usize);
 impl RPG_GameCore_BattleInstance {
     cs_class!("RPG.GameCore.BattleInstance");
 
-    // RPG.GameCore.BattleInstance -> Type: GameWorld | Name: _GameWorld | Offset: 0x38
-    cs_field!(
-        _GameWorld,
-        "_GameWorld",
+    // RPG.GameCore.BattleInstance -> Type: RPG.GameCore.GameWorld | Name: _GameWorld | Offset: 0x38
+    cs_field!(_GameWorld, "_GameWorld",
         self,
         |v| -> RPG_GameCore_GameWorld { RPG_GameCore_GameWorld(v.0) }
     );
@@ -891,12 +855,12 @@ impl RPG_GameCore_GameEntity {
 
     cs_method!(pub get_component, "GetComponent", &["System.Type"], RPG_GameCore_GameComponentBase, (ty: RuntimeType), self);
 
-    // RPG.GameCore.GameEntity -> Type: GameEntity.GameComponentList | Name: _ComponentList | Offset: 0x48
+    // RPG.GameCore.GameEntity -> Type: RPG.GameCore.GameEntity.GameComponentList | Name: _ComponentList | Offset: 0x48
     cs_field!(_ComponentList, "_ComponentList", self, |v| -> Il2CppArray {
         Il2CppArray(v.0)
     });
 
-    // RPG.GameCore.GameEntity -> Type: GameEntity.GameComponentList | Name: _ComponentList | Offset: 0x48
+    // RPG.GameCore.GameEntity -> Type: RPG.GameCore.AliveState | Name: _AliveState | Offset: 0x4C
     cs_field!(_AliveState, "_AliveState", self, |v| -> RPG_GameCore_AliveState {
         v.unbox::<RPG_GameCore_AliveState>()
     });
@@ -908,17 +872,13 @@ impl RPG_GameCore_GameEntity {
     });
 
     // RPG.GameCore.GameEntity -> Type: uint | Name: <RuntimeID>k__BackingField | Offset: 0xF4
-    cs_field!(
-        _RuntimeID_k__BackingField,
-        "<RuntimeID>k__BackingField",
+    cs_field!(_RuntimeID_k__BackingField, "<RuntimeID>k__BackingField",
         self,
         |v| -> u32 { v.unbox::<u32>() }
     );
 
     // RPG.GameCore.GameEntity -> Type: EntityType | Name: _EntityType | Offset: 0x10C
-    cs_field!(
-        _EntityType,
-        "_EntityType",
+    cs_field!(_EntityType, "_EntityType",
         self,
         |v| -> RPG_GameCore_EntityType { v.unbox::<RPG_GameCore_EntityType>() }
     );
@@ -938,10 +898,8 @@ pub struct RPG_Client_ModuleManager(pub usize);
 impl RPG_Client_ModuleManager {
     cs_class!("RPG.Client.ModuleManager");
 
-    // RPG.Client.ModuleManager -> Type: AvatarModule | Name: AvatarModule | Offset: 0x168
-    cs_field!(
-        AvatarModule,
-        "AvatarModule",
+    // RPG.Client.ModuleManager -> Type: RPG.Client.AvatarModule | Name: AvatarModule | Offset: 0x168
+    cs_field!(AvatarModule, "AvatarModule",
         self,
         |v| -> RPG_Client_AvatarModule { RPG_Client_AvatarModule(v.0) }
     );
@@ -949,17 +907,17 @@ impl RPG_Client_ModuleManager {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// OHCFAIPOEAH
-pub struct OHCFAIPOEAH(pub usize);
-impl OHCFAIPOEAH {
-    cs_class!("OHCFAIPOEAH");
+// FHPFLNJLDHP
+pub struct FHPFLNJLDHP(pub usize);
+impl FHPFLNJLDHP {
+    cs_class!("FHPFLNJLDHP");
 
-    // OHCFAIPOEAH -> Type: AFBBBCMBEME | Name: GMJNLMGADNN | Offset: 0x10
-    cs_field!(GMJNLMGADNN, "GMJNLMGADNN", self, |v| -> AFBBBCMBEME {
-        AFBBBCMBEME(v.0)
+    // FHPFLNJLDHP -> Type: BIACLKKBFMM | Name: OFFOJDPMMBG | Offset: 0x10
+    cs_field!(OFFOJDPMMBG, "OFFOJDPMMBG", self, |v| -> OOMAKCLAFOH {
+        OOMAKCLAFOH(v.0)
     });
 
-    // OHCFAIPOEAH -> Type: SkillCharacterComponent | Name: GMIEIJLDHAM | Offset: 0x78
+    // FHPFLNJLDHP -> Type: SkillCharacterComponent | Name: GMIEIJLDHAM | Offset: 0x78
     cs_field!(
         GMIEIJLDHAM,
         "GMIEIJLDHAM",
@@ -967,7 +925,7 @@ impl OHCFAIPOEAH {
         |v| -> RPG_GameCore_SkillCharacterComponent { RPG_GameCore_SkillCharacterComponent(v.0) }
     );
 
-    // OHCFAIPOEAH -> Type: TurnBasedAbilityComponent | Name: DJJDPEJEHAJ | Offset: 0x80
+    // FHPFLNJLDHP -> Type: TurnBasedAbilityComponent | Name: DJJDPEJEHAJ | Offset: 0x80
     cs_field!(
         DJJDPEJEHAJ,
         "DJJDPEJEHAJ",
@@ -1007,9 +965,7 @@ impl RPG_GameCore_GameWorld {
     cs_class!("RPG.GameCore.GameWorld");
 
     // RPG.GameCore.GameWorld -> Type: EntityManager | Name: _EntityManager | Offset: 0xC8
-    cs_field!(
-        _EntityManager,
-        "_EntityManager",
+    cs_field!(_EntityManager, "_EntityManager",
         self,
         |v| -> RPG_GameCore_EntityManager { RPG_GameCore_EntityManager(v.0) }
     );
@@ -1041,9 +997,7 @@ impl RPG_Client_GlobalVars {
     cs_class!("RPG.Client.GlobalVars");
 
     // RPG.Client.GlobalVars -> Type: ModuleManager | Name: s_ModuleManager | Offset: 0xEB8
-    cs_field!(
-        s_ModuleManager,
-        "s_ModuleManager",
+    cs_field!(s_ModuleManager, "s_ModuleManager",
         |v| -> RPG_Client_ModuleManager { RPG_Client_ModuleManager(v.0) }
     );
 }
@@ -1099,10 +1053,21 @@ impl UnityEngine_Application {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-// KMCALMJKMII
-pub struct KMCALMJKMII(pub usize);
-impl KMCALMJKMII {
-    cs_class!("KMCALMJKMII");
+// UnityEngine.QualitySettings
+pub struct UnityEngine_QualitySettings(pub usize);
+impl UnityEngine_QualitySettings {
+    cs_class!("UnityEngine.QualitySettings");
+
+    cs_method!(pub set_v_sync_count, "set_vSyncCount", &["int"], (), (count: i32));
+    cs_method!(pub get_v_sync_count, "get_vSyncCount", &[], i32, ());
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+// EBKLINDPMKM
+pub struct EBKLINDPMKM(pub usize);
+impl EBKLINDPMKM {
+    cs_class!("EBKLINDPMKM");
 }
 
 #[repr(transparent)]
@@ -1112,10 +1077,8 @@ pub struct RPG_Client_BattleAssetPreload(pub usize);
 impl RPG_Client_BattleAssetPreload {
     cs_class!("RPG.Client.BattleAssetPreload");
 
-    // RPG.Client.BattleAssetPreload -> Type: BattleLineupData | Name: _LineupData | Offset: 0x68
-    cs_field!(
-        _LineupData,
-        "_LineupData",
+    // RPG.Client.BattleAssetPreload -> Type: RPG.GameCore.BattleLineupData | Name: _LineupData | Offset: 0x68
+    cs_field!(_LineupData, "_LineupData",
         self,
         |v| -> RPG_GameCore_BattleLineupData { RPG_GameCore_BattleLineupData(v.0) }
     );
@@ -1137,9 +1100,7 @@ impl RPG_GameCore_ServantDataComponent {
     );
 
     // RPG.GameCore.ServantDataComponent -> Type: ServantRowData | Name: _ServantRowData | Offset: 0xD8
-    cs_field!(
-        _ServantRowData,
-        "_ServantRowData",
+    cs_field!(_ServantRowData, "_ServantRowData",
         self,
         |v| -> RPG_GameCore_ServantRowData { RPG_GameCore_ServantRowData(v.0) }
     );
@@ -1152,7 +1113,7 @@ pub struct RPG_GameCore_ServantRowData(pub usize);
 impl RPG_GameCore_ServantRowData {
     cs_class!("RPG.GameCore.ServantRowData");
 
-    // RPG.GameCore.ServantRowData -> Type: AvatarServantRow | Name: _Row | Offset: 0x70
+    // RPG.GameCore.ServantRowData -> Type: RPG.GameCore.IAvatarServantRowWrap | Name: _Row | Offset: 0x70
     cs_field!(_Row, "_Row", self, |v| -> RPG_GameCore_AvatarServantRow {
         RPG_GameCore_AvatarServantRow(v.0)
     });
@@ -1170,10 +1131,8 @@ impl RPG_GameCore_AvatarServantRow {
         v.unbox::<u32>()
     });
 
-    // RPG.GameCore.AvatarServantRow -> Type: TextID | Name: ServantName | Offset: 0x98
-    cs_field!(
-        ServantName,
-        "ServantName",
+    // RPG.GameCore.AvatarServantRow -> Type: RPG.Client.TextID | Name: ServantName | Offset: 0x98
+    cs_field!(ServantName, "ServantName",
         self,
         |v| -> RPG_Client_TextID_Boxed { RPG_Client_TextID_Boxed(v.0) }
     );
@@ -1194,7 +1153,7 @@ impl RPG_GameCore_AbilityComponent {
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
 
-    // RPG.GameCore.AbilityComponent -> Type: List<MJMPGBOFFMC> | Name: _ModifierList | Offset: 0x28
+    // RPG.GameCore.AbilityComponent -> Type: System.Collections.Generic.List<ALJLEJPMKPH> | Name: _ModifierList | Offset: 0x28
     cs_field!(_ModifierList, "_ModifierList", self);
 }
 
@@ -1215,18 +1174,14 @@ pub struct RPG_GameCore_StatusRow(pub usize);
 impl RPG_GameCore_StatusRow {
     cs_class!("RPG.GameCore.StatusRow");
 
-    // RPG.GameCore.StatusRow -> Type: TextID | Name: StatusName | Offset: 0x38
-    cs_field!(
-        StatusName,
-        "StatusName",
+    // RPG.GameCore.StatusRow -> Type: RPG.Client.TextID | Name: StatusName | Offset: 0x38
+    cs_field!(StatusName, "StatusName",
         self,
         |v| -> RPG_Client_TextID_Boxed { RPG_Client_TextID_Boxed(v.0) }
     );
 
-    // RPG.GameCore.StatusRow -> Type: TextID | Name: StatusDesc | Offset: 0x48
-    cs_field!(
-        StatusDesc,
-        "StatusDesc",
+    // RPG.GameCore.StatusRow -> Type: RPG.Client.TextID | Name: StatusDesc | Offset: 0x48
+    cs_field!(StatusDesc, "StatusDesc",
         self,
         |v| -> RPG_Client_TextID_Boxed { RPG_Client_TextID_Boxed(v.0) }
     );

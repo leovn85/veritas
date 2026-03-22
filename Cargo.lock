@@ -1248,7 +1248,7 @@ dependencies = [
 [[package]]
 name = "edio11"
 version = "0.1.1"
-source = "git+https://github.com/hessiser/edio11-rs.git?rev=1e90e0b#1e90e0b9bee4b67621b6035073b6381933f74d85"
+source = "git+https://github.com/hessiser/edio11-rs.git?rev=d1a66b6#d1a66b6a8617a2a962cd87b1c6a61a7c6c8fc803"
 dependencies = [
  "arboard",
  "dark-light",
@@ -5190,6 +5190,7 @@ dependencies = [
  "function_name",
  "indoc",
  "log",
+ "memchr",
  "microseh",
  "parse-changelog",
  "paste",
