@@ -529,6 +529,18 @@ pub enum RPG_GameCore_AttackType {
 	ElationDamage
 }
 
+impl Ord for RPG_GameCore_AttackType {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		(*self as i32).cmp(&(*other as i32))
+	}
+}
+
+impl PartialOrd for RPG_GameCore_AttackType {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
 #[il2cpp_ref_type("RPG.GameCore.BattleInstance")]
 pub struct RPG_GameCore_BattleInstance;
 impl RPG_GameCore_BattleInstance {

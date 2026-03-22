@@ -1,8 +1,13 @@
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::{
+    collections::BTreeMap,
+    str::FromStr,
+    sync::{LazyLock, Mutex, MutexGuard},
+};
 
 use anyhow::{Context, Result};
 
 use crate::{
+    kreide::types::RPG_GameCore_AttackType,
     models::{events::*, misc::*, packets::Packet},
     server,
 };
@@ -15,6 +20,28 @@ pub struct SkillHistoryEntry {
     pub total_damage: f64,
     pub damage_detail: Vec<(f64, f64, String)>,
     pub turn_battle_id: u32,
+}
+
+pub type DamageTypeBreakdown = BTreeMap<RPG_GameCore_AttackType, f64>;
+
+pub(crate) fn display_damage_type(attack_type: &RPG_GameCore_AttackType) -> String {
+    let other = attack_type.to_string();
+    match attack_type {
+        RPG_GameCore_AttackType::Normal => "Basic",
+        RPG_GameCore_AttackType::BPSkill => "Skill",
+        RPG_GameCore_AttackType::Ultra => "Ultimate",
+        RPG_GameCore_AttackType::QTE => "QTE",
+        RPG_GameCore_AttackType::DOT => "DoT",
+        RPG_GameCore_AttackType::Pursued => "Follow-Up",
+        RPG_GameCore_AttackType::Maze | RPG_GameCore_AttackType::MazeNormal => "Technique",
+        RPG_GameCore_AttackType::Insert => "Additional",
+        RPG_GameCore_AttackType::ElementDamage => "Break",
+        RPG_GameCore_AttackType::Servant => "Servant",
+        RPG_GameCore_AttackType::TrueDamage => "True",
+        RPG_GameCore_AttackType::ElationDamage => "Elation",
+        _ => other.as_str(),
+    }
+    .to_string()
 }
 
 #[derive(Clone, Copy)]
@@ -52,6 +79,8 @@ pub struct BattleContext {
     // Index w/ lineup index
     // Used to update UI damage when dmg occurs
     pub real_time_damages: Vec<f64>,
+    // Index w/ lineup index, split by event attack type
+    pub damage_by_category: Vec<DamageTypeBreakdown>,
     // Index w/ lineup index
     // Used to update UI overkill damage when dmg occurs
     pub real_time_overkill_damages: Vec<f64>,
@@ -123,6 +152,7 @@ impl BattleContext {
         battle_context.total_damage = 0.;
         battle_context.last_wave_action_value = 0.;
         battle_context.action_value = 0.;
+        battle_context.damage_by_category = Vec::new();
         battle_context.max_waves = 0;
         battle_context.max_cycle = 0;
         battle_context.wave = 0;
@@ -169,6 +199,7 @@ impl BattleContext {
         Self::initialize_battle_context(&mut battle_context);
         battle_context.current_turn_info.avatars_turn_damage = vec![0f64; e.avatars.len()];
         battle_context.real_time_damages = vec![0f64; e.avatars.len()];
+        battle_context.damage_by_category = vec![DamageTypeBreakdown::default(); e.avatars.len()];
         battle_context.real_time_overkill_damages = vec![0f64; e.avatars.len()];
         battle_context.avatar_lineup = e.avatars;
 
@@ -203,6 +234,11 @@ impl BattleContext {
         // Record character damage chunk
         turn.avatars_turn_damage[lineup_index] += e.damage;
         battle_context.real_time_damages[lineup_index] += e.damage as f64;
+        let attack_type = RPG_GameCore_AttackType::from_str(&e.r#type)
+            .unwrap_or_else(|_| RPG_GameCore_AttackType::Unknown);
+        let mapped_type = display_damage_type(&attack_type);
+        let breakdown = &mut battle_context.damage_by_category[lineup_index];
+        *breakdown.entry(attack_type).or_insert(0.0) += e.damage as f64;
         battle_context.real_time_overkill_damages[lineup_index] += e.overkill_damage as f64;
         battle_context.total_damage += e.damage as f64;
 
@@ -212,9 +248,11 @@ impl BattleContext {
             .rev()
             .find(|skill| skill.avatar_id == e.attacker.uid)
         {
-            last_skill
-                .damage_detail
-                .push((e.damage as f64, e.overkill_damage as f64, e.r#type.clone()));
+            last_skill.damage_detail.push((
+                e.damage as f64,
+                e.overkill_damage as f64,
+                mapped_type.clone(),
+            ));
             last_skill.total_damage += e.damage as f64;
         }
 
@@ -222,7 +260,7 @@ impl BattleContext {
             attacker: e.attacker,
             damage: e.damage,
             overkill_damage: e.overkill_damage,
-            r#type: e.r#type,
+            r#type: mapped_type,
         })
     }
 
@@ -483,7 +521,9 @@ impl BattleContext {
                 Event::OnDamage(e) => Self::handle_on_damage_event(e, battle_context),
                 Event::OnTurnBegin(e) => Self::handle_on_turn_begin_event(e, battle_context),
                 Event::OnTurnEnd => Self::handle_on_turn_end_event(battle_context),
-                Event::OnEntityDefeated(e) => Self::handle_on_entity_defeated_event(e, battle_context),
+                Event::OnEntityDefeated(e) => {
+                    Self::handle_on_entity_defeated_event(e, battle_context)
+                }
                 Event::OnBattleEnd => Self::handle_on_battle_end_event(battle_context),
                 Event::OnUseSkill(e) => Self::handle_on_use_skill_event(e, battle_context),
                 Event::OnUpdateWave(e) => Self::handle_on_update_wave_event(e, battle_context),
@@ -493,9 +533,15 @@ impl BattleContext {
                     }
                     Self::handle_on_update_cycle_event(e, battle_context)
                 }
-                Event::OnPropertyChange(e) => Self::handle_on_property_change_event(e, battle_context),
-                Event::OnInitializeEnemy(e) => Self::handle_on_initialize_enemy_event(e, battle_context),
-                Event::OnUpdateTeamFormation(e) => Self::handle_on_update_team_formation_event(e, battle_context)
+                Event::OnPropertyChange(e) => {
+                    Self::handle_on_property_change_event(e, battle_context)
+                }
+                Event::OnInitializeEnemy(e) => {
+                    Self::handle_on_initialize_enemy_event(e, battle_context)
+                }
+                Event::OnUpdateTeamFormation(e) => {
+                    Self::handle_on_update_team_formation_event(e, battle_context)
+                }
             },
             Err(e) => Ok({
                 log::error!("{}", e);
