@@ -46,6 +46,20 @@ pub enum GraphUnit {
     ActionValue,
 }
 
+#[derive(Default, PartialEq, Serialize, Deserialize)]
+pub enum DamageBreakdownScope {
+    #[default]
+    Team,
+    Character,
+}
+
+#[derive(Default, PartialEq, Serialize, Deserialize)]
+pub enum DamageBreakdownChart {
+    #[default]
+    Pie,
+    Bar,
+}
+
 #[derive(Clone)]
 pub enum ExportNotification {
     Success,
@@ -60,12 +74,24 @@ pub struct AppState {
     pub show_settings: bool,
     pub show_console: bool,
     pub show_damage_distribution: bool,
+    #[serde(default)]
+    pub show_damage_type_breakdown: bool,
     pub show_damage_bars: bool,
     pub show_real_time_damage: bool,
     pub show_enemy_stats: bool,
     pub show_battle_metrics: bool,
     pub should_hide: bool,
     pub graph_x_unit: GraphUnit,
+    #[serde(default)]
+    pub damage_breakdown_scope: DamageBreakdownScope,
+    #[serde(default)]
+    pub damage_breakdown_chart: DamageBreakdownChart,
+    #[serde(default)]
+    pub damage_breakdown_character_index: usize,
+    #[serde(default = "default_true")]
+    pub show_damage_breakdown_table: bool,
+    #[serde(default = "default_true")]
+    pub show_damage_breakdown_legend: bool,
     #[serde(skip)]
     pub use_custom_color: bool,
     #[serde(skip)]
@@ -98,6 +124,10 @@ pub struct App {
     pub updater_window_last_size: Option<egui::Vec2>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 pub const HIDE_UI_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
 pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::M);
 
@@ -116,14 +146,15 @@ impl Overlay for App {
 
             if let Some(screen_rect) = ctx.input(|i| i.pointer.hover_pos()) {
                 if ctx.input(|i| i.pointer.primary_clicked()) {
+                    let content_rect = ctx.content_rect();
                     let notification_area = egui::Rect::from_min_max(
                         egui::pos2(
-                            ctx.screen_rect().right() - 200.0,
-                            ctx.screen_rect().top() * self.notifs.len() as f32,
+                            content_rect.right() - 200.0,
+                            content_rect.top() * self.notifs.len() as f32,
                         ),
                         egui::pos2(
-                            ctx.screen_rect().right(),
-                            (ctx.screen_rect().top() + 50.0) * self.notifs.len() as f32,
+                            content_rect.right(),
+                            (content_rect.top() + 50.0) * self.notifs.len() as f32,
                         ),
                     );
 
@@ -171,6 +202,10 @@ impl Overlay for App {
 
             if self.state.show_damage_distribution {
                 self.show_damage_distribution_window(ctx);
+            }
+
+            if self.state.show_damage_type_breakdown {
+                self.show_damage_type_breakdown_window(ctx);
             }
 
             if self.state.show_character_legend {
@@ -439,12 +474,18 @@ impl Default for AppState {
             show_settings: false,
             show_console: false,
             show_damage_distribution: false,
+            show_damage_type_breakdown: false,
             show_damage_bars: false,
             show_real_time_damage: false,
             show_enemy_stats: false,
             show_battle_metrics: false,
             should_hide: false,
             graph_x_unit: GraphUnit::default(),
+            damage_breakdown_scope: DamageBreakdownScope::default(),
+            damage_breakdown_chart: DamageBreakdownChart::default(),
+            damage_breakdown_character_index: 0,
+            show_damage_breakdown_table: false,
+            show_damage_breakdown_legend: false,
             use_custom_color: false,
             update_bttn_enabled: false,
             show_version_mismatch: false,

@@ -14,12 +14,13 @@ use crate::models::misc::Team;
 use anyhow::Result;
 use anyhow::{Error, anyhow};
 use function_name::named;
+use il2cpp_runtime::Il2CppObject;
 use std::ffi::c_void;
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
     log::debug!(function_name!());
-    Ok(fixpoint_to_raw(&game_mode._ElapsedActionDelay_k__BackingField()?) * 10f64)
+    Ok(fixpoint_to_raw(&*game_mode._ElapsedActionDelay_k__BackingField()?) * 10f64)
 }
 
 // Called on any instance of damage
@@ -27,14 +28,14 @@ unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f6
 fn on_damage(
     task_context: *const c_void,
     damage_by_attack_property: *const c_void,
-    bihkclpkjbc: OHFGNONJNIG,
+    damage_info: OHFGNONJNIG,
     attacker_ability: RPG_GameCore_TurnBasedAbilityComponent,
     defender_ability: RPG_GameCore_TurnBasedAbilityComponent,
     attacker: RPG_GameCore_GameEntity,
     defender: RPG_GameCore_GameEntity,
     attacker_task_single_target: RPG_GameCore_GameEntity,
     flag: bool,
-    GNOFOMBOOCO: *const c_void,
+    a10: *const c_void,
 ) -> bool {
     log::debug!(function_name!());
 
@@ -48,14 +49,14 @@ fn on_damage(
     let res = ON_DAMAGE_Detour.call(
         task_context,
         damage_by_attack_property,
-        bihkclpkjbc,
+        damage_info,
         attacker_ability,
         defender_ability,
         attacker,
         defender,
         attacker_task_single_target,
         flag,
-        GNOFOMBOOCO,
+        a10,
     );
     let hp_final = match defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) {
         Ok(value) => value,
@@ -67,34 +68,14 @@ fn on_damage(
 
     safe_call!(unsafe {
         let mut event: Option<Result<Event>> = None;
-        match attacker._Team()? {
+        match *attacker._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
-                // The type name of bihkclpkjbc will change
-                // But it should be the same sized struct
-                // As of writing since 3.1 beta, it's 0x750 bytes
-                // However, most likely won't be an issue if they add more
-                // as this field most likely won't be placed at the end
-                // Thus, no need to update the struct type
-                let mut buffer = [0u8; 0x750];
-                std::ptr::copy_nonoverlapping(
-                    bihkclpkjbc.0 as *const u8,
-                    buffer.as_mut_ptr(),
-                    buffer.len(),
-                );
+                // E8 56 66 26 F9
+                // E8 Call instruction
+                // Relative offset to the start of the function being called
+                // Resolve to RVA of the function being called
 
-                // This is a solo Bronya against an Ice Edge
-                // Relic-less, uses tech, all traces unlocked, lvl 1 skills, no LC
-                // Use this repo's free-sr-data.json
-                // 258.23294897726737 dmg
-                let ref_value = 0x1023ba28b4fisize;
-
-                // We could just search against a known ref value, but this is fine
-                for addr in memchr::memmem::find_iter(&buffer, &ref_value.to_ne_bytes()) {
-                    log::info!("Damage field offset: 0x{:x}", addr);
-                }
-
-                let damage = fixpoint_to_raw(&bihkclpkjbc.KJLBAGPFBDC()?);
-                let damage_type = bihkclpkjbc.DOODKEMMAPK()?;
+                let damage = fixpoint_to_raw(&*damage_info.KJLBAGPFBDC()?);
                 let hp_initial_raw = fixpoint_to_raw(&hp_initial);
                 let hp_final_raw = fixpoint_to_raw(&hp_final);
                 let overkill_damage = if hp_initial_raw <= 0.0 {
@@ -104,17 +85,17 @@ fn on_damage(
                 } else {
                     0.0
                 };
-
+                let damage_type = damage_info.DOODKEMMAPK()?;
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
-                    if !attack_owner.is_null() {
+                    if !attack_owner.0.is_null() {
                         attack_owner
                     } else {
                         attacker
                     }
                 };
 
-                match attack_owner._EntityType()? {
+                match *(attack_owner)._EntityType()? {
                     RPG_GameCore_EntityType::Avatar => {
                         let e = match helpers::get_avatar_from_entity(attack_owner) {
                             Ok(avatar) => Ok(Event::OnDamage(OnDamageEvent {
@@ -123,7 +104,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
+                                damage_type: *damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -141,7 +122,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
+                                damage_type: *damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -162,7 +143,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
+                                damage_type: *damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -174,7 +155,7 @@ fn on_damage(
                     }
                     _ => log::warn!(
                         "Light entity type {} was not matched",
-                        attacker._EntityType()? as usize
+                        *attacker._EntityType()? as usize
                     ),
                 }
             }
@@ -191,6 +172,8 @@ fn on_damage(
 
     res
 }
+
+// Called when a manual skill is used. Does not account for insert skills (out of turn automatic skills)
 #[named]
 fn on_use_skill(
     instance: RPG_GameCore_SkillCharacterComponent,
@@ -202,21 +185,14 @@ fn on_use_skill(
     skill_extra_use_param: i32,
 ) -> bool {
     log::debug!(function_name!());
-    let res = ON_USE_SKILL_Detour.call(
-        instance,
-        skill_index,
-        a3,
-        a4,
-        a5,
-        a6,
-        skill_extra_use_param,
-    );
+    let res =
+        ON_USE_SKILL_Detour.call(instance, skill_index, a3, a4, a5, a6, skill_extra_use_param);
 
     safe_call!(unsafe {
-        let entity = instance._OwnerRef()?;
+        let entity = instance.as_base()._OwnerRef()?;
         let skill_owner = {
             let skill_owner = RPG_GameCore_AbilityStatic::get_actual_owner(entity)?;
-            if !skill_owner.is_null() {
+            if !skill_owner.0.is_null() {
                 skill_owner
             } else {
                 entity
@@ -224,12 +200,12 @@ fn on_use_skill(
         };
 
         let mut event: Option<Result<Event>> = None;
-        match skill_owner._Team()? {
+        match *skill_owner._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
                 let skill_data = instance.get_skill_data(skill_index, skill_extra_use_param)?;
 
-                if !skill_data.is_null() {
-                    match skill_owner._EntityType()? {
+                if !skill_data.0.is_null() {
+                    match *skill_owner._EntityType()? {
                         RPG_GameCore_EntityType::Avatar => {
                             let e = match get_skill_from_skilldata(skill_data) {
                                 Ok(skill) => match get_avatar_from_entity(skill_owner) {
@@ -297,10 +273,10 @@ fn on_use_skill(
                             event = Some(e);
                         }
                         RPG_GameCore_EntityType::BattleEvent => {
-                            let battle_event_data_comp =
-                                RPG_GameCore_BattleEventDataComponent::from(
-                                    instance._CharacterDataRef()?,
-                                );
+                            let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(
+                                instance._CharacterDataRef()?.0,
+                            );
+
                             let avatar_entity =
                                 battle_event_data_comp._SourceCaster_k__BackingField()?;
 
@@ -335,7 +311,7 @@ fn on_use_skill(
                         }
                         _ => log::warn!(
                             "Light entity type {} was not matched",
-                            skill_owner._EntityType()? as usize
+                            *skill_owner._EntityType()? as usize
                         ),
                     }
                 }
@@ -347,7 +323,9 @@ fn on_use_skill(
         }
         Ok(())
     });
-    crate::plugin::dispatch_on_use_skill(instance.0, skill_index, skill_extra_use_param);
+
+    crate::plugin::dispatch_on_use_skill(instance.0 as usize, skill_index, skill_extra_use_param);
+
     res
 }
 
@@ -358,12 +336,12 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
 
     ON_COMBO_Detour.call(instance, game_mode);
     safe_call!(unsafe {
-        let turn_based_ability_component = instance.DJJDPEJEHAJ()?;
-        let skill_character_component = instance.GMIEIJLDHAM()?;
-        let entity = skill_character_component._OwnerRef()?;
+        let turn_based_ability_component = instance.MMALDILNGNJ()?;
+        let skill_character_component = instance.HHOKFHMEFFF()?;
+        let entity = skill_character_component.as_base()._OwnerRef()?;
         let skill_owner = {
             let skill_owner = RPG_GameCore_AbilityStatic::get_actual_owner(entity)?;
-            if !skill_owner.is_null() {
+            if !skill_owner.0.is_null() {
                 skill_owner
             } else {
                 entity
@@ -371,9 +349,9 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
         };
 
         let mut event: Option<Result<Event>> = None;
-        match skill_owner._Team()? {
+        match *skill_owner._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
-                let ability_name = (instance.OFFOJDPMMBG()?).NPKHCIODJAF()?;
+                let ability_name = (instance.BIACLKKBFMM()?).AANENKIIIMF()?;
 
                 let skill_name =
                     turn_based_ability_component.get_ability_mapped_skill(ability_name)?;
@@ -383,8 +361,8 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
                 let skill_index = character_config.get_skill_index_by_trigger_key(skill_name)?;
                 let skill_data = skill_character_component.get_skill_data(skill_index, -1)?;
 
-                if !skill_data.is_null() {
-                    match skill_owner._EntityType()? {
+                if !skill_data.0.is_null() {
+                    match *skill_owner._EntityType()? {
                         RPG_GameCore_EntityType::Avatar => {
                             let e: std::result::Result<Event, anyhow::Error> =
                                 match get_skill_from_skilldata(skill_data) {
@@ -452,10 +430,9 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
                             event = Some(e);
                         }
                         RPG_GameCore_EntityType::BattleEvent => {
-                            let battle_event_data_comp =
-                                RPG_GameCore_BattleEventDataComponent::from(
-                                    skill_character_component._CharacterDataRef()?,
-                                );
+                            let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(
+                                skill_character_component._CharacterDataRef()?.0,
+                            );
                             let avatar_entity =
                                 battle_event_data_comp._SourceCaster_k__BackingField()?;
 
@@ -490,7 +467,7 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
                         }
                         _ => log::warn!(
                             "Light entity type {} was not matched",
-                            skill_owner._EntityType()? as usize
+                            *skill_owner._EntityType()? as usize
                         ),
                     }
                 }
@@ -505,7 +482,14 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
 }
 
 #[named]
-fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: RPG_GameCore_BattleLineupData, a3: i32, a4: u32, a5: bool) {
+fn on_set_lineup(
+    instance: RPG_GameCore_BattleInstance,
+    a1: *const c_void,
+    a2: RPG_GameCore_BattleLineupData,
+    a3: i32,
+    a4: u32,
+    a5: bool,
+) {
     log::debug!(function_name!());
     safe_call!(unsafe {
         let light_team = a2.LightTeam()?;
@@ -513,9 +497,9 @@ fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: R
         let mut errors = Vec::<Error>::new();
         for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
-            match helpers::get_avatar_from_id(avatar_id) {
+            match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
-                Err(e) => errors.push(e)
+                Err(e) => errors.push(e),
             }
         }
 
@@ -523,9 +507,9 @@ fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: R
         let extra_team = a2.ExtraTeam()?;
         for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
-            match helpers::get_avatar_from_id(avatar_id) {
+            match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
-                Err(e) => errors.push(e)
+                Err(e) => errors.push(e),
             }
         }
 
@@ -542,7 +526,7 @@ fn on_set_lineup(instance: RPG_GameCore_BattleInstance, a1: *const c_void, a2: R
         Ok(())
     });
     let res = ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5);
-    crate::plugin::dispatch_on_set_lineup(instance.0, a2.0);
+    crate::plugin::dispatch_on_set_lineup(instance.0 as usize, a2.0 as usize);
     res
 }
 
@@ -552,13 +536,15 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
     let res = ON_BATTLE_BEGIN_Detour.call(instance);
     safe_call!({
         BattleContext::handle_event(Ok(Event::OnBattleBegin(OnBattleBeginEvent {
-            max_waves: instance._WaveMonsterMaxCount_k__BackingField()? as _,
-            max_cycles: instance._ChallengeTurnLimit_k__BackingField()?,
-            stage_id: instance._CurrentWaveStageID_k__BackingField()?,
+            max_waves: u32::try_from(i32::from(
+                &*instance._WaveMonsterMaxCount_k__BackingField()?,
+            ))?,
+            max_cycles: u32::from(&*instance._ChallengeTurnLimit_k__BackingField()?),
+            stage_id: u32::from(&*instance._CurrentWaveStageID_k__BackingField()?),
         })));
         Ok(())
     });
-    crate::plugin::dispatch_battle_begin(instance.0);
+    crate::plugin::dispatch_battle_begin(instance.0 as usize);
     res
 }
 
@@ -584,7 +570,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
 
     safe_call!(unsafe {
         let turn_owner = instance._CurrentTurnActionEntity()?;
-        match turn_owner._EntityType()? {
+        match *turn_owner._EntityType()? {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(turn_owner) {
                     Ok(avatar) => Ok(Event::OnTurnBegin(OnTurnBeginEvent {
@@ -606,7 +592,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
                 let e = Ok(Event::OnTurnBegin(OnTurnBeginEvent {
                     action_value: get_elapsed_av(instance)?,
                     turn_owner: Some(Entity {
-                        uid: turn_owner._RuntimeID_k__BackingField()?,
+                        uid: (*turn_owner._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     }),
                 }));
@@ -622,7 +608,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
         }
         Ok(())
     });
-    crate::plugin::dispatch_on_turn_begin(instance.0);
+    crate::plugin::dispatch_on_turn_begin(instance.0 as usize);
     res
 }
 
@@ -640,7 +626,7 @@ pub fn on_update_wave(instance: RPG_GameCore_TurnBasedGameMode) {
     let res = ON_UPDATE_WAVE_Detour.call(instance);
     safe_call!({
         BattleContext::handle_event(Ok(Event::OnUpdateWave(OnUpdateWaveEvent {
-            wave: instance._WaveMonsterCurrentCount()? as _,
+            wave: u32::try_from(i32::from(&*instance._WaveMonsterCurrentCount()?))?,
         })));
         Ok(())
     });
@@ -663,9 +649,9 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
             &turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::CurrentHP)?,
         );
 
-        let entity = turn_based_ability_component._OwnerRef()?;
+        let entity = turn_based_ability_component.as_base()._OwnerRef()?;
 
-        match entity._EntityType()? {
+        match *entity._EntityType()? {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(entity) {
                     Ok(avatar) => Ok(Event::OnStatChange(OnStatChangeEvent {
@@ -686,7 +672,7 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
             RPG_GameCore_EntityType::Monster => {
                 BattleContext::handle_event(Ok(Event::OnStatChange(OnStatChangeEvent {
                     entity: Entity {
-                        uid: entity._RuntimeID_k__BackingField()?,
+                        uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
                     stat: Stat::HP(hp),
@@ -739,7 +725,7 @@ pub fn on_stat_change(
     log::debug!(function_name!());
     let res = ON_STAT_CHANGE_Detour.call(instance, property, a2, new_stat, a4);
     safe_call!(unsafe {
-        let entity = instance._OwnerRef()?;
+        let entity = instance.as_base()._OwnerRef()?;
 
         let stat = match property {
             RPG_GameCore_AbilityProperty::MaxHP => Some(Stat::MaxHP(fixpoint_to_raw(&new_stat))),
@@ -846,7 +832,7 @@ pub fn on_stat_change(
             RPG_GameCore_AbilityProperty::CurrentStance => {
                 Some(Stat::CurrentStance(fixpoint_to_raw(&new_stat)))
             }
-            RPG_GameCore_AbilityProperty::Level_AllDamageAddedRatio => {
+            RPG_GameCore_AbilityProperty::Level_FinalDamageAddedRatio => {
                 Some(Stat::Level_AllDamageAddedRatio(fixpoint_to_raw(&new_stat)))
             }
             RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio => {
@@ -1311,7 +1297,7 @@ pub fn on_stat_change(
         };
 
         if let Some(stat) = stat {
-            match entity._EntityType()? {
+            match *entity._EntityType()? {
                 RPG_GameCore_EntityType::Avatar => {
                     let e = match helpers::get_avatar_from_entity(entity) {
                         Ok(avatar) => Ok(Event::OnStatChange(OnStatChangeEvent {
@@ -1332,7 +1318,7 @@ pub fn on_stat_change(
                 RPG_GameCore_EntityType::Monster => {
                     BattleContext::handle_event(Ok(Event::OnStatChange(OnStatChangeEvent {
                         entity: Entity {
-                            uid: entity._RuntimeID_k__BackingField()?,
+                            uid: (*entity._RuntimeID_k__BackingField()?).into(),
                             team: Team::Enemy,
                         },
                         stat,
@@ -1351,11 +1337,12 @@ pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: FGFFLOAE
     log::debug!(function_name!());
     let res = ON_ENTITY_DEFEATED_Detour.call(instance, a2);
     safe_call!(unsafe {
-        let defeated_entity = a2.IENPEBIHOHF()?;
-        let killer_entity = a2.MKFOEBBAKJA()?;
+        // update; need to verify correct entity
+        let defeated_entity = a2.LFGAFLLHGCO()?;
+        let killer_entity = a2.GHCPGPKNBGF()?;
 
-        if res && defeated_entity._AliveState()? == RPG_GameCore_AliveState::Dying {
-            if killer_entity._EntityType()? == RPG_GameCore_EntityType::Avatar {
+        if res && *defeated_entity._AliveState()? == RPG_GameCore_AliveState::Dying {
+            if *killer_entity._EntityType()? == RPG_GameCore_EntityType::Avatar {
                 let e = match helpers::get_avatar_from_entity(killer_entity) {
                     Ok(avatar) => Ok(Event::OnEntityDefeated(OnEntityDefeatedEvent {
                         killer: Entity {
@@ -1363,7 +1350,7 @@ pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: FGFFLOAE
                             team: Team::Player,
                         },
                         entity_defeated: Entity {
-                            uid: defeated_entity._RuntimeID_k__BackingField()?,
+                            uid: (*defeated_entity._RuntimeID_k__BackingField()?).into(),
                             team: Team::Enemy,
                         },
                     })),
@@ -1386,17 +1373,18 @@ pub fn on_update_team_formation(instance: RPG_GameCore_TeamFormationComponent) {
     log::debug!(function_name!());
     let res = ON_UPDATE_TEAM_FORMATION_Detour.call(instance);
     safe_call!({
-        if instance._Team()? == RPG_GameCore_TeamType::TeamDark {
+        if *instance._Team()? == RPG_GameCore_TeamType::TeamDark {
             let team = instance._TeamFormationDatas()?;
             let entities = team
-                .to_vec::<GPFCKFCIKNI>()
+                .to_vec::<RPG_GameCore_GameComponentBase>()
                 .iter()
                 .map(|entity_formation| Entity {
-                    uid: entity_formation
+                    uid: (*entity_formation
                         ._OwnerRef()
                         .unwrap()
                         ._RuntimeID_k__BackingField()
-                        .unwrap(),
+                        .unwrap())
+                    .into(),
                     team: Team::Enemy,
                 })
                 .collect::<Vec<Entity>>();
@@ -1425,8 +1413,8 @@ pub fn on_initialize_enemy(
         let row = row_data._Row()?;
         let monster_id = instance.get_monster_id()?;
         let base_stats = Stats {
-            level: row_data.get_level()?,
-            hp: fixpoint_to_raw(&instance._DefaultMaxHP()?),
+            level: row_data.get_Level()?,
+            hp: fixpoint_to_raw(&*instance._DefaultMaxHP()?),
         };
 
         let name_id = row.MonsterName()?;
@@ -1436,14 +1424,14 @@ pub fn on_initialize_enemy(
         BattleContext::handle_event(Ok(Event::OnInitializeEnemy(OnInitializeEnemyEvent {
             enemy: Enemy {
                 id: monster_id,
-                uid: entity._RuntimeID_k__BackingField()?,
+                uid: (*entity._RuntimeID_k__BackingField().unwrap()).into(),
                 name: (*monster_name).to_string(),
                 base_stats,
             },
         })));
         Ok(())
     });
-    crate::plugin::dispatch_on_init_enemy(instance.0);
+    crate::plugin::dispatch_on_init_enemy(instance.0 as usize);
     res
 }
 
@@ -1470,150 +1458,147 @@ pub fn subscribe() -> Result<()> {
     unsafe {
         subscribe_function!(
             ON_DAMAGE_Detour,
-            EBKLINDPMKM::get_class()?
-                .find_method_full(
+            EBKLINDPMKM::get_class_static()?
+                .find_method(
                     "LCKBMHEANKL",
-                    &[
+                    vec![
                         "RPG.GameCore.TaskContext",
                         "RPG.GameCore.DamageByAttackProperty",
-                        "OHFGNONJNIG",
+                        "*",
                         "RPG.GameCore.TurnBasedAbilityComponent",
                         "RPG.GameCore.TurnBasedAbilityComponent",
                         "RPG.GameCore.GameEntity",
                         "RPG.GameCore.GameEntity",
                         "RPG.GameCore.GameEntity",
                         "bool",
-                        "GNOFOMBOOCO"
-                    ],
-                    "bool"
+                        "*"
+                    ]
                 )?
                 .va(),
             on_damage
         )?;
-        
+
         subscribe_function!(
             ON_COMBO_Detour,
-            FHPFLNJLDHP::get_class()?
-                .find_method_full("HFKBBMIDMOJ", &["RPG.GameCore.TurnBasedGameMode"], "void")?
+            FHPFLNJLDHP::get_class_static()?
+                .find_method("HFKBBMIDMOJ", vec!["RPG.GameCore.TurnBasedGameMode"])?
                 .va(),
             on_combo
         )?;
+
         subscribe_function!(
             ON_USE_SKILL_Detour,
-            RPG_GameCore_SkillCharacterComponent::get_class()?
-                .find_method_full(
+            RPG_GameCore_SkillCharacterComponent::get_class_static()?
+                .find_method(
                     "UseSkill",
-                    &[
+                    vec![
                         "int",
                         "RPG.GameCore.AbilityCursorInfo",
                         "bool",
                         "System.Collections.Generic.List<RPG.GameCore.AbilityDynamicFloatInjection>",
                         "System.Collections.Generic.List<RPG.GameCore.AbilityDynamicStringInjection>",
-                        "int",
-                    ],
-                    "bool"
+                        "int"
+                    ]
                 )?
                 .va(),
             on_use_skill
         )?;
+
         subscribe_function!(
             ON_SET_LINEUP_Detour,
-            RPG_GameCore_BattleInstance::get_class()?
-                .find_method_full(
+            RPG_GameCore_BattleInstance::get_class_static()?
+                .find_method(
                     ".ctor",
-                    &["CDALNOAHHDP", "RPG.GameCore.BattleLineupData", "int", "uint", "bool"],
-                    "void"
+                    vec!["*", "RPG.GameCore.BattleLineupData", "int", "uint", "bool"]
                 )?
                 .va(),
             on_set_lineup
         )?;
         subscribe_function!(
             ON_BATTLE_BEGIN_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()?
-                .find_method_full("_GameModeBegin", &[], "void")?
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("_GameModeBegin", vec![])?
                 .va(),
             on_battle_begin
         )?;
         subscribe_function!(
             ON_BATTLE_END_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()?
-                .find_method_full("_GameModeEnd", &[], "void")?
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("_GameModeEnd", vec![])?
                 .va(),
             on_battle_end
         )?;
         subscribe_function!(
             ON_TURN_BEGIN_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()?
-                .find_method_full("DoTurnPrepareStartWork", &[], "void")?
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("DoTurnPrepareStartWork", vec![])?
                 .va(),
             on_turn_begin
         )?;
         subscribe_function!(
             ON_TURN_END_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class()?
-                .find_method_full("ProcessOnLevelTurnActionEndEvent", &["int"], "void")?
+            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
+                .find_method("ProcessOnLevelTurnActionEndEvent", vec!["int"])?
                 .va(),
             on_turn_end
         )?;
         subscribe_function!(
             ON_UPDATE_WAVE_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()?
-                .find_method_full("UpdateCurrentWaveCount", &[], "void")?
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("UpdateCurrentWaveCount", vec![])?
                 .va(),
             on_update_wave
         )?;
         subscribe_function!(
             ON_UPDATE_CYCLE_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()?
-                .find_method_full("get_ChallengeTurnLeft", &[], "uint")?
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("get_ChallengeTurnLeft", vec![])?
                 .va(),
             on_update_cycle
         )?;
         subscribe_function!(
             ON_DIRECT_CHANGE_HP_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class()?
-                .find_method_full(
+            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
+                .find_method(
                     "DirectChangeHP",
-                    &[
+                    vec![
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.FixPoint",
-                        "BPIOPFEPAEG"
+                        "*"
                     ],
-                    "void"
                 )?
                 .va(),
             on_direct_change_hp
         )?;
         subscribe_function!(
             ON_DIRECT_DAMAGE_HP_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class()?
+            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
                 // Not sure if I need keyword out
-                .find_method_full(
+                .find_method(
                     "DirectDamageHP",
-                    &[
+                    vec![
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.AntiLockHPStrength",
-                        "BPIOPFEPAEG",
+                        "*",
                         "RPG.GameCore.FixPoint&",
                         "System.Nullable<RPG.GameCore.FixPoint>"
                     ],
-                    "void"
                 )?
                 .va(),
             on_direct_damage_hp
         )?;
         subscribe_function!(
             ON_STAT_CHANGE_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class()?
+            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
                 .find_method(
                     "ModifyProperty",
-                    &[
+                    vec![
                         "RPG.GameCore.AbilityProperty",
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
-                        "BPIOPFEPAEG"
+                        "*"
                     ]
                 )?
                 .va(),
@@ -1621,26 +1606,25 @@ pub fn subscribe() -> Result<()> {
         )?;
         subscribe_function!(
             ON_ENTITY_DEFEATED_Detour,
-            RPG_GameCore_TurnBasedGameMode::get_class()
+            RPG_GameCore_TurnBasedGameMode::get_class_static()
                 .unwrap()
-                .find_method_full("_MakeLimboEntityDie", &["FGFFLOAEKKA"], "bool")?
+                .find_method("_MakeLimboEntityDie", vec!["*"])?
                 .va(),
             on_entity_defeated
         )?;
         subscribe_function!(
             ON_UPDATE_TEAM_FORMATION_Detour,
-            RPG_GameCore_TeamFormationComponent::get_class()?
-                .find_method_full("_RefreshTeammateIndex", &[], "void")?
+            RPG_GameCore_TeamFormationComponent::get_class_static()?
+                .find_method("_RefreshTeammateIndex", vec![])?
                 .va(),
             on_update_team_formation
         )?;
         subscribe_function!(
             ON_INITIALIZE_ENEMY_Detour,
-            RPG_GameCore_MonsterDataComponent::get_class()?
-                .find_method_full(
+            RPG_GameCore_MonsterDataComponent::get_class_static()?
+                .find_method(
                     "OnAbilityCharacterInitialized",
-                    &["RPG.GameCore.TurnBasedAbilityComponent"],
-                    "void"
+                    vec!["RPG.GameCore.TurnBasedAbilityComponent"],
                 )?
                 .va(),
             on_initialize_enemy
