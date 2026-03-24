@@ -77,6 +77,9 @@ fn setup_subscribers() -> anyhow::Result<()> {
         }
 
         kreide::il2cpp::init()?;
+		
+		crate::kreide::resolver::resolve_all()?;
+		
         subscribers::battle::subscribe()?;
         subscribers::enable_subscribers!()?;
         Ok(())

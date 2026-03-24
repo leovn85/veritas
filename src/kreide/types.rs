@@ -6,7 +6,7 @@
 )]
 
 use crate::{
-    cs_class, cs_field, cs_method, cs_property,
+    cs_class, cs_field, cs_method, cs_property, cs_dynamic_class, cs_dynamic_field,
     kreide::il2cpp::native::{Il2CppArray, Il2CppObject, Il2CppString, List, RuntimeType},
 };
 
@@ -42,7 +42,7 @@ pub enum RPG_GameCore_AliveState {
     Destroyed = 8,
 }
 
-#[repr(transparent)]
+/* #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // OOMAKCLAFOH
 pub struct OOMAKCLAFOH(pub usize);
@@ -53,11 +53,22 @@ impl OOMAKCLAFOH {
     cs_field!(NPKHCIODJAF, "NPKHCIODJAF", self, |v| -> Il2CppString {
         Il2CppString(v.0)
     });
-}
+} */
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // OOMAKCLAFOH
+pub struct ComboDataWrapper(pub usize);
+impl ComboDataWrapper {
+    cs_dynamic_class!("InsertSkill_ComboData_Class");
+
+    // Lấy chuỗi skill name tự động
+    cs_dynamic_field!(get_skill_name, "ComboData_String_Field", self, |v| -> Il2CppString { Il2CppString(v.0) });
+}
+
+/* #[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+// FGFFLOAEKKA
 pub struct FGFFLOAEKKA(pub usize);
 impl FGFFLOAEKKA {
     cs_class!("FGFFLOAEKKA");
@@ -75,9 +86,23 @@ impl FGFFLOAEKKA {
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
-}
+} */
 
 #[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+//FGFFLOAEKKA
+pub struct EntityDefeatedEvent(pub usize);
+impl EntityDefeatedEvent {
+    cs_dynamic_class!("EntityDefeatedEvent");
+
+    // Lấy field Killer tự động MKFOEBBAKJA
+    cs_dynamic_field!(killer, "EntityDefeated_KillerField", self, |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) });
+    
+    // Lấy field Victim tự động IENPEBIHOHF
+    cs_dynamic_field!(victim, "EntityDefeated_VictimField", self, |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) });
+}
+
+/* #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // GPFCKFCIKNI
 pub struct GPFCKFCIKNI(pub usize);
@@ -91,6 +116,16 @@ impl GPFCKFCIKNI {
         self,
         |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) }
     );
+} */
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+// GPFCKFCIKNI
+pub struct TeamFormationItem(pub usize);
+impl TeamFormationItem {
+    cs_dynamic_class!("TeamFormationItem");
+
+    cs_field!(_OwnerRef, "_OwnerRef", self, |v| -> RPG_GameCore_GameEntity { RPG_GameCore_GameEntity(v.0) });
 }
 
 #[repr(transparent)]
@@ -777,7 +812,7 @@ pub struct RPG_GameCore_FixPoint {
     pub m_rawValue: i64,
 }
 
-#[repr(transparent)]
+/* #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // OHFGNONJNIG
 pub struct OHFGNONJNIG(pub usize);
@@ -802,6 +837,35 @@ impl OHFGNONJNIG {
         self,
         |v| -> RPG_GameCore_AttackType { v.unbox::<RPG_GameCore_AttackType>() }
     );
+} */
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+// OHFGNONJNIG
+pub struct DamagePropertyEvent(pub usize);
+impl DamagePropertyEvent {
+    cs_dynamic_class!("DamagePropertyEvent");
+
+    // Vẫn dùng hardcode KJLBAGPFBDC cho damage, hoặc truyền offset. 
+    // Mẹo: mihoyo ít đổi offset, nếu không đổi thì xài cs_field bình thường
+    /* cs_field!(damage_value, "KJLBAGPFBDC", self, |v| -> RPG_GameCore_FixPoint {
+        RPG_GameCore_FixPoint { m_rawValue: v.unbox::<i64>() }
+    }); */
+	pub fn damage_value(&self, expected_hp_lost: Option<f64>) -> anyhow::Result<f64> {
+        if self.0 == 0 { return Err(anyhow::anyhow!("DamagePropertyEvent is null")); }
+        
+        // Gọi hàm thuật toán từ resolver.rs (như đã bàn ở tin nhắn trước)
+        if let Some(actual_damage) = crate::kreide::resolver::resolve_dynamic_damage(self.0, expected_hp_lost) {
+            Ok(actual_damage)
+        } else {
+            // Fallback nếu thuật toán chưa tìm ra (hoặc đang tích lũy data)
+            Ok(expected_hp_lost.unwrap_or(0.0))
+        }
+    }
+
+    // AttackType lấy tự động
+    cs_dynamic_field!(attack_type, "DamageEvent_AttackTypeField", self, |v| -> RPG_GameCore_AttackType { 
+        v.unbox::<RPG_GameCore_AttackType>() 
+    });
 }
 
 #[repr(i32)]
@@ -821,6 +885,7 @@ pub enum RPG_GameCore_AttackType {
     Level = 11,
     Servant = 12,
     TrueDamage = 13,
+	ElationDamage = 14,
 }
 
 #[repr(transparent)]
@@ -905,7 +970,7 @@ impl RPG_Client_ModuleManager {
     );
 }
 
-#[repr(transparent)]
+/* #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // FHPFLNJLDHP
 pub struct FHPFLNJLDHP(pub usize);
@@ -934,6 +999,19 @@ impl FHPFLNJLDHP {
             RPG_GameCore_TurnBasedAbilityComponent(v.0)
         }
     );
+} */
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+//FHPFLNJLDHP
+pub struct InsertSkillContext(pub usize);
+impl InsertSkillContext {
+    cs_dynamic_class!("InsertSkillContext");
+
+    // Tự động phân giải các Field theo class!
+    cs_dynamic_field!(get_skill_character, "InsertSkill_SkillChar_Field", self, |v| -> RPG_GameCore_SkillCharacterComponent { RPG_GameCore_SkillCharacterComponent(v.0) });
+    cs_dynamic_field!(get_turn_based_ability, "InsertSkill_TurnBased_Field", self, |v| -> RPG_GameCore_TurnBasedAbilityComponent { RPG_GameCore_TurnBasedAbilityComponent(v.0) });
+    cs_dynamic_field!(get_combo_data, "InsertSkill_ComboData_Field", self, |v| -> ComboDataWrapper { ComboDataWrapper(v.0) });
 }
 
 #[repr(transparent)]
@@ -1051,12 +1129,20 @@ impl UnityEngine_Application {
     cs_method!(pub get_target_framerate, "get_targetFrameRate", &[], i32, ());
 }
 
-#[repr(transparent)]
+/* #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 // EBKLINDPMKM
 pub struct EBKLINDPMKM(pub usize);
 impl EBKLINDPMKM {
     cs_class!("EBKLINDPMKM");
+} */
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+// EBKLINDPMKM
+pub struct DamageClass(pub usize);
+impl DamageClass {
+    cs_dynamic_class!("DamageClass");
 }
 
 #[repr(transparent)]

@@ -17,12 +17,15 @@ macro_rules! il2cpp_api {
 }
 
 il2cpp_api!(22, il2cpp_assembly_get_image(assembly: Il2CppAssembly) -> Il2CppImage);
+il2cpp_api!(31, il2cpp_class_get_fields(klass: Il2CppClass, iter: *const *const usize) -> Il2CppField);
 il2cpp_api!(35, il2cpp_class_get_methods(klass: Il2CppClass, iter: *const *const usize) -> Il2CppMethod);
 il2cpp_api!(37, il2cpp_class_get_name(klass: Il2CppClass) -> *const i8);
 il2cpp_api!(49, il2cpp_class_from_type(r#type: Il2CppType) -> Il2CppClass);
 il2cpp_api!(63, il2cpp_domain_get() -> Il2CppDomain);
 il2cpp_api!(65, il2cpp_domain_get_assemblies(domain: Il2CppDomain, size: *mut usize) -> *mut Il2CppAssembly);
 il2cpp_api!(73, il2cpp_field_get_name(field: Il2CppField) -> *const i8);
+il2cpp_api!(75, il2cpp_field_get_offset(field: Il2CppField) -> usize);
+il2cpp_api!(76, il2cpp_field_get_type(field: Il2CppField) -> Il2CppType);
 il2cpp_api!(77, il2cpp_field_get_value_object(field: Il2CppField, obj: Il2CppObject) -> Il2CppObject);
 il2cpp_api!(116, il2cpp_method_get_return_type(method: Il2CppMethod) -> Il2CppType);
 il2cpp_api!(117, il2cpp_method_get_name(method: Il2CppMethod) -> *const i8);
@@ -30,6 +33,7 @@ il2cpp_api!(123, il2cpp_method_get_param_count(method: Il2CppMethod) -> u32);
 il2cpp_api!(124, il2cpp_method_get_param(method: Il2CppMethod, index: u32) -> Il2CppType);
 il2cpp_api!(154, il2cpp_thread_attach(domain: Il2CppDomain) -> usize);
 il2cpp_api!(161, il2cpp_type_get_name(r#type: Il2CppType) -> *const i8);
+il2cpp_api!(168, il2cpp_image_get_name(image: Il2CppImage) -> *const i8);
 il2cpp_api!(169, il2cpp_image_get_class_count(image: Il2CppImage) -> usize);
 il2cpp_api!(170, il2cpp_image_get_class(image: Il2CppImage, index: usize) -> Il2CppClass);
 

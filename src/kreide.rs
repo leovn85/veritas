@@ -6,3 +6,4 @@ pub mod helpers;
 pub mod il2cpp;
 pub mod types;
 pub mod prelude;
+pub mod resolver;

@@ -304,3 +304,49 @@ macro_rules! cs_property {
         }
     };
 }
+
+#[macro_export]
+macro_rules! cs_dynamic_class {
+    ($resolver_key:expr) => {
+        pub fn get_class() -> anyhow::Result<$crate::kreide::il2cpp::api::Il2CppClass> {
+            use crate::prelude::*;
+            let real_name = $crate::kreide::resolver::get_dynamic_name($resolver_key);
+            $crate::kreide::il2cpp::get_cached_class(&real_name).with_context(|| format!("Không tìm thấy class {}", real_name))
+        }
+
+        pub fn is_null(&self) -> bool {
+            self.0 == 0
+        }
+
+        pub fn as_object(&self) -> Il2CppObject {
+            Il2CppObject(self.0)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! cs_dynamic_field {
+    ($ident:ident, $resolver_key:expr, self, |$param:ident| -> $ret_ty:ty $block:block) => {
+        paste::paste! {
+            pub fn $ident(&self) -> anyhow::Result<$ret_ty> {
+                use crate::prelude::*;
+
+                if self.0 == 0 {
+                    return Err(anyhow::format_err!("Đối tượng bị null khi gọi field."));
+                }
+
+                let real_field_name = $crate::kreide::resolver::get_dynamic_name($resolver_key);
+                let class = RuntimeType::from_class(self.as_object().get_class());
+                let field_info = class.get_field(&real_field_name)?;
+
+                let value = microseh::try_seh(|| {
+                    field_info.get_value($crate::kreide::il2cpp::native::Il2CppObject(self.0))
+                })
+                .map_err(|e| anyhow::anyhow!("SEH Error in dynamic field {}: {:?}", $resolver_key, e))??;
+
+                let $param: $crate::kreide::il2cpp::native::Il2CppObject = value;
+                Ok($block)
+            }
+        }
+    };
+}
