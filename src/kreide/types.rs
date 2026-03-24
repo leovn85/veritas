@@ -10,11 +10,6 @@ use std::ffi::c_void;
 use il2cpp_runtime::{il2cpp_enum_type, il2cpp_getter_property, il2cpp_value_type};
 use il2cpp_runtime::prelude::*;
 
-pub use super::obfuscated::{
-    EBKLINDPMKM, FHPFLNJLDHP, OHFGNONJNIG,
-    FGFFLOAEKKA,
-};
-
 
 #[il2cpp_value_type("RPG.Client.TextID")]
 pub struct RPG_Client_TextID {
@@ -426,44 +421,45 @@ impl RPG_GameCore_SkillCharacterComponent {
 
 #[il2cpp_enum_type(i32)]
 pub enum RPG_GameCore_EntityType {
-    None,
-    Avatar,
-    Monster,
-    LocalPlayer,
-    NPC,
-    NPCMonster,
-    StoryCharacter,
-    Prop,
-    Mission,
-    LevelEntity,
-    Neutral,
-    AtmoNpc,
-    BattleEvent,
-    TutorialEntity,
-    Team,
-    Partner,
-    LevelGraph,
-    Snapshot,
-    TeamFormation,
-    Model,
-    UICamera,
-    District,
-    GlobalShield,
-    CustomData,
-    Simple,
-    PuzzleGameObjectProp,
-    PerformanceLevelGraph,
-    Group,
-    ChessCharacter,
-    ChessTerrain,
-    SummonUnit,
-    LittleGameInstance,
-    Servant,
-    PreviewShow,
-    LittleGameContainer,
-    LittleGameViewProxy,
-    GridFightBackend,
-    DummyEntity,
+	None,
+	Avatar,
+	Monster,
+	LocalPlayer,
+	NPC,
+	NPCMonster,
+	StoryCharacter,
+	Prop,
+	Mission,
+	LevelEntity,
+	Neutral,
+	AtmoNpc,
+	BattleEvent,
+	TutorialEntity,
+	Team,
+	Partner,
+	LevelGraph,
+	Snapshot,
+	TeamFormation,
+	Model,
+	UICamera,
+	District,
+	GlobalShield,
+	CustomData,
+	Simple,
+	PuzzleGameObjectProp,
+	PerformanceLevelGraph,
+	Group,
+	RtCharacter,
+	RtGrid,
+	RtTrigger,
+	SummonUnit,
+	LittleGameInstance,
+	Servant,
+	PreviewShow,
+	LittleGameContainer,
+	LittleGameViewProxy,
+	GridFightBackend,
+	DummyEntity
 }
 
 #[il2cpp_ref_type("RPG.GameCore.BattleEventDataComponent", base(RPG_GameCore_GameComponentBase))]
@@ -523,6 +519,7 @@ pub enum RPG_GameCore_AttackType {
     Level,
     Servant,
     TrueDamage,
+	ElationDamage
 }
 
 #[il2cpp_ref_type("RPG.GameCore.BattleInstance")]

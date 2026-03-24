@@ -39,7 +39,19 @@ macro_rules! safe_call {
         let _ = match microseh::try_seh(|| {
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> { $body }))
         }) {
-            Ok(Ok(val)) => Ok(val),
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(err))) => {
+                let backtrace = std::backtrace::Backtrace::capture();
+                let message = format!(
+                    "{} returned error: {:?}\nBacktrace:\n{}",
+                    function_name!(),
+                    err,
+                    backtrace
+                );
+
+                log::error!("{}", message);
+                Err(err.context("safe_call body returned an error"))
+            }
             Ok(Err(panic)) => {
                 let backtrace = std::backtrace::Backtrace::capture();
                 let msg = panic
