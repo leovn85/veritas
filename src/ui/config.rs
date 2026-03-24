@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf};
 use anyhow::{Result, anyhow};
 use directories::ProjectDirs;
 use egui::{
-    FontFamily, FontId, TextStyle, Theme
+    FontId, Theme
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,8 @@ pub struct Config {
     pub version: String,
     #[serde(default = "default_locale")]
     pub locale: String,
-    // pub fps: i32,
+    #[serde(default = "default_fps")]
+    pub fps: i32,
     #[serde(default = "default_widget_opacity")]
     pub widget_opacity: f32,
     #[serde(default = "default_streamer_mode")]
@@ -42,6 +43,10 @@ pub struct Config {
 
 fn default_locale() -> String {
     rust_i18n::locale().to_string()
+}
+
+fn default_fps() -> i32 {
+    crate::fps::DEFAULT_FPS
 }
 
 fn default_widget_opacity() -> f32 {
@@ -94,7 +99,7 @@ impl Default for Config {
         Self {
             version: String::new(),
             locale: default_locale(),
-            // fps: 60,
+            fps: default_fps(),
             widget_opacity: default_widget_opacity(),
             streamer_mode: default_streamer_mode(),
             streamer_msg: default_streamer_msg(),

@@ -1,5 +1,5 @@
 use egui::{Slider, TextEdit, Ui};
-use egui::{CentralPanel, CollapsingHeader, Color32, Frame, Label, Memory, RichText, ScrollArea, Stroke, Window};
+use egui::{CentralPanel, CollapsingHeader, Color32, Frame, Label, Memory, RichText, ScrollArea, Window};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use anyhow::anyhow;
 
@@ -364,6 +364,10 @@ impl App {
                                 t!("Show Damage Distribution"),
                             );
                             ui.checkbox(
+                                &mut self.state.show_damage_type_breakdown,
+                                t!("Show Damage Type Breakdown"),
+                            );
+                            ui.checkbox(
                                 &mut self.state.show_damage_bars,
                                 t!("Show Damage Bars"),
                             );
@@ -381,9 +385,9 @@ impl App {
                                 t!("Show Battle Metrics"),
                             );
 
-                            ui.add_space(5.);
-
                             ui.separator();
+
+                            ui.add_space(5.);
                             if ui.button(t!("Close")).clicked() {
                                 self.state.show_menu = false;
                             }
@@ -760,36 +764,43 @@ impl App {
                 }
             }
 
-            // TODO:
-            // Change using a grid like so:
+            ui.horizontal(|ui| {
+                let mut uncapped = crate::fps::is_uncapped(self.config.fps);
+                let uncapped_changed = ui.checkbox(&mut uncapped, "Uncapped").changed();
+                let mut capped_fps = if uncapped {
+                    crate::fps::DEFAULT_FPS
+                } else {
+                    crate::fps::clamp_fps(self.config.fps)
+                };
+                let response = ui.add_enabled(
+                    !uncapped,
+                    Slider::new(
+                        &mut capped_fps,
+                        crate::fps::MIN_FPS..=crate::fps::MAX_FPS,
+                    )
+                    .text("FPS Cap"),
+                );
 
-            // ui.label("Text style:");
-            // ui.horizontal(|ui| {
-            //     let all_text_styles = ui.style().text_styles();
-            //     for style in all_text_styles {
-            //         ui.selectable_value(&mut config.text_style, style.clone(), style.to_string());
-            //     }
-            // });
-            // ui.end_row();
+                if uncapped_changed || response.changed() {
+                    self.config.fps = if uncapped {
+                        crate::fps::UNCAPPED_FPS
+                    } else {
+                        crate::fps::clamp_fps(capped_fps)
+                    };
+                    if let Err(error) = crate::fps::apply(self.config.fps) {
+                        log::error!(
+                            "Failed to apply FPS cap {}: {}",
+                            crate::fps::format_fps(self.config.fps),
+                            error,
+                        );
+                    }
+                    if let Err(error) = self.config.save() {
+                        log::error!("Failed to save FPS config: {error}");
+                    }
+                }
+            });
 
-            // if ui
-            //     .add(
-            //         Slider::new(
-            //             &mut self.settings.fps,
-            //             10..=120,
-            //         )
-            //         .text(t!("FPS")),
-            //     )
-            //     .changed()
-            // {
-            //     self.config.set_fps(self.settings.fps);
-            //     unsafe {
-            //         Application_set_targetFrameRate(
-            //             self.settings.fps,
-            //         )
-            //     };
-            // }
-
+            let (target_fps, v_sync_count) = crate::fps::runtime_state();
             ui.add(
                 TextEdit::singleline(&mut self.config.streamer_msg).hint_text(RichText::new(
                     format!(
@@ -841,6 +852,20 @@ impl App {
             .min_height(200.0)
             .show(ctx, |ui| {
                 self.show_damage_distribution_widget(ui);
+            });
+    }
+
+    pub fn show_damage_type_breakdown_window(&mut self, ctx: &egui::Context) {
+        egui::containers::Window::new(t!("Damage Type Breakdown"))
+            .id("damage_type_breakdown_window".into())
+            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .resizable(true)
+            .default_width(420.0)
+            .default_height(360.0)
+            .min_width(280.0)
+            .min_height(180.0)
+            .show(ctx, |ui| {
+                self.show_damage_type_breakdown_widget(ui);
             });
     }
 

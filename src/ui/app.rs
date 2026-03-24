@@ -6,7 +6,7 @@ use std::sync::Once;
 use anyhow::Result;
 use anyhow::anyhow;
 use directories::ProjectDirs;
-use edio11::{Overlay, WindowMessage, WindowProcessOptions, input::InputResult};
+use edio11::{Overlay, PostRenderContext, WindowMessage, WindowProcessOptions, input::InputResult};
 use egui::Key;
 use egui::KeyboardShortcut;
 use egui::Label;
@@ -46,6 +46,20 @@ pub enum GraphUnit {
     ActionValue,
 }
 
+#[derive(Default, PartialEq, Serialize, Deserialize)]
+pub enum DamageBreakdownScope {
+    #[default]
+    Team,
+    Character,
+}
+
+#[derive(Default, PartialEq, Serialize, Deserialize)]
+pub enum DamageBreakdownChart {
+    #[default]
+    Pie,
+    Bar,
+}
+
 #[derive(Clone)]
 pub enum ExportNotification {
     Success,
@@ -60,12 +74,24 @@ pub struct AppState {
     pub show_settings: bool,
     pub show_console: bool,
     pub show_damage_distribution: bool,
+    #[serde(default)]
+    pub show_damage_type_breakdown: bool,
     pub show_damage_bars: bool,
     pub show_real_time_damage: bool,
     pub show_enemy_stats: bool,
     pub show_battle_metrics: bool,
     pub should_hide: bool,
     pub graph_x_unit: GraphUnit,
+    #[serde(default)]
+    pub damage_breakdown_scope: DamageBreakdownScope,
+    #[serde(default)]
+    pub damage_breakdown_chart: DamageBreakdownChart,
+    #[serde(default)]
+    pub damage_breakdown_character_index: usize,
+    #[serde(default = "default_true")]
+    pub show_damage_breakdown_table: bool,
+    #[serde(default = "default_true")]
+    pub show_damage_breakdown_legend: bool,
     #[serde(skip)]
     pub use_custom_color: bool,
     #[serde(skip)]
@@ -98,6 +124,10 @@ pub struct App {
     pub updater_window_last_size: Option<egui::Vec2>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 pub const HIDE_UI_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
 pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::M);
 
@@ -106,6 +136,9 @@ static LOAD: Once = Once::new();
 impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn update(&mut self, ctx: &egui::Context) {
+        crate::plugin::update_current_style(ctx);
+        crate::plugin::update_window_opacity(self.config.widget_opacity);
+        crate::fps::ensure_applied(self.config.fps);
         // Get rid of this and just switch to egui-toast
         if self.update.is_some() {
             // let message = format!("Version {} is available! Click here to open settings and update.",
@@ -171,6 +204,10 @@ impl Overlay for App {
                 self.show_damage_distribution_window(ctx);
             }
 
+            if self.state.show_damage_type_breakdown {
+                self.show_damage_type_breakdown_window(ctx);
+            }
+
             if self.state.show_character_legend {
                 self.show_character_legend_window(ctx);
             }
@@ -190,6 +227,7 @@ impl Overlay for App {
             if self.state.show_enemy_stats {
                 self.show_enemy_stats_window(ctx);
             }
+
         }
 
         // This is a weird quirk of immediate mode where we must initialize our state a frame later
@@ -338,6 +376,10 @@ impl Overlay for App {
         self.notifs.show(ctx);
     }
 
+    fn post_render(&mut self, ctx: PostRenderContext<'_>) {
+        crate::plugin::render_all_plugin_surfaces(&ctx);
+    }
+
     fn window_process(
         &mut self,
         input: &InputResult,
@@ -360,7 +402,15 @@ impl Overlay for App {
                                 && *key == SHOW_MENU_SHORTCUT.logical_key
                                 && *pressed
                             {
-                                self.state.show_menu = !self.state.show_menu;
+                                let new_state = !self.state.show_menu;
+                                log::info!(
+                                    "[veritas::wndproc] Ctrl+M — toggling show_menu: {} → {} \
+                                     (plugins={})",
+                                    self.state.show_menu,
+                                    new_state,
+                                    crate::plugin::plugin_count(),
+                                );
+                                self.state.show_menu = new_state;
 
                                 return Some(WindowProcessOptions {
                                     // Simulate alt to get cursor
@@ -387,7 +437,12 @@ impl Overlay for App {
                 ..Default::default()
             })
         } else {
-            Some(WindowProcessOptions::default())
+            let surface_input = crate::plugin::process_plugin_surface_message(message);
+            Some(WindowProcessOptions {
+                capture_pointer_input: surface_input.capture_pointer_input,
+                capture_keyboard_input: surface_input.capture_keyboard_input,
+                ..Default::default()
+            })
         }
     }
 
@@ -419,12 +474,18 @@ impl Default for AppState {
             show_settings: false,
             show_console: false,
             show_damage_distribution: false,
+            show_damage_type_breakdown: false,
             show_damage_bars: false,
             show_real_time_damage: false,
             show_enemy_stats: false,
             show_battle_metrics: false,
             should_hide: false,
             graph_x_unit: GraphUnit::default(),
+            damage_breakdown_scope: DamageBreakdownScope::default(),
+            damage_breakdown_chart: DamageBreakdownChart::default(),
+            damage_breakdown_character_index: 0,
+            show_damage_breakdown_table: false,
+            show_damage_breakdown_legend: false,
             use_custom_color: false,
             update_bttn_enabled: false,
             show_version_mismatch: false,
@@ -489,10 +550,21 @@ impl App {
                     let mut file = File::open(&persist_path)?;
                     let mut buffer = String::new();
                     file.read_to_string(&mut buffer)?;
-                    let memory: Memory = ron::from_str(&buffer)?;
-                    ctx.memory_mut(|writer| {
-                        *writer = memory;
-                    });
+                    match ron::from_str::<Memory>(&buffer) {
+                        Ok(memory) => {
+                            ctx.memory_mut(|writer| {
+                                *writer = memory;
+                            });
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "Ignoring stale persistence at {}: {}",
+                                persist_path.display(),
+                                error
+                            );
+                            let _ = std::fs::remove_file(&persist_path);
+                        }
+                    }
                 }
 
                 Ok(())
@@ -604,6 +676,10 @@ impl App {
             app.state.show_version_mismatch = true;
         }
         app.init_err = init_err;
+
+        if let Err(error) = crate::fps::apply(app.config.fps) {
+            log::warn!("Failed to apply configured FPS during startup: {error}");
+        }
 
         app.queue_update_check();
 
@@ -728,6 +804,10 @@ impl App {
             }
         }
     }
+}
+
+pub fn apply_theme_to_extern_ctx(ctx: &egui::Context) {
+    crate::plugin::apply_theme_to_extern_ctx(ctx);
 }
 
 fn export_json_data(
