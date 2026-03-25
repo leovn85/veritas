@@ -29,7 +29,7 @@ pub fn get_module_manager() -> Result<RPG_Client_ModuleManager> {
 }
 
 #[named]
-fn get_avatar_data_from_id(avatar_id: u32) -> Result<RPG_Client_AvatarData> {
+pub fn get_avatar_data_from_id(avatar_id: u32) -> Result<RPG_Client_AvatarData> {
     log::debug!(function_name!());
     let s_module_manager = get_module_manager()?;
     let avatar_module = s_module_manager.AvatarModule()?;

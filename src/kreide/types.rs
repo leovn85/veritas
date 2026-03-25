@@ -695,3 +695,133 @@ impl RPG_GameCore_TurnBasedModifierInstance {
     #[il2cpp_method(name = "get_KeyForStatusConfig", args = [])]
     pub fn get_key_for_status_config(&self) -> Il2CppString {}
 }
+
+#[il2cpp_ref_type("RPG.Client.CachedAssetLoader")]
+pub struct RPG_Client_CachedAssetLoader;
+impl RPG_Client_CachedAssetLoader {
+    #[il2cpp_method(name = "SyncLoadAsset", args = ["string", "System.Type", "bool"])]
+    pub fn SyncLoadAsset(asset_name: Il2CppString, ty: System_Type, flag: bool) -> UnityEngine_Object {}
+}
+
+#[il2cpp_ref_type("UnityEngine.Sprite")]
+pub struct UnityEngine_Sprite;
+impl UnityEngine_Sprite {
+	#[il2cpp_getter_property(property = "texture")]
+	pub fn get_texture(&self) -> UnityEngine_Texture2D {}
+}
+
+#[il2cpp_ref_type("UnityEngine.Object")]
+pub struct UnityEngine_Object;
+
+impl UnityEngine_Object {
+	#[il2cpp_getter_property(property = "name")]
+	pub fn get_name(&self) -> Il2CppString {}
+}
+
+#[il2cpp_value_type("UnityEngine.Rect")]
+pub struct UnityEngine_Rect {
+	pub x: f32,
+	pub y: f32,
+	pub width: f32,
+	pub height: f32,
+}
+#[il2cpp_ref_type("UnityEngine.Texture2D", base(UnityEngine_Texture))]
+pub struct UnityEngine_Texture2D;
+impl UnityEngine_Texture2D {
+	#[il2cpp_getter_property(property = "format")]
+	pub fn get_format(&self) -> i32 {}
+
+	#[il2cpp_getter_property(property = "isReadable")]
+	pub fn get_is_readable(&self) -> bool {}
+
+	#[il2cpp_method(name = "GetPixels32", args = [])]
+	pub fn get_pixels32(&self) -> Il2CppArray {}
+
+	// .ctor(int, int)
+	#[il2cpp_method(name = ".ctor", args = ["int", "int"])]
+	pub fn new(width: i32, height: i32) -> UnityEngine_Texture2D {}
+
+	#[il2cpp_method(name = "ReadPixels", args = ["UnityEngine.Rect", "int", "int"])]
+	pub fn read_pixels(&self, source: UnityEngine_Rect, destX: i32, destY: i32) {}
+
+	// Apply
+	#[il2cpp_method(name = "Apply", args = [])]
+	pub fn apply(&self) {}
+}
+
+#[il2cpp_ref_type("UnityEngine.Texture")]
+pub struct UnityEngine_Texture;
+impl UnityEngine_Texture {
+	#[il2cpp_getter_property(property = "width")]
+	pub fn get_width(&self) -> i32 {}
+
+	#[il2cpp_getter_property(property = "height")]
+	pub fn get_height(&self) -> i32 {}
+}
+
+#[il2cpp_value_type("UnityEngine.Color32")]
+pub struct UnityEngine_Color32 {
+	pub r: f32,
+	pub g: f32,
+	pub b: f32,
+	pub a: f32,
+}
+
+
+#[il2cpp_ref_type("RPG.GameCore.AvatarRowData")]
+pub struct RPG_GameCore_AvatarRowData;
+
+impl RPG_GameCore_AvatarRowData {
+	#[il2cpp_getter_property(property = "AvatarMiniIconPath")]
+	pub fn get_AvatarMiniIconPath(&self) -> Il2CppString {}
+}
+
+impl RPG_Client_AvatarData {
+	#[il2cpp_field(name = "_AvatarRowData")]
+	pub fn _AvatarRowData(&self) -> RPG_GameCore_AvatarRowData {}
+}
+
+#[il2cpp_ref_type("RPG.GameCore.AvatarExcelTable")]
+pub struct RPG_GameCore_AvatarExcelTable;
+impl RPG_GameCore_AvatarExcelTable {
+	#[il2cpp_method(name = "GetData", args = ["uint"])]
+	pub fn GetData(avatar_id: u32) -> RPG_GameCore_AvatarRow {}
+}
+
+#[il2cpp_ref_type("RPG.GameCore.AvatarRow")]
+pub struct RPG_GameCore_AvatarRow;
+impl RPG_GameCore_AvatarRow {
+	#[il2cpp_field(name = "AvatarSideIconPath")]
+	pub fn AvatarSideIconPath(&self) -> Il2CppString {}
+}
+
+
+#[il2cpp_ref_type("UnityEngine.RenderTexture")]
+pub struct UnityEngine_RenderTexture;
+impl UnityEngine_RenderTexture {
+	#[il2cpp_method(name = "GetTemporary", args = ["int", "int", "int", "UnityEngine.RenderTextureFormat", "UnityEngine.RenderTextureReadWrite"])]
+	pub fn GetTemporary(width: i32, height: i32, depthBuffer: i32, format: i32, readWrite: i32) -> UnityEngine_RenderTexture {}
+
+	#[il2cpp_method(name = "GetActive", args = [])]
+	pub fn GetActive() -> UnityEngine_RenderTexture {}
+
+	#[il2cpp_method(name = "set_active", args = ["UnityEngine.RenderTexture"])]
+	pub fn set_active(rt: UnityEngine_RenderTexture) {}
+
+	// ReleaseTemporary(UnityEngine.RenderTexture)
+	#[il2cpp_method(name = "ReleaseTemporary", args = ["UnityEngine.RenderTexture"])]
+	pub fn ReleaseTemporary(rt: UnityEngine_RenderTexture) {}
+
+	#[il2cpp_getter_property(property = "width")]
+	pub fn get_width(&self) -> i32 {}
+
+	#[il2cpp_getter_property(property = "height")]
+	pub fn get_height(&self) -> i32 {}
+}
+
+#[il2cpp_ref_type("UnityEngine.Graphics")]
+pub struct UnityEngine_Graphics;
+impl UnityEngine_Graphics {
+	#[il2cpp_method(name = "Blit", args = ["UnityEngine.Texture", "UnityEngine.RenderTexture"])]
+	pub fn Blit(source: UnityEngine_Texture2D, dest: UnityEngine_RenderTexture) {}
+}

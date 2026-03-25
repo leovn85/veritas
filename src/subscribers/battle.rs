@@ -22,7 +22,10 @@ use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::api::il2cpp_field_get_value_object;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
+use il2cpp_runtime::types::System_Type;
 use std::ffi::c_void;
+use std::fs;
+use std::io::BufWriter;
 use std::ptr::null;
 use std::sync::OnceLock;
 use il2cpp_runtime::api::il2cpp_field_get_offset;
@@ -43,6 +46,66 @@ struct ComboFieldOffsets {
 
 static COMBO_FIELD_OFFSETS: OnceLock<ComboFieldOffsets> = OnceLock::new();
 static ATTACK_TYPE_OFFSET: OnceLock<usize> = OnceLock::new();
+
+fn normalize_color_channel(channel: f32) -> u8 {
+    let value = if channel <= 1.0 {
+        (channel * 255.0).round()
+    } else {
+        channel.round()
+    };
+    value.clamp(0.0, 255.0) as u8
+}
+
+fn dump_avatar_pixels_to_png(
+    avatar_id: u32,
+    width: i32,
+    height: i32,
+    pixels: &[UnityEngine_Color32],
+) -> Result<()> {
+    if width <= 0 || height <= 0 {
+        return Err(anyhow!(
+            "Invalid texture dimensions for avatar {}: {}x{}",
+            avatar_id,
+            width,
+            height
+        ));
+    }
+
+    let width_u32 = width as u32;
+    let height_u32 = height as u32;
+    let expected_len = (width_u32 as usize) * (height_u32 as usize);
+    if pixels.len() != expected_len {
+        return Err(anyhow!(
+            "Pixel count mismatch for avatar {}: expected {}, got {}",
+            avatar_id,
+            expected_len,
+            pixels.len()
+        ));
+    }
+
+    let mut rgba = Vec::with_capacity(expected_len * 4);
+    for px in pixels {
+        rgba.push(normalize_color_channel(px.r));
+        rgba.push(normalize_color_channel(px.g));
+        rgba.push(normalize_color_channel(px.b));
+        rgba.push(normalize_color_channel(px.a));
+    }
+
+    let out_dir = std::env::current_dir()?.join("avatar_pixel_dumps");
+    fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join(format!("{}.png", avatar_id));
+
+    let file = fs::File::create(&out_path)?;
+    let writer = BufWriter::new(file);
+    let mut encoder = png::Encoder::new(writer, width_u32, height_u32);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut png_writer = encoder.write_header()?;
+    png_writer.write_image_data(&rgba)?;
+
+    log::info!("Saved avatar pixel dump: {}", out_path.display());
+    Ok(())
+}
 
 unsafe fn resolve_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffsets> {
     let field_iter_1: *const c_void = null();
@@ -641,6 +704,56 @@ fn on_set_lineup(
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
             }
+            // let avatar_data = helpers::get_avatar_data_from_id((*avatar_id).into())?;
+            // let row_data = avatar_data._AvatarRowData()?;
+            // let path = row_data.get_AvatarMiniIconPath()?;
+            let avatar_row = RPG_GameCore_AvatarExcelTable::GetData((*avatar_id).into())?;
+            log::info!("Support Avatar: {}, Icon Path: {}", (*avatar_id).0, avatar_row.AvatarSideIconPath()?.to_string());
+
+            use il2cpp_runtime::System_RuntimeType;
+            let type_name = UnityEngine_Sprite::ffi_name();
+            let runtime_type = System_RuntimeType::from_name(type_name)?;
+            let ty = runtime_type.get_il2cpp_type();
+            let type_handle = System_Type::get_type_from_handle(ty)?;
+
+            if type_handle.0.is_null() {
+                log::error!("Failed to get UnityEngine.Sprite type");
+                continue;
+            } else {
+                log::info!("Got Sprite Type");
+            }
+            log::info!("Sprite");
+            let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(avatar_row.AvatarSideIconPath()?, type_handle, false)?;
+            log::info!("Done");
+            // log::debug!("Sprite name: {}", sprite.get_name()?.to_string());
+            let sprite = UnityEngine_Sprite(sprite.0);
+            let tex = sprite.get_texture()?;
+            log::info!("tex");
+            let format = tex.get_format()?;
+            log::info!("format: {} {}", format, tex.get_is_readable()?);
+            
+            let render_tex = UnityEngine_RenderTexture::GetTemporary(tex.as_base().get_width()?, tex.as_base().get_height()?, 0, 8, 2)?;
+            UnityEngine_Graphics::Blit(tex, render_tex)?;
+            let prev = UnityEngine_RenderTexture::GetActive()?;
+            UnityEngine_RenderTexture::set_active(render_tex)?;
+            let readable_tex = UnityEngine_Texture2D::new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
+            readable_tex.read_pixels(UnityEngine_Rect { x: 0., y: 0., width: render_tex.get_width()? as f32, height: render_tex.get_height()? as f32 }, 0, 0)?;
+            readable_tex.apply()?;
+            UnityEngine_RenderTexture::set_active(prev)?;
+            UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
+
+            // let readable = readable_tex.get_is_readable()?;
+            // log::info!("Readable: {}", readable);
+            // let pixels = readable_tex.get_pixels32()?.to_vec::<UnityEngine_Color32>();
+
+            // if let Err(e) = dump_avatar_pixels_to_png(
+            //     (*avatar_id).into(),
+            //     readable_tex.get_width()?,
+            //     readable_tex.get_height()?,
+            //     &pixels,
+            // ) {
+            //     log::error!("Failed to dump avatar {} pixels: {}", (*avatar_id).0, e);
+            // }
         }
 
         // Unsure if you can have more than one support char
