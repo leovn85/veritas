@@ -1,4 +1,5 @@
 use crate::battle::BattleContext;
+use crate::get_module_handle;
 use crate::kreide::helpers::*;
 use crate::kreide::types::*;
 use crate::kreide::*;
@@ -22,6 +23,8 @@ use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::api::il2cpp_field_get_value_object;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
+use il2cpp_runtime::types::System_Enum;
+use il2cpp_runtime::types::System_Int32__Boxed;
 use il2cpp_runtime::types::System_Type;
 use std::ffi::c_void;
 use std::fs;
@@ -104,6 +107,16 @@ fn dump_avatar_pixels_to_png(
     png_writer.write_image_data(&rgba)?;
 
     log::info!("Saved avatar pixel dump: {}", out_path.display());
+    Ok(())
+}
+
+fn dump_avatar_png_bytes(avatar_id: u32, png_bytes: &[u8]) -> Result<()> {
+    let out_dir = std::env::current_dir()?.join("avatar_png_dumps");
+    fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join(format!("{}.png", avatar_id));
+    fs::write(&out_path, png_bytes)?;
+
+    log::info!("Saved avatar PNG dump: {}", out_path.display());
     Ok(())
 }
 
@@ -731,25 +744,56 @@ fn on_set_lineup(
             log::info!("tex");
             let format = tex.get_format()?;
             log::info!("format: {} {}", format, tex.get_is_readable()?);
-            
-            let render_tex = UnityEngine_RenderTexture::GetTemporary(tex.as_base().get_width()?, tex.as_base().get_height()?, 0, 8, 2)?;
+
+            let default_format = {
+                
+                let type_name = "UnityEngine.RenderTextureFormat";
+                let runtime_type = System_RuntimeType::from_name(type_name)?;
+                let ty = runtime_type.get_il2cpp_type();
+                let type_handle = System_Type::get_type_from_handle(ty)?;
+                let x = System_Int32__Boxed(System_Enum::parse(type_handle, Il2CppString::new("Default")?)?);
+                log::debug!("Default RenderTextureFormat value: {}", (*x).0);
+                (*x).0
+            };
+
+            let rw_format = {
+                let type_name = "UnityEngine.RenderTextureReadWrite";
+                let runtime_type = System_RuntimeType::from_name(type_name)?;
+                let ty = runtime_type.get_il2cpp_type();
+                let type_handle = System_Type::get_type_from_handle(ty)?;
+                let x = System_Int32__Boxed(System_Enum::parse(type_handle, Il2CppString::new("Linear")?)?);
+                log::debug!("Default RenderTextureReadWrite value: {}", (*x).0);
+                (*x).0
+            };
+
+            // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
+            let render_tex = UnityEngine_RenderTexture::GetTemporary(tex.as_base().get_width()?, tex.as_base().get_height()?, 0, default_format, rw_format)?;
             UnityEngine_Graphics::Blit(tex, render_tex)?;
             let prev = UnityEngine_RenderTexture::GetActive()?;
             UnityEngine_RenderTexture::set_active(render_tex)?;
-            let readable_tex = UnityEngine_Texture2D::new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
+            use il2cpp_runtime::api::il2cpp_object_new;
+            let readable_tex = UnityEngine_Texture2D(il2cpp_object_new((get_cached_class(UnityEngine_Texture2D::ffi_name())?)));
+            readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
             readable_tex.read_pixels(UnityEngine_Rect { x: 0., y: 0., width: render_tex.get_width()? as f32, height: render_tex.get_height()? as f32 }, 0, 0)?;
             readable_tex.apply()?;
             UnityEngine_RenderTexture::set_active(prev)?;
             UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
 
-            // let readable = readable_tex.get_is_readable()?;
-            // log::info!("Readable: {}", readable);
-            // let pixels = readable_tex.get_pixels32()?.to_vec::<UnityEngine_Color32>();
+            let readable = readable_tex.get_is_readable()?;
+            log::info!("Readable: {}", readable);
+            log::debug!("Width: {}, Height: {}", readable_tex.as_base().get_width()?, readable_tex.as_base().get_height()?);
+            let pixels = readable_tex.get_pixels32()?.to_vec::<UnityEngine_Color32>();
+            log::debug!("Pixel count: {}", pixels.len());
 
+            let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
+            let buffer = array.to_vec::<u8>();
+            if let Err(e) = dump_avatar_png_bytes((*avatar_id).into(), &buffer) {
+                log::error!("Failed to dump avatar {} PNG: {}", (*avatar_id).0, e);
+            }
             // if let Err(e) = dump_avatar_pixels_to_png(
             //     (*avatar_id).into(),
-            //     readable_tex.get_width()?,
-            //     readable_tex.get_height()?,
+            //     readable_tex.as_base().get_width()?,
+            //     readable_tex.as_base().get_height()?,
             //     &pixels,
             // ) {
             //     log::error!("Failed to dump avatar {} pixels: {}", (*avatar_id).0, e);

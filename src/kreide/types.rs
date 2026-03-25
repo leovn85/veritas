@@ -739,7 +739,7 @@ impl UnityEngine_Texture2D {
 
 	// .ctor(int, int)
 	#[il2cpp_method(name = ".ctor", args = ["int", "int"])]
-	pub fn new(width: i32, height: i32) -> UnityEngine_Texture2D {}
+	pub fn new(self, width: i32, height: i32) {}
 
 	#[il2cpp_method(name = "ReadPixels", args = ["UnityEngine.Rect", "int", "int"])]
 	pub fn read_pixels(&self, source: UnityEngine_Rect, destX: i32, destY: i32) {}
@@ -747,6 +747,13 @@ impl UnityEngine_Texture2D {
 	// Apply
 	#[il2cpp_method(name = "Apply", args = [])]
 	pub fn apply(&self) {}
+}
+
+#[il2cpp_ref_type("UnityEngine.ImageConversion")]
+pub struct UnityEngine_ImageConversion;
+impl UnityEngine_ImageConversion {
+	#[il2cpp_method(name = "EncodeToPNG", args = ["UnityEngine.Texture2D"])]
+	pub fn EncodeToPNG(tex: UnityEngine_Texture2D) -> Il2CppArray {}
 }
 
 #[il2cpp_ref_type("UnityEngine.Texture")]

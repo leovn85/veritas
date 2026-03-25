@@ -2,18 +2,21 @@ use crate::{get_module_handle, kreide, logging, overlay, server, subscribers};
 use ctor::ctor;
 use egui_notify::Toast;
 use il2cpp_runtime::api::ApiIndexTable;
+use windows::Win32::Foundation::{GetLastError, HMODULE, MAX_PATH};
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::ProcessStatus::{GetModuleInformation, MODULEINFO};
 use windows::Win32::System::Threading::GetCurrentProcess;
 use windows::core::w;
-use std::ffi::c_void;
-use std::io::Cursor;
+use std::ffi::{OsString, c_void};
+use std::io::{Cursor, Write};
+use std::os::windows::ffi::OsStringExt;
+use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::{
     thread::{self},
     time::Duration,
 };
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::LibraryLoader::{GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW, GetModuleHandleExA, GetModuleHandleW};
 use anyhow::{Context, Result, anyhow};
 
 #[derive(Clone, Debug)]
@@ -119,6 +122,55 @@ fn get_il2cpp_table_offset() -> Result<usize> {
             + module.0 as usize;
 
         let qword_addr = addr + 7 + *((addr + 3) as *const i32) as usize;
+
+        // let gameassembly_handle = get_module_handle(w!("GameAssembly"))?;
+        // let target_addr = gameassembly_handle + 0x1861420;
+        // let dump_path = std::env::current_dir()?.join("il2cpp_fn_addr_dump.txt");
+        // let mut dump_file = std::fs::File::create(&dump_path)
+        //     .with_context(|| format!("Failed to create dump file at {}", dump_path.display()))?;
+
+        // writeln!(
+        //     dump_file,
+        //     "index\tmod_path\trva\ttarget_addr"
+        // )?;
+
+        // for x in 0..300 {
+        //     let fn_addr = *((qword_addr.wrapping_add(x * 8)) as *const *const c_void) as usize;
+
+        //     let mut h_module = HMODULE::default();
+        //     GetModuleHandleExA(
+        //         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        //         windows::core::PCSTR(fn_addr as *const u8),
+        //         &mut h_module,
+        //     )
+        //     .with_context(|| format!("GetModuleFileNameW failed with error {:#?}", GetLastError()))?;
+
+        //     let mut lp_filename = [0u16; MAX_PATH as usize];
+        //     let len = GetModuleFileNameW(Some(h_module), &mut lp_filename) as usize;
+        //     let mod_path = if len == 0 {
+        //         Err(anyhow!(
+        //             "GetModuleFileNameW failed with error {:#?}",
+        //             GetLastError()
+        //         ))
+        //     } else {
+        //         Ok(PathBuf::from(OsString::from_wide(&lp_filename[..len])))
+        //     }?;
+
+        //     let module_base = h_module.0 as usize;
+        //     let rva = fn_addr.wrapping_sub(module_base);
+
+        //     writeln!(
+        //         dump_file,
+        //         "{}\t{}\t{:#x}\t{:#x}",
+        //         x,
+        //         mod_path.display(),
+        //         rva,
+        //         target_addr,
+        //     )?;
+        // }
+
+        // log::info!("Wrote il2cpp fn dump to {}", dump_path.display());
+
         Ok(qword_addr)
     }
 }
@@ -150,6 +202,7 @@ fn setup_subscribers() -> anyhow::Result<()> {
             il2cpp_method_get_name: 117,
             il2cpp_method_get_param_count: 123,
             il2cpp_method_get_param: 124,
+            il2cpp_object_new: 130,
             il2cpp_thread_attach: 154,
             il2cpp_type_get_name: 161,
             il2cpp_image_get_class_count: 169,
