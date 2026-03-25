@@ -14,6 +14,8 @@ use std::{
     time::Duration,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use anyhow::{Context, Result, anyhow};
+
 
 #[derive(Clone, Debug)]
 pub enum InitErrorInfo {
@@ -80,8 +82,6 @@ fn init() {
         Err(e) => log::error!("Overlay failed to initialize: {}", e),
     }
 }
-use anyhow::{Context, Result, anyhow};
-
 
 fn get_il2cpp_table_offset() -> Result<usize> {
     unsafe {
@@ -138,17 +138,21 @@ fn setup_subscribers() -> anyhow::Result<()> {
 
         let table = ApiIndexTable {
             il2cpp_assembly_get_image: 22,
+			il2cpp_class_get_fields: 31,
             il2cpp_class_get_methods: 35,
             il2cpp_class_get_name: 37,
             il2cpp_class_from_type: 49,
             il2cpp_domain_get: 63,
             il2cpp_domain_get_assemblies: 65,
             il2cpp_field_get_name: 73,
+            il2cpp_field_get_offset: 75,
+            il2cpp_field_get_type: 76,
             il2cpp_field_get_value_object: 77,
             il2cpp_method_get_return_type: 116,
             il2cpp_method_get_name: 117,
             il2cpp_method_get_param_count: 123,
             il2cpp_method_get_param: 124,
+			il2cpp_object_get_class: 127,
             il2cpp_thread_attach: 154,
             il2cpp_type_get_name: 161,
             il2cpp_image_get_class_count: 169,

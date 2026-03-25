@@ -14,8 +14,19 @@ use crate::models::misc::Team;
 use anyhow::Result;
 use anyhow::{Error, anyhow};
 use function_name::named;
+use il2cpp_runtime::Il2CppClass;
 use il2cpp_runtime::Il2CppObject;
+use il2cpp_runtime::api::il2cpp_class_get_fields;
+use il2cpp_runtime::api::il2cpp_field_get_name;
+use il2cpp_runtime::api::il2cpp_field_get_type;
+use il2cpp_runtime::api::il2cpp_field_get_value_object;
+use il2cpp_runtime::get_cached_class;
+use il2cpp_runtime::types::Il2CppString;
 use std::ffi::c_void;
+use std::ptr::null;
+use std::sync::{OnceLock, LazyLock, Mutex};
+use std::collections::HashSet;
+use il2cpp_runtime::api::il2cpp_field_get_offset;
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
@@ -23,12 +34,118 @@ unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f6
     Ok(fixpoint_to_raw(&*game_mode._ElapsedActionDelay_k__BackingField()?) * 10f64)
 }
 
+#[derive(Clone, Copy)]
+struct ComboFieldOffsets {
+    turn_based_ability_component: usize,
+    skill_character_component: usize,
+    ability_name_outer: usize,
+    ability_name_inner: usize,
+}
+
+static COMBO_FIELD_OFFSETS: OnceLock<ComboFieldOffsets> = OnceLock::new();
+static ATTACK_TYPE_OFFSET: OnceLock<usize> = OnceLock::new();
+
+unsafe fn resolve_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffsets> {
+    let field_iter_1: *const c_void = null();
+    let mut turn_based_ability_component_offset = None;
+    let mut skill_character_component_offset = None;
+    let mut ability_name_outer_offset = None;
+    let mut ability_name_inner_offset = None;
+
+    loop {
+        let field = il2cpp_class_get_fields(class, &field_iter_1);
+        if field.0.is_null() {
+            break;
+        }
+
+        let field_type = il2cpp_field_get_type(field);
+        if field_type.name() == RPG_GameCore_TurnBasedAbilityComponent::ffi_name() {
+            turn_based_ability_component_offset = Some(il2cpp_field_get_offset(field) as usize);
+        } else if field_type.name() == RPG_GameCore_SkillCharacterComponent::ffi_name() {
+            skill_character_component_offset = Some(il2cpp_field_get_offset(field) as usize);
+        } else if is_obfuscated_name(field_type.name()) {
+            ability_name_outer_offset = Some(il2cpp_field_get_offset(field) as usize);
+
+            let field_iter_2: *const c_void = null();
+            loop {
+                let field_inner = il2cpp_class_get_fields(field_type.class(), &field_iter_2);
+                if field_inner.0.is_null() {
+                    break;
+                }
+
+                let field_inner_type = il2cpp_field_get_type(field_inner);
+                if field_inner_type.name() == Il2CppString::ffi_name() {
+                    ability_name_inner_offset = Some(il2cpp_field_get_offset(field_inner) as usize);
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(ComboFieldOffsets {
+        turn_based_ability_component: turn_based_ability_component_offset
+            .context("Failed to find TurnBasedAbilityComponent field offset")?,
+        skill_character_component: skill_character_component_offset
+            .context("Failed to find SkillCharacterComponent field offset")?,
+        ability_name_outer: ability_name_outer_offset
+            .context("Failed to find obfuscated ability-name container field offset")?,
+        ability_name_inner: ability_name_inner_offset
+            .context("Failed to find Il2CppString ability-name field offset")?,
+    })
+}
+
+unsafe fn get_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffsets> {
+    if let Some(offsets) = COMBO_FIELD_OFFSETS.get() {
+        return Ok(*offsets);
+    }
+
+    let offsets = unsafe { resolve_combo_field_offsets(class)? };
+    let _ = COMBO_FIELD_OFFSETS.set(offsets);
+    COMBO_FIELD_OFFSETS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow!("Failed to cache on_combo field offsets"))
+}
+
+unsafe fn resolve_attack_type_offset(class: Il2CppClass) -> Result<usize> {
+    let field_iter: *const c_void = null();
+    loop {
+        //log::debug!("{}", class.name());
+        let field = il2cpp_class_get_fields(get_cached_class(class.name())?, &field_iter);
+        if field.0.is_null() {
+            break;
+        }
+
+        let field_type = il2cpp_field_get_type(field);
+        if field_type.name() == "RPG.GameCore.AttackType" {
+            return Ok(il2cpp_field_get_offset(field) as usize);
+        }
+    }
+
+    Err(anyhow!(
+        "Failed to find RPG.GameCore.AttackType field offset in damage info"
+    ))
+}
+
+unsafe fn get_attack_type_offset(class: Il2CppClass) -> Result<usize> {
+    if let Some(offset) = ATTACK_TYPE_OFFSET.get() {
+        return Ok(*offset);
+    }
+
+    let offset = unsafe { resolve_attack_type_offset(class)? };
+    let _ = ATTACK_TYPE_OFFSET.set(offset);
+    ATTACK_TYPE_OFFSET
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow!("Failed to cache attack type offset"))
+}
+
 // Called on any instance of damage
 #[named]
 fn on_damage(
     task_context: *const c_void,
     damage_by_attack_property: *const c_void,
-    damage_info: OHFGNONJNIG,
+    damage_info: *const c_void,
     attacker_ability: RPG_GameCore_TurnBasedAbilityComponent,
     defender_ability: RPG_GameCore_TurnBasedAbilityComponent,
     attacker: RPG_GameCore_GameEntity,
@@ -65,19 +182,30 @@ fn on_damage(
             RPG_GameCore_FixPoint { m_rawValue: 0 }
         }
     };
-
     safe_call!(unsafe {
         let mut event: Option<Result<Event>> = None;
         match *attacker._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
-                // E8 56 66 26 F9
-                // E8 Call instruction
-                // Relative offset to the start of the function being called
-                // Resolve to RVA of the function being called
-
-                let damage = fixpoint_to_raw(&*damage_info.KJLBAGPFBDC()?);
                 let hp_initial_raw = fixpoint_to_raw(&hp_initial);
                 let hp_final_raw = fixpoint_to_raw(&hp_final);
+                
+                // 1. Tính lượng máu thực tế mất để làm mồi (HP Delta Heuristic)
+                let hp_lost = hp_initial_raw - hp_final_raw;
+                let expected_damage = if hp_lost > 0.0 && hp_final_raw > 0.0 {
+                    Some(hp_lost)
+                } else {
+                    None
+                };
+
+                // 2. Lấy class của damage_info từ con trỏ
+                let damage_info_class = Il2CppClass(*(damage_info as *const *const c_void));
+
+                // 3. Nội suy Damage Offset tự động!
+                let damage = resolve_dynamic_damage(damage_info as usize, damage_info_class, expected_damage)
+                    .unwrap_or(if hp_lost > 0.0 { hp_lost } else { 0.0 });
+
+                if damage <= 0.0 { return Ok(()); }
+
                 let overkill_damage = if hp_initial_raw <= 0.0 {
                     damage
                 } else if hp_final_raw <= 0.0 {
@@ -85,7 +213,10 @@ fn on_damage(
                 } else {
                     0.0
                 };
-                let damage_type = damage_info.DOODKEMMAPK()?;
+
+                // Lấy Attack Type theo cách của tác giả (đã được cache rất an toàn)
+                let attack_type_offset = get_attack_type_offset(damage_info_class)?;
+                let damage_type = *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
                     if !attack_owner.0.is_null() {
@@ -104,7 +235,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: *damage_type as isize,
+                                damage_type: damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -122,7 +253,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: *damage_type as isize,
+                                damage_type: damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -143,7 +274,7 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: *damage_type as isize,
+                                damage_type: damage_type as isize,
                                 overkill_damage,
                             })),
                             Err(e) => {
@@ -160,9 +291,6 @@ fn on_damage(
                 }
             }
             _ => {}
-        }
-        if let Some(Ok(crate::models::events::Event::OnDamage(ref de))) = event {
-            crate::plugin::dispatch_on_damage(de.attacker.uid, de.damage as f64);
         }
         if let Some(event) = event {
             BattleContext::handle_event(event);
@@ -273,42 +401,103 @@ fn on_use_skill(
                             event = Some(e);
                         }
                         RPG_GameCore_EntityType::BattleEvent => {
-                            let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(
-                                instance._CharacterDataRef()?.0,
-                            );
+							log::trace!("[on_use_skill] Processing EntityType::BattleEvent...");
 
-                            let avatar_entity =
-                                battle_event_data_comp._SourceCaster_k__BackingField()?;
+							let r_type = il2cpp_runtime::System_RuntimeType::from_name("RPG.GameCore.BattleEventDataComponent")?;
+							let comp_base = entity.get_component(r_type)?;
 
-                            let e = match get_skill_from_skilldata(skill_data) {
-                                Ok(skill) => match get_avatar_from_entity(avatar_entity) {
-                                    Ok(avatar) => Ok(Event::OnUseSkill(OnUseSkillEvent {
-                                        avatar: Entity {
-                                            uid: avatar.id,
-                                            team: Team::Player,
-                                        },
-                                        skill,
-                                    })),
-                                    Err(e) => {
-                                        log::error!("Summon Event Error: {}", e);
-                                        Err(anyhow!(
-                                            "{} Summon Event Error: {}",
-                                            function_name!(),
-                                            e
-                                        ))
-                                    }
-                                },
-                                Err(e) => {
-                                    log::error!("Summon Skill Event Error: {}", e);
-                                    Err(anyhow!(
-                                        "{} Summon Skill Event Error: {}",
-                                        function_name!(),
-                                        e
-                                    ))
-                                }
-                            };
-                            event = Some(e);
-                        }
+							if comp_base.0.is_null() {
+								log::debug!("[on_use_skill] Skip because this Entity doesn't have BattleEventDataComponent.");
+								return Ok(());
+							}
+
+							let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(comp_base.0);
+							
+							let avatar_entity_result = battle_event_data_comp._SourceCaster_k__BackingField();
+							
+							match avatar_entity_result {
+								Ok(avatar_entity) => {
+									let e = match get_skill_from_skilldata(skill_data) {
+										Ok(skill) => match get_avatar_from_entity(avatar_entity) {
+											Ok(avatar) => Ok(Event::OnUseSkill(OnUseSkillEvent {
+												avatar: Entity {
+													uid: avatar.id,
+													team: Team::Player,
+												},
+												skill,
+											})),
+											Err(e) => {
+												log::error!("Summon Event Error: {}", e);
+												Err(anyhow!(
+													"{} Summon Event Error: {}",
+													function_name!(),
+													e
+												))
+											}
+										},
+										Err(e) => {
+											log::error!("Summon Skill Event Error: {}", e);
+											Err(anyhow!(
+												"{} Summon Skill Event Error: {}",
+												function_name!(),
+												e
+											))
+										}
+									};
+									event = Some(e);
+								},
+								Err(::il2cpp_runtime::errors::Il2CppError::NullPointerDereference) => {
+									let entity_type = match entity._EntityType() {
+										Ok(t) => *t as usize,
+										Err(_) => 0,
+									};
+									
+									let entity_id = match entity._RuntimeID_k__BackingField() {
+										Ok(v) => (*v).0,
+										Err(_) => 0,
+									};
+									
+									let skill_owner_id = match skill_owner._RuntimeID_k__BackingField() {
+										Ok(v) => (*v).0,
+										Err(_) => 0,
+									};
+
+									let mut skill_display_name = "Unknown System Skill".to_string();
+
+									if !skill_data.0.is_null() {
+										let skill_config_id = match skill_data.SkillConfigID() { Ok(id) => (*id).0, Err(_) => 0 };
+
+										if let Ok(row_data) = skill_data.RowData() {
+											if !row_data.0.is_null() {
+												unsafe {
+													let actual_class = il2cpp_runtime::api::il2cpp_object_get_class(row_data.0 as *mut _);
+													let class_name = il2cpp_runtime::utils::cstr_to_str(il2cpp_runtime::api::il2cpp_class_get_name(actual_class));
+
+													if class_name == "BattleEventSkillRowData" {
+														skill_display_name = format!("BattleEvent (ConfigID: {})", skill_config_id);
+													} else {
+														if let Ok(Ok(skill)) = microseh::try_seh(|| crate::kreide::helpers::get_skill_from_skilldata(skill_data)) {
+															skill_display_name = format!("'{}' (Type: {})", skill.name, skill.skill_type);
+														}
+													}
+												}
+											}
+										}
+									}
+
+									log::info!(
+										"[on_use_skill] Skip BattleEvent (System) | EntityID: {} | EntityType: {} | OwnerID: {} | Skill: {}",
+										entity_id,
+										entity_type,
+										skill_owner_id,
+										skill_display_name
+									);
+
+									return Ok(());
+								},
+								Err(e) => return Err(e.into()),
+							}
+						}
                         _ => log::warn!(
                             "Light entity type {} was not matched",
                             *skill_owner._EntityType()? as usize
@@ -324,20 +513,34 @@ fn on_use_skill(
         Ok(())
     });
 
-    crate::plugin::dispatch_on_use_skill(instance.0 as usize, skill_index, skill_extra_use_param);
-
     res
 }
 
 // Insert skills are out of turn automatic skills
 #[named]
-fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
+fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) {
     log::debug!(function_name!());
 
     ON_COMBO_Detour.call(instance, game_mode);
     safe_call!(unsafe {
-        let turn_based_ability_component = instance.MMALDILNGNJ()?;
-        let skill_character_component = instance.HHOKFHMEFFF()?;
+        let offsets = get_combo_field_offsets(Il2CppClass(*(instance as *const *const c_void)))?;
+
+        let turn_based_ability_component = RPG_GameCore_TurnBasedAbilityComponent(
+            *(instance.byte_offset(offsets.turn_based_ability_component as isize)
+                as *const *const c_void),
+        );
+        let skill_character_component = RPG_GameCore_SkillCharacterComponent(
+            *(instance.byte_offset(offsets.skill_character_component as isize)
+                as *const *const c_void),
+        );
+
+        let ability_name_container =
+            *(instance.byte_offset(offsets.ability_name_outer as isize) as *const *const c_void);
+        let ability_name = Il2CppString(
+            *(ability_name_container.byte_offset(offsets.ability_name_inner as isize)
+                as *const *const c_void),
+        );
+
         let entity = skill_character_component.as_base()._OwnerRef()?;
         let skill_owner = {
             let skill_owner = RPG_GameCore_AbilityStatic::get_actual_owner(entity)?;
@@ -351,7 +554,7 @@ fn on_combo(instance: FHPFLNJLDHP, game_mode: RPG_GameCore_TurnBasedGameMode) {
         let mut event: Option<Result<Event>> = None;
         match *skill_owner._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
-                let ability_name = (instance.BIACLKKBFMM()?).AANENKIIIMF()?;
+                // let ability_name = (instance.GCCFAPFGIAN()?).AANENKIIIMF()?;
 
                 let skill_name =
                     turn_based_ability_component.get_ability_mapped_skill(ability_name)?;
@@ -525,9 +728,7 @@ fn on_set_lineup(
         BattleContext::handle_event(event);
         Ok(())
     });
-    let res = ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5);
-    crate::plugin::dispatch_on_set_lineup(instance.0 as usize, a2.0 as usize);
-    res
+    ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5)
 }
 
 #[named]
@@ -544,7 +745,6 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
         })));
         Ok(())
     });
-    crate::plugin::dispatch_battle_begin(instance.0 as usize);
     res
 }
 
@@ -553,12 +753,6 @@ fn on_battle_end(instance: RPG_GameCore_TurnBasedGameMode) {
     log::debug!(function_name!());
     let res = ON_BATTLE_END_Detour.call(instance);
     BattleContext::handle_event(Ok(Event::OnBattleEnd));
-    let (total_damage, action_value, turn_count, cycle) = {
-        let ctx = BattleContext::get_instance();
-        (ctx.total_damage as f64, ctx.action_value, ctx.turn_count as u32, ctx.cycle)
-    };
-    crate::plugin::dispatch_battle_end();
-    crate::plugin::dispatch_battle_end_with_result(total_damage, action_value, turn_count, cycle);
     res
 }
 
@@ -570,6 +764,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
 
     safe_call!(unsafe {
         let turn_owner = instance._CurrentTurnActionEntity()?;
+
         match *turn_owner._EntityType()? {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(turn_owner) {
@@ -608,7 +803,6 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
         }
         Ok(())
     });
-    crate::plugin::dispatch_on_turn_begin(instance.0 as usize);
     res
 }
 
@@ -659,7 +853,7 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                             uid: avatar.id,
                             team: Team::Player,
                         },
-                        stat: Stat::HP(hp),
+                        stat: Stat::CurrentHP(hp),
                     })),
                     Err(e) => {
                         log::error!("Avatar Event Error: {}", e);
@@ -675,7 +869,7 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
-                    stat: Stat::HP(hp),
+                    stat: Stat::CurrentHP(hp),
                 })));
             }
             _ => {}
@@ -690,7 +884,7 @@ pub fn on_direct_change_hp(
     a1: i32,
     a2: RPG_GameCore_FixPoint,
     a3: RPG_GameCore_FixPoint,
-    a4: *const c_void
+    a4: *const c_void,
 ) {
     log::debug!(function_name!());
     let res = ON_DIRECT_CHANGE_HP_Detour.call(instance, a1, a2, a3, a4);
@@ -728,571 +922,230 @@ pub fn on_stat_change(
         let entity = instance.as_base()._OwnerRef()?;
 
         let stat = match property {
-            RPG_GameCore_AbilityProperty::MaxHP => Some(Stat::MaxHP(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::BaseHP => Some(Stat::BaseHP(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::HPAddedRatio => {
-                Some(Stat::HPAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HPDelta => {
-                Some(Stat::HPDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HPConvert => {
-                Some(Stat::HPConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DirtyHPDelta => {
-                Some(Stat::DirtyHPDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DirtyHPRatio => {
-                Some(Stat::DirtyHPRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::RallyHP => {
-                Some(Stat::RallyHP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::NegativeHP => {
-                Some(Stat::NegativeHP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CurrentHP => Some(Stat::HP(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::MaxSP => Some(Stat::MaxSP(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::CurrentSP => {
-                Some(Stat::CurrentSP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::MaxSpecialSP => {
-                Some(Stat::MaxSpecialSP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CurrentSpecialSP => {
-                Some(Stat::CurrentSpecialSP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AdditionalBP => {
-                Some(Stat::AdditionalBP(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Attack => Some(Stat::Attack(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::BaseAttack => {
-                Some(Stat::BaseAttack(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AttackAddedRatio => {
-                Some(Stat::AttackAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AttackDelta => {
-                Some(Stat::AttackDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AttackConvert => {
-                Some(Stat::AttackConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Defence => {
-                Some(Stat::Defense(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::BaseDefence => {
-                Some(Stat::BaseDefence(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DefenceAddedRatio => {
-                Some(Stat::DefenceAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DefenceDelta => {
-                Some(Stat::DefenceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DefenceConvert => {
-                Some(Stat::DefenceConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DefenceOverride => {
-                Some(Stat::DefenceOverride(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Level => Some(Stat::Level(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::Promotion => {
-                Some(Stat::Promotion(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Rank => Some(Stat::Rank(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::Speed => Some(Stat::Speed(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::BaseSpeed => {
-                Some(Stat::BaseSpeed(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SpeedAddedRatio => {
-                Some(Stat::SpeedAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SpeedDelta => {
-                Some(Stat::SpeedDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SpeedConvert => {
-                Some(Stat::SpeedConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SpeedOverride => {
-                Some(Stat::SpeedOverride(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ActionDelay => {
-                Some(Stat::AV(fixpoint_to_raw(&new_stat) * 10.0))
-            }
-            RPG_GameCore_AbilityProperty::ActionDelayAddedRatio => {
-                Some(Stat::ActionDelayAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ActionDelayAddAttenuation => {
-                Some(Stat::ActionDelayAddAttenuation(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::MaxStance => {
-                Some(Stat::MaxStance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CurrentStance => {
-                Some(Stat::CurrentStance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Level_FinalDamageAddedRatio => {
-                Some(Stat::Level_AllDamageAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio => {
-                Some(Stat::AllDamageTypeAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AllDamageReduce => {
-                Some(Stat::AllDamageReduce(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::DotDamageAddedRatio => {
-                Some(Stat::DotDamageAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FatigueRatio => {
-                Some(Stat::FatigueRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalChance => {
-                Some(Stat::CriticalChance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalChanceBase => {
-                Some(Stat::CriticalChanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalChanceConvert => {
-                Some(Stat::CriticalChanceConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalDamage => {
-                Some(Stat::CriticalDamage(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalDamageBase => {
-                Some(Stat::CriticalDamageBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalDamageConvert => {
-                Some(Stat::CriticalDamageConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::CriticalResistance => {
-                Some(Stat::CriticalResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalAddedRatio => {
-                Some(Stat::PhysicalAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireAddedRatio => {
-                Some(Stat::FireAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceAddedRatio => {
-                Some(Stat::IceAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderAddedRatio => {
-                Some(Stat::ThunderAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumAddedRatio => {
-                Some(Stat::QuantumAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryAddedRatio => {
-                Some(Stat::ImaginaryAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindAddedRatio => {
-                Some(Stat::WindAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalResistance => {
-                Some(Stat::PhysicalResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireResistance => {
-                Some(Stat::FireResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceResistance => {
-                Some(Stat::IceResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderResistance => {
-                Some(Stat::ThunderResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumResistance => {
-                Some(Stat::QuantumResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryResistance => {
-                Some(Stat::ImaginaryResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindResistance => {
-                Some(Stat::WindResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalResistanceBase => {
-                Some(Stat::PhysicalResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireResistanceBase => {
-                Some(Stat::FireResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceResistanceBase => {
-                Some(Stat::IceResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderResistanceBase => {
-                Some(Stat::ThunderResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumResistanceBase => {
-                Some(Stat::QuantumResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryResistanceBase => {
-                Some(Stat::ImaginaryResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindResistanceBase => {
-                Some(Stat::WindResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalResistanceDelta => {
-                Some(Stat::PhysicalResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireResistanceDelta => {
-                Some(Stat::FireResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceResistanceDelta => {
-                Some(Stat::IceResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderResistanceDelta => {
-                Some(Stat::ThunderResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumResistanceDelta => {
-                Some(Stat::QuantumResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryResistanceDelta => {
-                Some(Stat::ImaginaryResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindResistanceDelta => {
-                Some(Stat::WindResistanceDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AllDamageTypeResistance => {
-                Some(Stat::AllDamageTypeResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalPenetrate => {
-                Some(Stat::PhysicalPenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FirePenetrate => {
-                Some(Stat::FirePenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IcePenetrate => {
-                Some(Stat::IcePenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderPenetrate => {
-                Some(Stat::ThunderPenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumPenetrate => {
-                Some(Stat::QuantumPenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryPenetrate => {
-                Some(Stat::ImaginaryPenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindPenetrate => {
-                Some(Stat::WindPenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AllDamageTypePenetrate => {
-                Some(Stat::AllDamageTypePenetrate(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalTakenRatio => {
-                Some(Stat::PhysicalTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireTakenRatio => {
-                Some(Stat::FireTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceTakenRatio => {
-                Some(Stat::IceTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderTakenRatio => {
-                Some(Stat::ThunderTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumTakenRatio => {
-                Some(Stat::QuantumTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryTakenRatio => {
-                Some(Stat::ImaginaryTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindTakenRatio => {
-                Some(Stat::WindTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AllDamageTypeTakenRatio => {
-                Some(Stat::AllDamageTypeTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Monster_DamageTakenRatio => {
-                Some(Stat::Monster_DamageTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalAbsorb => {
-                Some(Stat::PhysicalAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::FireAbsorb => {
-                Some(Stat::FireAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceAbsorb => {
-                Some(Stat::IceAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderAbsorb => {
-                Some(Stat::ThunderAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumAbsorb => {
-                Some(Stat::QuantumAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ImaginaryAbsorb => {
-                Some(Stat::ImaginaryAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::WindAbsorb => {
-                Some(Stat::WindAbsorb(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::MinimumFatigueRatio => {
-                Some(Stat::MinimumFatigueRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ForceStanceBreakRatio => {
-                Some(Stat::ForceStanceBreakRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StanceBreakAddedRatio => {
-                Some(Stat::StanceBreakAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StanceBreakResistance => {
-                Some(Stat::StanceBreakResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StanceBreakTakenRatio => {
-                Some(Stat::StanceBreakTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalStanceBreakTakenRatio => Some(
-                Stat::PhysicalStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::FireStanceBreakTakenRatio => {
-                Some(Stat::FireStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceStanceBreakTakenRatio => {
-                Some(Stat::IceStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderStanceBreakTakenRatio => Some(
-                Stat::ThunderStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::WindStanceBreakTakenRatio => {
-                Some(Stat::WindStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumStanceBreakTakenRatio => Some(
-                Stat::QuantumStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ImaginaryStanceBreakTakenRatio => Some(
-                Stat::ImaginaryStanceBreakTakenRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::StanceWeakAddedRatio => {
-                Some(Stat::StanceWeakAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StanceDefaultAddedRatio => {
-                Some(Stat::StanceDefaultAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HealRatio => {
-                Some(Stat::HealRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HealRatioBase => {
-                Some(Stat::HealRatioBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HealRatioConvert => {
-                Some(Stat::HealRatioConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::HealTakenRatio => {
-                Some(Stat::HealTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Shield => Some(Stat::Shield(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::MaxShield => {
-                Some(Stat::MaxShield(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ShieldAddedRatio => {
-                Some(Stat::ShieldAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ShieldTakenRatio => {
-                Some(Stat::ShieldTakenRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusProbability => {
-                Some(Stat::StatusProbability(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusProbabilityBase => {
-                Some(Stat::StatusProbabilityBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusProbabilityConvert => {
-                Some(Stat::StatusProbabilityConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusResistance => {
-                Some(Stat::StatusResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusResistanceBase => {
-                Some(Stat::StatusResistanceBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::StatusResistanceConvert => {
-                Some(Stat::StatusResistanceConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SPRatio => {
-                Some(Stat::SPRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SPRatioBase => {
-                Some(Stat::SPRatioBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SPRatioConvert => {
-                Some(Stat::SPRatioConvert(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::SPRatioOverride => {
-                Some(Stat::SPRatioOverride(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::BreakDamageAddedRatio => {
-                Some(Stat::BreakDamageAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::BreakDamageAddedRatioBase => {
-                Some(Stat::BreakDamageAddedRatioBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::BreakDamageAddedRatioConvert => Some(
-                Stat::BreakDamageAddedRatioConvert(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::BreakDamageExtraAddedRatio => {
-                Some(Stat::BreakDamageExtraAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::PhysicalStanceBreakResistance => Some(
-                Stat::PhysicalStanceBreakResistance(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::FireStanceBreakResistance => {
-                Some(Stat::FireStanceBreakResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::IceStanceBreakResistance => {
-                Some(Stat::IceStanceBreakResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ThunderStanceBreakResistance => Some(
-                Stat::ThunderStanceBreakResistance(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::WindStanceBreakResistance => {
-                Some(Stat::WindStanceBreakResistance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::QuantumStanceBreakResistance => Some(
-                Stat::QuantumStanceBreakResistance(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ImaginaryStanceBreakResistance => Some(
-                Stat::ImaginaryStanceBreakResistance(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::AggroBase => {
-                Some(Stat::AggroBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AggroAddedRatio => {
-                Some(Stat::AggroAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AggroDelta => {
-                Some(Stat::AggroDelta(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::RelicValueExtraAdditionRatio => Some(
-                Stat::RelicValueExtraAdditionRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::EquipValueExtraAdditionRatio => Some(
-                Stat::EquipValueExtraAdditionRatio(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::EquipExtraRank => {
-                Some(Stat::EquipExtraRank(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::AvatarExtraRank => {
-                Some(Stat::AvatarExtraRank(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::Combo => Some(Stat::Combo(fixpoint_to_raw(&new_stat))),
-            RPG_GameCore_AbilityProperty::NormalBattleCount => {
-                Some(Stat::NormalBattleCount(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio1 => {
-                Some(Stat::ExtraAttackAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio2 => {
-                Some(Stat::ExtraAttackAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio3 => {
-                Some(Stat::ExtraAttackAddedRatio3(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio4 => {
-                Some(Stat::ExtraAttackAddedRatio4(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio1 => {
-                Some(Stat::ExtraDefenceAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio2 => {
-                Some(Stat::ExtraDefenceAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio3 => {
-                Some(Stat::ExtraDefenceAddedRatio3(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio4 => {
-                Some(Stat::ExtraDefenceAddedRatio4(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraHPAddedRatio1 => {
-                Some(Stat::ExtraHPAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraHPAddedRatio2 => {
-                Some(Stat::ExtraHPAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraHPAddedRatio3 => {
-                Some(Stat::ExtraHPAddedRatio3(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraHPAddedRatio4 => {
-                Some(Stat::ExtraHPAddedRatio4(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraHealAddedRatio => {
-                Some(Stat::ExtraHealAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio1 => Some(
-                Stat::ExtraAllDamageTypeAddedRatio1(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio2 => Some(
-                Stat::ExtraAllDamageTypeAddedRatio2(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio3 => Some(
-                Stat::ExtraAllDamageTypeAddedRatio3(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio4 => Some(
-                Stat::ExtraAllDamageTypeAddedRatio4(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraAllDamageReduce => {
-                Some(Stat::ExtraAllDamageReduce(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraShieldAddedRatio => {
-                Some(Stat::ExtraShieldAddedRatio(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio1 => {
-                Some(Stat::ExtraSpeedAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio2 => {
-                Some(Stat::ExtraSpeedAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio3 => {
-                Some(Stat::ExtraSpeedAddedRatio3(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio4 => {
-                Some(Stat::ExtraSpeedAddedRatio4(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraLuckChance => {
-                Some(Stat::ExtraLuckChance(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraLuckDamage => {
-                Some(Stat::ExtraLuckDamage(fixpoint_to_raw(&new_stat)))
-            }
-            // RPG_GameCore_AbilityProperty::ExtraFrontPower => {
-            //     Some(Stat::ExtraFrontPower(fixpoint_raw_to_raw(&new_stat)))
-            // }
-            RPG_GameCore_AbilityProperty::ExtraFrontPowerBase => {
-                Some(Stat::ExtraFrontPowerBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraFrontPowerAddedRatio1 => {
-                Some(Stat::ExtraFrontPowerAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraFrontPowerAddedRatio2 => {
-                Some(Stat::ExtraFrontPowerAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            // RPG_GameCore_AbilityProperty::ExtraBackPower => {
-            //     Some(Stat::ExtraBackPower(fixpoint_raw_to_raw(&new_stat)))
-            // }
-            RPG_GameCore_AbilityProperty::ExtraBackPowerBase => {
-                Some(Stat::ExtraBackPowerBase(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraBackPowerAddedRatio1 => {
-                Some(Stat::ExtraBackPowerAddedRatio1(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraBackPowerAddedRatio2 => {
-                Some(Stat::ExtraBackPowerAddedRatio2(fixpoint_to_raw(&new_stat)))
-            }
-            RPG_GameCore_AbilityProperty::ExtraUltraDamageAddedRatio1 => Some(
-                Stat::ExtraUltraDamageAddedRatio1(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraSkillDamageAddedRatio1 => Some(
-                Stat::ExtraSkillDamageAddedRatio1(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraNormalDamageAddedRatio1 => Some(
-                Stat::ExtraNormalDamageAddedRatio1(fixpoint_to_raw(&new_stat)),
-            ),
-            RPG_GameCore_AbilityProperty::ExtraInsertDamageAddedRatio1 => Some(
-                Stat::ExtraInsertDamageAddedRatio1(fixpoint_to_raw(&new_stat)),
-            ),
-            // RPG_GameCore_AbilityProperty::ExtraDOTDamageAddedRatio1 => {
-            //     Some(Stat::ExtraDOTDamageAddedRatio1(fixpoint_to_raw(&new_stat)))
-            // }
+            RPG_GameCore_AbilityProperty::Unknow => Some(Stat::Unknow(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxHP => Some(Stat::MaxHP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BaseHP => Some(Stat::BaseHP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HPAddedRatio => Some(Stat::HPAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HPDelta => Some(Stat::HPDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HPConvert => Some(Stat::HPConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DirtyHPDelta => Some(Stat::DirtyHPDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DirtyHPRatio => Some(Stat::DirtyHPRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::RallyHP => Some(Stat::RallyHP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::NegativeHP => Some(Stat::NegativeHP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CurrentHP => Some(Stat::CurrentHP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxSP => Some(Stat::MaxSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CurrentSP => Some(Stat::CurrentSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxSpecialSP => Some(Stat::MaxSpecialSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CurrentSpecialSP => Some(Stat::CurrentSpecialSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxExtraSpecialSP => Some(Stat::MaxExtraSpecialSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CurExtraSpecialSP => Some(Stat::CurExtraSpecialSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AdditionalBP => Some(Stat::AdditionalBP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Attack => Some(Stat::Attack(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BaseAttack => Some(Stat::BaseAttack(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AttackAddedRatio => Some(Stat::AttackAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AttackDelta => Some(Stat::AttackDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AttackConvert => Some(Stat::AttackConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Defence => Some(Stat::Defence(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BaseDefence => Some(Stat::BaseDefence(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DefenceAddedRatio => Some(Stat::DefenceAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DefenceDelta => Some(Stat::DefenceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DefenceConvert => Some(Stat::DefenceConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DefenceOverride => Some(Stat::DefenceOverride(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Level => Some(Stat::Level(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Promotion => Some(Stat::Promotion(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Rank => Some(Stat::Rank(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Speed => Some(Stat::Speed(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BaseSpeed => Some(Stat::BaseSpeed(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SpeedAddedRatio => Some(Stat::SpeedAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SpeedDelta => Some(Stat::SpeedDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SpeedConvert => Some(Stat::SpeedConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SpeedOverride => Some(Stat::SpeedOverride(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ActionDelay => Some(Stat::ActionDelay(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ActionDelayAddedRatio => Some(Stat::ActionDelayAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ActionDelayAddAttenuation => Some(Stat::ActionDelayAddAttenuation(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxStance => Some(Stat::MaxStance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CurrentStance => Some(Stat::CurrentStance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Level_FinalDamageAddedRatio => Some(Stat::Level_FinalDamageAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio => Some(Stat::AllDamageTypeAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageReduce => Some(Stat::AllDamageReduce(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BaseDamageMultiRatio => Some(Stat::BaseDamageMultiRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::DotDamageAddedRatio => Some(Stat::DotDamageAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FatigueRatio => Some(Stat::FatigueRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalChance => Some(Stat::CriticalChance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalChanceBase => Some(Stat::CriticalChanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalChanceConvert => Some(Stat::CriticalChanceConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalDamage => Some(Stat::CriticalDamage(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalDamageBase => Some(Stat::CriticalDamageBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalDamageConvert => Some(Stat::CriticalDamageConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::CriticalResistance => Some(Stat::CriticalResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalAddedRatio => Some(Stat::PhysicalAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireAddedRatio => Some(Stat::FireAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceAddedRatio => Some(Stat::IceAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderAddedRatio => Some(Stat::ThunderAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumAddedRatio => Some(Stat::QuantumAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryAddedRatio => Some(Stat::ImaginaryAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindAddedRatio => Some(Stat::WindAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalResistance => Some(Stat::PhysicalResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireResistance => Some(Stat::FireResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceResistance => Some(Stat::IceResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderResistance => Some(Stat::ThunderResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumResistance => Some(Stat::QuantumResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryResistance => Some(Stat::ImaginaryResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindResistance => Some(Stat::WindResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalResistanceBase => Some(Stat::PhysicalResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireResistanceBase => Some(Stat::FireResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceResistanceBase => Some(Stat::IceResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderResistanceBase => Some(Stat::ThunderResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumResistanceBase => Some(Stat::QuantumResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryResistanceBase => Some(Stat::ImaginaryResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindResistanceBase => Some(Stat::WindResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageTypeResistanceOverrideBase => Some(Stat::AllDamageTypeResistanceOverrideBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalResistanceDelta => Some(Stat::PhysicalResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireResistanceDelta => Some(Stat::FireResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceResistanceDelta => Some(Stat::IceResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderResistanceDelta => Some(Stat::ThunderResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumResistanceDelta => Some(Stat::QuantumResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryResistanceDelta => Some(Stat::ImaginaryResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindResistanceDelta => Some(Stat::WindResistanceDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageTypeResistance => Some(Stat::AllDamageTypeResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalPenetrate => Some(Stat::PhysicalPenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FirePenetrate => Some(Stat::FirePenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IcePenetrate => Some(Stat::IcePenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderPenetrate => Some(Stat::ThunderPenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumPenetrate => Some(Stat::QuantumPenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryPenetrate => Some(Stat::ImaginaryPenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindPenetrate => Some(Stat::WindPenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageTypePenetrate => Some(Stat::AllDamageTypePenetrate(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalTakenRatio => Some(Stat::PhysicalTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireTakenRatio => Some(Stat::FireTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceTakenRatio => Some(Stat::IceTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderTakenRatio => Some(Stat::ThunderTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumTakenRatio => Some(Stat::QuantumTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryTakenRatio => Some(Stat::ImaginaryTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindTakenRatio => Some(Stat::WindTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AllDamageTypeTakenRatio => Some(Stat::AllDamageTypeTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Monster_DamageTakenRatio => Some(Stat::Monster_DamageTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalAbsorb => Some(Stat::PhysicalAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireAbsorb => Some(Stat::FireAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceAbsorb => Some(Stat::IceAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderAbsorb => Some(Stat::ThunderAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumAbsorb => Some(Stat::QuantumAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryAbsorb => Some(Stat::ImaginaryAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindAbsorb => Some(Stat::WindAbsorb(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MinimumFatigueRatio => Some(Stat::MinimumFatigueRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ForceStanceBreakRatio => Some(Stat::ForceStanceBreakRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StanceBreakAddedRatio => Some(Stat::StanceBreakAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StanceBreakResistance => Some(Stat::StanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StanceBreakTakenRatio => Some(Stat::StanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalStanceBreakTakenRatio => Some(Stat::PhysicalStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireStanceBreakTakenRatio => Some(Stat::FireStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceStanceBreakTakenRatio => Some(Stat::IceStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderStanceBreakTakenRatio => Some(Stat::ThunderStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindStanceBreakTakenRatio => Some(Stat::WindStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumStanceBreakTakenRatio => Some(Stat::QuantumStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryStanceBreakTakenRatio => Some(Stat::ImaginaryStanceBreakTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StanceWeakAddedRatio => Some(Stat::StanceWeakAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StanceDefaultAddedRatio => Some(Stat::StanceDefaultAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HealRatio => Some(Stat::HealRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HealRatioBase => Some(Stat::HealRatioBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HealRatioConvert => Some(Stat::HealRatioConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::HealTakenRatio => Some(Stat::HealTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Shield => Some(Stat::Shield(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::MaxShield => Some(Stat::MaxShield(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ShieldAddedRatio => Some(Stat::ShieldAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ShieldTakenRatio => Some(Stat::ShieldTakenRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusProbability => Some(Stat::StatusProbability(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusProbabilityBase => Some(Stat::StatusProbabilityBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusProbabilityConvert => Some(Stat::StatusProbabilityConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusResistance => Some(Stat::StatusResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusResistanceBase => Some(Stat::StatusResistanceBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::StatusResistanceConvert => Some(Stat::StatusResistanceConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SPRatio => Some(Stat::SPRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SPRatioBase => Some(Stat::SPRatioBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SPRatioConvert => Some(Stat::SPRatioConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::SPRatioOverride => Some(Stat::SPRatioOverride(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BreakDamageAddedRatio => Some(Stat::BreakDamageAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BreakDamageAddedRatioBase => Some(Stat::BreakDamageAddedRatioBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BreakDamageAddedRatioConvert => Some(Stat::BreakDamageAddedRatioConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::BreakDamageExtraAddedRatio => Some(Stat::BreakDamageExtraAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ElationDamageAddedRatio => Some(Stat::ElationDamageAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ElationDamageAddedRatioBase => Some(Stat::ElationDamageAddedRatioBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ElationDamageAddedRatioConvert => Some(Stat::ElationDamageAddedRatioConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ElationDamageExtraAddedRatio => Some(Stat::ElationDamageExtraAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ElationEchoPoint => Some(Stat::ElationEchoPoint(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::PhysicalStanceBreakResistance => Some(Stat::PhysicalStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::FireStanceBreakResistance => Some(Stat::FireStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::IceStanceBreakResistance => Some(Stat::IceStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ThunderStanceBreakResistance => Some(Stat::ThunderStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::WindStanceBreakResistance => Some(Stat::WindStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::QuantumStanceBreakResistance => Some(Stat::QuantumStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ImaginaryStanceBreakResistance => Some(Stat::ImaginaryStanceBreakResistance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AggroBase => Some(Stat::AggroBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AggroAddedRatio => Some(Stat::AggroAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AggroDelta => Some(Stat::AggroDelta(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::RelicValueExtraAdditionRatio => Some(Stat::RelicValueExtraAdditionRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::EquipValueExtraAdditionRatio => Some(Stat::EquipValueExtraAdditionRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::EquipExtraRank => Some(Stat::EquipExtraRank(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::AvatarExtraRank => Some(Stat::AvatarExtraRank(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::Combo => Some(Stat::Combo(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::NormalBattleCount => Some(Stat::NormalBattleCount(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio1 => Some(Stat::ExtraAttackAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio2 => Some(Stat::ExtraAttackAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio3 => Some(Stat::ExtraAttackAddedRatio3(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAttackAddedRatio4 => Some(Stat::ExtraAttackAddedRatio4(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio1 => Some(Stat::ExtraDefenceAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio2 => Some(Stat::ExtraDefenceAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio3 => Some(Stat::ExtraDefenceAddedRatio3(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraDefenceAddedRatio4 => Some(Stat::ExtraDefenceAddedRatio4(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHPAddedRatio1 => Some(Stat::ExtraHPAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHPAddedRatio2 => Some(Stat::ExtraHPAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHPAddedRatio3 => Some(Stat::ExtraHPAddedRatio3(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHPAddedRatio4 => Some(Stat::ExtraHPAddedRatio4(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHealAddedRatio => Some(Stat::ExtraHealAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio1 => Some(Stat::ExtraAllDamageTypeAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio2 => Some(Stat::ExtraAllDamageTypeAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio3 => Some(Stat::ExtraAllDamageTypeAddedRatio3(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio4 => Some(Stat::ExtraAllDamageTypeAddedRatio4(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageTypeAddedRatio5 => Some(Stat::ExtraAllDamageTypeAddedRatio5(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageReduce => Some(Stat::ExtraAllDamageReduce(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraShieldAddedRatio => Some(Stat::ExtraShieldAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio1 => Some(Stat::ExtraSpeedAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio2 => Some(Stat::ExtraSpeedAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio3 => Some(Stat::ExtraSpeedAddedRatio3(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraSpeedAddedRatio4 => Some(Stat::ExtraSpeedAddedRatio4(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraLuckChance => Some(Stat::ExtraLuckChance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraLuckDamage => Some(Stat::ExtraLuckDamage(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalFrontPower => Some(Stat::ExtraTotalFrontPower(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraFrontPowerBase => Some(Stat::ExtraFrontPowerBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraFrontPowerAddedRatio1 => Some(Stat::ExtraFrontPowerAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraFrontPowerAddedRatio2 => Some(Stat::ExtraFrontPowerAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalBackPower => Some(Stat::ExtraTotalBackPower(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraBackPowerBase => Some(Stat::ExtraBackPowerBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraBackPowerAddedRatio1 => Some(Stat::ExtraBackPowerAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraBackPowerAddedRatio2 => Some(Stat::ExtraBackPowerAddedRatio2(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraUltraDamageAddedRatio1 => Some(Stat::ExtraUltraDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraSkillDamageAddedRatio1 => Some(Stat::ExtraSkillDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraNormalDamageAddedRatio1 => Some(Stat::ExtraNormalDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraInsertDamageAddedRatio1 => Some(Stat::ExtraInsertDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraDOTDamageAddedRatio1 => Some(Stat::ExtraDOTDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraElementDamageAddedRatio1 => Some(Stat::ExtraElementDamageAddedRatio1(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHealBase => Some(Stat::ExtraHealBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraShieldBase => Some(Stat::ExtraShieldBase(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalShieldPower => Some(Stat::ExtraTotalShieldPower(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalHealPower => Some(Stat::ExtraTotalHealPower(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalSpeedAddedRatio => Some(Stat::ExtraTotalSpeedAddedRatio(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraInitSP => Some(Stat::ExtraInitSP(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalLuckDamage => Some(Stat::ExtraTotalLuckDamage(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalLuckChance => Some(Stat::ExtraTotalLuckChance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraBackPowerConvert => Some(Stat::ExtraBackPowerConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraFrontPowerConvert => Some(Stat::ExtraFrontPowerConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraLuckDamageConvert => Some(Stat::ExtraLuckDamageConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraLuckChanceConvert => Some(Stat::ExtraLuckChanceConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraHealConvert => Some(Stat::ExtraHealConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraShieldConvert => Some(Stat::ExtraShieldConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraAllDamageReduceConvert => Some(Stat::ExtraAllDamageReduceConvert(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraQuantumResonance => Some(Stat::ExtraQuantumResonance(fixpoint_to_raw(&new_stat))),
+			RPG_GameCore_AbilityProperty::ExtraTotalAllDamageReduce => Some(Stat::ExtraTotalAllDamageReduce(fixpoint_to_raw(&new_stat))),
             _ => None,
         };
 
@@ -1309,7 +1162,6 @@ pub fn on_stat_change(
                         })),
                         Err(e) => {
                             log::error!("Avatar Event Error: {}", e);
-
                             Err(anyhow!("{} Avatar Event Error: {}", function_name!(), e))
                         }
                     };
@@ -1331,15 +1183,80 @@ pub fn on_stat_change(
     });
     res
 }
+use anyhow::Context;
+use std::io::Cursor;
+use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+use windows::Win32::System::Threading::GetCurrentProcess;
+
+#[derive(Clone, Copy)]
+struct EntityDefeatedOffsets {
+    defeated_entity: usize,
+    killer_entity: usize,
+}
+
+static ENTITY_DEFEATED_OFFSETS: OnceLock<EntityDefeatedOffsets> = OnceLock::new();
+
+unsafe fn resolve_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
+    // 1. Tìm hàm _MakeLimboEntityDie để moi ra Class Event
+    let game_mode_class = get_cached_class("RPG.GameCore.TurnBasedGameMode")?;
+    let limbo_method = game_mode_class.find_method("_MakeLimboEntityDie", vec!["*"])?;
+    
+    // Tham số đầu tiên chính là Class EntityDefeatedEvent bị obfuscate
+    let event_class = limbo_method.arg(0).class();
+
+    let mut game_entity_offsets = Vec::new();
+    let field_iter: *const c_void = null();
+    
+    // 2. Quét toàn bộ field của Class này
+    loop {
+        let field = il2cpp_class_get_fields(event_class, &field_iter);
+        if field.0.is_null() { break; }
+
+        let f_type = il2cpp_field_get_type(field);
+        
+        // 3. Tìm các field chứa kiểu dữ liệu "GameEntity"
+        if f_type.name() == "RPG.GameCore.GameEntity" {
+            game_entity_offsets.push(il2cpp_field_get_offset(field) as usize);
+        }
+    }
+
+    // 4. Nếu tìm đủ 2 field, field có offset nhỏ hơn (ví dụ 0x10) thường là Killer, lớn hơn (0x18) là Victim
+    if game_entity_offsets.len() >= 2 {
+        game_entity_offsets.sort(); // Đảm bảo thứ tự tăng dần
+        Ok(EntityDefeatedOffsets {
+            killer_entity: game_entity_offsets[0],
+            defeated_entity: game_entity_offsets[1],
+        })
+    } else {
+        Err(anyhow!("Không tìm đủ 2 field GameEntity trong EntityDefeatedEvent. Bị đổi cấu trúc?"))
+    }
+}
+
+unsafe fn get_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
+    if let Some(offsets) = ENTITY_DEFEATED_OFFSETS.get() {
+        return Ok(*offsets);
+    }
+
+    let offsets = unsafe { resolve_entity_defeated_offsets()? };
+    let _ = ENTITY_DEFEATED_OFFSETS.set(offsets);
+    ENTITY_DEFEATED_OFFSETS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow!("Failed to cache entity defeated offsets"))
+}
 
 #[named]
-pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: FGFFLOAEKKA) -> bool {
+pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: *const c_void) -> bool {
     log::debug!(function_name!());
     let res = ON_ENTITY_DEFEATED_Detour.call(instance, a2);
+
     safe_call!(unsafe {
-        // update; need to verify correct entity
-        let defeated_entity = a2.LFGAFLLHGCO()?;
-        let killer_entity = a2.GHCPGPKNBGF()?;
+        let offsets = get_entity_defeated_offsets()?;
+
+        let defeated_entity =
+            *(a2.byte_offset(offsets.defeated_entity as isize) as *const RPG_GameCore_GameEntity);
+        let killer_entity =
+            *(a2.byte_offset(offsets.killer_entity as isize) as *const RPG_GameCore_GameEntity);
 
         if res && *defeated_entity._AliveState()? == RPG_GameCore_AliveState::Dying {
             if *killer_entity._EntityType()? == RPG_GameCore_EntityType::Avatar {
@@ -1431,13 +1348,12 @@ pub fn on_initialize_enemy(
         })));
         Ok(())
     });
-    crate::plugin::dispatch_on_init_enemy(instance.0 as usize);
     res
 }
 
 retour::static_detour! {
-    static ON_DAMAGE_Detour: fn(*const c_void, *const c_void, OHFGNONJNIG, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, bool, *const c_void) -> bool;
-    static ON_COMBO_Detour: fn(FHPFLNJLDHP, RPG_GameCore_TurnBasedGameMode);
+    static ON_DAMAGE_Detour: fn(*const c_void, *const c_void, *const c_void, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, bool, *const c_void) -> bool;
+    static ON_COMBO_Detour: fn(*const c_void, RPG_GameCore_TurnBasedGameMode);
     static ON_USE_SKILL_Detour: fn(RPG_GameCore_SkillCharacterComponent, i32, *const c_void, bool, *const c_void, *const c_void, i32) -> bool;
     static ON_SET_LINEUP_Detour: fn(RPG_GameCore_BattleInstance, *const c_void, RPG_GameCore_BattleLineupData, i32, u32, bool);
     static ON_BATTLE_BEGIN_Detour: fn(RPG_GameCore_TurnBasedGameMode);
@@ -1449,18 +1365,20 @@ retour::static_detour! {
     static ON_DIRECT_CHANGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, *const c_void);
     static ON_DIRECT_DAMAGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, i32, *const c_void, RPG_GameCore_FixPoint, *const c_void);
     static ON_STAT_CHANGE_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_AbilityProperty, i32, RPG_GameCore_FixPoint, *const c_void) -> bool;
-    static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, FGFFLOAEKKA) -> bool;
+    static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, *const c_void) -> bool;
     static ON_UPDATE_TEAM_FORMATION_Detour: fn(RPG_GameCore_TeamFormationComponent);
     static ON_INITIALIZE_ENEMY_Detour: fn(RPG_GameCore_MonsterDataComponent, RPG_GameCore_TurnBasedAbilityComponent);
 }
 
 pub fn subscribe() -> Result<()> {
     unsafe {
-        subscribe_function!(
-            ON_DAMAGE_Detour,
-            EBKLINDPMKM::get_class_static()?
-                .find_method(
-                    "LCKBMHEANKL",
+        let mut combo_instance_class = None;
+
+        let mut on_damage_method = None;
+        for (key, class) in il2cpp_runtime::get_type_table()? {
+            if is_obfuscated_name(key) {
+                if let Ok(method) = class.find_method(
+                    "*",
                     vec![
                         "RPG.GameCore.TaskContext",
                         "RPG.GameCore.DamageByAttackProperty",
@@ -1471,20 +1389,61 @@ pub fn subscribe() -> Result<()> {
                         "RPG.GameCore.GameEntity",
                         "RPG.GameCore.GameEntity",
                         "bool",
-                        "*"
-                    ]
-                )?
-                .va(),
-            on_damage
-        )?;
+                        "*",
+                    ],
+                ) {
+                    on_damage_method = Some(method);
+                    break;
+                }
+            }
+        }
 
-        subscribe_function!(
-            ON_COMBO_Detour,
-            FHPFLNJLDHP::get_class_static()?
-                .find_method("HFKBBMIDMOJ", vec!["RPG.GameCore.TurnBasedGameMode"])?
-                .va(),
-            on_combo
-        )?;
+        if let Some(method) = on_damage_method {
+            subscribe_function!(ON_DAMAGE_Detour, method.va(), on_damage)?;
+
+            // Prewarm damage-related offsets from the discovered on_damage signature.
+            let damage_info_class = method.arg(2).class();
+            get_attack_type_offset(damage_info_class)?;
+        } else {
+            return Err(anyhow!("Failed to find on_damage method"));
+        }
+
+        let field_iter: *const c_void = null();
+
+        let mut on_combo_method = None;
+        loop {
+            let field = il2cpp_class_get_fields(
+                get_cached_class("RPG.GameCore.LevelSingleInsertAbilityFinishOrAbort")?,
+                &field_iter,
+            );
+            if field.0.is_null() {
+                break;
+            }
+            let field_name = il2cpp_runtime::utils::cstr_to_str(il2cpp_field_get_name(field));
+            if field_name == "<TurnInsertAbilityInstance>k__BackingField" {
+                let field_type = il2cpp_field_get_type(field);
+                if let Ok(method) = field_type
+                    .class()
+                    .find_method("*", vec!["RPG.GameCore.TurnBasedGameMode"])
+                {
+                    combo_instance_class = Some(field_type.class());
+                    on_combo_method = Some(method);
+                    break;
+                }
+            }
+        }
+
+        // if let Some(method) = on_combo_method {
+        //     subscribe_function!(ON_COMBO_Detour, method.va(), on_combo)?;
+        // } else {
+        //     return Err(anyhow!("Failed to find on_combo method"));
+        // }
+
+        // // Resolve and cache offsets at subscriber startup so callback paths stay hot.
+        // if let Some(class) = combo_instance_class {
+        //     get_combo_field_offsets(class)?;
+        // }
+        // get_entity_defeated_offsets()?;
 
         subscribe_function!(
             ON_USE_SKILL_Detour,
@@ -1631,4 +1590,93 @@ pub fn subscribe() -> Result<()> {
         )?;
         Ok(())
     }
+}
+
+static DYNAMIC_DAMAGE_OFFSET: LazyLock<Mutex<Option<usize>>> = LazyLock::new(|| Mutex::new(None));
+static DAMAGE_CANDIDATES: LazyLock<Mutex<Option<HashSet<usize>>>> = LazyLock::new(|| Mutex::new(None));
+static INTERSECTION_STAGNANT_COUNT: LazyLock<Mutex<u32>> = LazyLock::new(|| Mutex::new(0));
+
+pub fn resolve_dynamic_damage(instance_ptr: usize, class: Il2CppClass, expected_damage: Option<f64>) -> Option<f64> {
+    if let Some(offset) = *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() {
+        let fixpoint = unsafe { &*((instance_ptr + offset) as *const RPG_GameCore_FixPoint) };
+        return Some(fixpoint_to_raw(fixpoint));
+    }
+
+    if let Some(delta) = expected_damage {
+        let mut current_matches = HashSet::new();
+        let field_iter: *const c_void = null();
+        
+        log::debug!("[DamageResolver] Đang tìm offset cho Damage xấp xỉ: {}", delta);
+
+        loop {
+            let field = unsafe { il2cpp_class_get_fields(class, &field_iter) };
+            if field.0.is_null() { break; }
+
+            let f_type = unsafe { il2cpp_field_get_type(field) };
+            let type_name = f_type.name();
+            
+            // Tìm tất cả các field mang kiểu FixPoint
+            if type_name == "RPG.GameCore.FixPoint" {
+                let offset = unsafe { il2cpp_field_get_offset(field) } as usize;
+                let fixpoint = unsafe { &*((instance_ptr + offset) as *const RPG_GameCore_FixPoint) };
+                let val = fixpoint_to_raw(fixpoint);
+
+                if (val - delta).abs() <= 2.0 {
+                    log::debug!("[DamageResolver] Khớp tiềm năng tại Offset 0x{:X} | Giá trị: {}", offset, val);
+                    current_matches.insert(offset);
+                }
+            }
+        }
+
+        let mut candidates_guard = DAMAGE_CANDIDATES.lock().unwrap();
+
+        if let Some(candidates) = candidates_guard.as_mut() {
+            let previous_count = candidates.len();
+            candidates.retain(|o| current_matches.contains(o));
+            let current_count = candidates.len();
+
+            log::debug!("[DamageResolver] Số lượng offset còn lại sau khi giao nhau: {}", current_count);
+
+            if current_count == 1 {
+                let final_offset = *candidates.iter().next().unwrap();
+                *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                log::info!("[DamageResolver] THÀNH CÔNG! Chốt Offset Damage: 0x{:X}", final_offset);
+                
+                let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                return Some(fixpoint_to_raw(fixpoint));
+            } else if current_count > 1 {
+                if current_count == previous_count {
+                    let mut stagnant_count = INTERSECTION_STAGNANT_COUNT.lock().unwrap();
+                    *stagnant_count += 1;
+                    if *stagnant_count >= 3 {
+                        let mut sorted_offsets: Vec<_> = candidates.iter().cloned().collect();
+                        sorted_offsets.sort(); 
+                        let final_offset = sorted_offsets[0]; 
+                        *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                        log::info!("[DamageResolver] THÀNH CÔNG (Heuristic)! Sau 3 lần không đổi, chốt Offset: 0x{:X}", final_offset);
+                        let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                        return Some(fixpoint_to_raw(fixpoint));
+                    }
+                } else {
+                    *INTERSECTION_STAGNANT_COUNT.lock().unwrap() = 0;
+                }
+            } else if candidates.is_empty() {
+                log::warn!("[DamageResolver] Giao điểm rỗng! Thử lại ở đòn sau...");
+                *candidates_guard = None;
+                *INTERSECTION_STAGNANT_COUNT.lock().unwrap() = 0;
+            }
+        } else if !current_matches.is_empty() {
+            if current_matches.len() == 1 {
+                let final_offset = *current_matches.iter().next().unwrap();
+                *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                log::info!("[DamageResolver] THÀNH CÔNG! Chốt Offset Damage (lần 1): 0x{:X}", final_offset);
+                let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                return Some(fixpoint_to_raw(fixpoint));
+            } else {
+                log::debug!("[DamageResolver] Lần quét 1 tìm thấy {} offsets. Chờ đòn sau.", current_matches.len());
+                *candidates_guard = Some(current_matches);
+            }
+        }
+    }
+    None
 }

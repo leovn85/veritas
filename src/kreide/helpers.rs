@@ -71,6 +71,10 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
     }
 
     let row_data = skill_data.RowData().context("SkillData RowData was null")?;
+	
+	if row_data.0.is_null() {
+        return Err(anyhow!("RowData pointer is null (possibly a BattleEvent/System skill)"));
+    }
 
     let text_id = row_data.get_SkillName().context("Skill name was null")?;
 
@@ -263,4 +267,9 @@ pub fn fixpoint_to_raw(fixpoint: &RPG_GameCore_FixPoint) -> f64 {
     let hi = ((raw_value as u64 & 0xFFFFFFFF00000000) >> 32) as u32;
     let lo = (raw_value as u64 & 0x00000000FFFFFFFF) as u32;
     hi as f64 + lo as f64 * *FLOAT_CONVERSION_CONSTANT
+}
+
+pub fn is_obfuscated_name<S: AsRef<str>>(name: S) -> bool {
+    let name = name.as_ref();
+    name.len() == 11 && name.chars().all(|c| c.is_ascii_uppercase())
 }

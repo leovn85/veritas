@@ -580,13 +580,13 @@ impl BattleContext {
                     .find(|x| x.entity == e.entity)
                 {
                     match e.stat {
-                        crate::models::misc::Stat::HP(stat) => avatar.battle_stats.hp = stat,
+                        crate::models::misc::Stat::CurrentHP(stat) => avatar.battle_stats.hp = stat,
                         crate::models::misc::Stat::Attack(stat) => avatar.battle_stats.attack = stat,
-                        crate::models::misc::Stat::Defense(stat) => {
+                        crate::models::misc::Stat::Defence(stat) => {
                             avatar.battle_stats.defense = stat
                         }
                         crate::models::misc::Stat::Speed(stat) => avatar.battle_stats.speed = stat,
-                        crate::models::misc::Stat::AV(stat) => avatar.battle_stats.av = stat,
+                        crate::models::misc::Stat::ActionDelay(stat) => avatar.battle_stats.av = stat,
                         _ => {}
                     }
                 }
@@ -598,13 +598,13 @@ impl BattleContext {
                     .find(|x| x.entity == e.entity)
                 {
                     match e.stat {
-                        crate::models::misc::Stat::HP(stat) => enemy.battle_stats.hp = stat,
+                        crate::models::misc::Stat::CurrentHP(stat) => enemy.battle_stats.hp = stat,
                         crate::models::misc::Stat::Attack(stat) => enemy.battle_stats.attack = stat,
-                        crate::models::misc::Stat::Defense(stat) => {
+                        crate::models::misc::Stat::Defence(stat) => {
                             enemy.battle_stats.defense = stat
                         }
                         crate::models::misc::Stat::Speed(stat) => enemy.battle_stats.speed = stat,
-                        crate::models::misc::Stat::AV(stat) => enemy.battle_stats.av = stat,
+                        crate::models::misc::Stat::ActionDelay(stat) => enemy.battle_stats.av = stat,
                         _ => {}
                     }
                 }
