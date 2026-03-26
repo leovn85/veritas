@@ -728,23 +728,21 @@ pub struct UnityEngine_Rect {
 #[il2cpp_ref_type("UnityEngine.Texture2D", base(UnityEngine_Texture))]
 pub struct UnityEngine_Texture2D;
 impl UnityEngine_Texture2D {
-	#[il2cpp_getter_property(property = "format")]
-	pub fn get_format(&self) -> i32 {}
+	// #[il2cpp_getter_property(property = "format")]
+	// pub fn get_format(&self) -> i32 {}
 
-	#[il2cpp_getter_property(property = "isReadable")]
-	pub fn get_is_readable(&self) -> bool {}
+	// #[il2cpp_getter_property(property = "isReadable")]
+	// pub fn get_is_readable(&self) -> bool {}
+
+	#[il2cpp_method(name = ".ctor", args = ["int", "int"])]
+	pub fn new(self, width: i32, height: i32) {}
 
 	#[il2cpp_method(name = "GetPixels32", args = [])]
 	pub fn get_pixels32(&self) -> Il2CppArray {}
 
-	// .ctor(int, int)
-	#[il2cpp_method(name = ".ctor", args = ["int", "int"])]
-	pub fn new(self, width: i32, height: i32) {}
-
 	#[il2cpp_method(name = "ReadPixels", args = ["UnityEngine.Rect", "int", "int"])]
 	pub fn read_pixels(&self, source: UnityEngine_Rect, destX: i32, destY: i32) {}
 
-	// Apply
 	#[il2cpp_method(name = "Apply", args = [])]
 	pub fn apply(&self) {}
 }
@@ -768,10 +766,11 @@ impl UnityEngine_Texture {
 
 #[il2cpp_value_type("UnityEngine.Color32")]
 pub struct UnityEngine_Color32 {
-	pub r: f32,
-	pub g: f32,
-	pub b: f32,
-	pub a: f32,
+	pub rgba: i32,
+	pub r: u8,
+	pub g: u8,
+	pub b: u8,
+	pub a: u8,
 }
 
 

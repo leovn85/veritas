@@ -64,8 +64,10 @@ indoc = "2.0.6"
 widestring = "1.2.0"
 ron = "0.10.1"
 parse-changelog = { version = "0.6.12", default-features = false }
-png = "0.17.16"
 il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "9fbf9a1" , features = ["log"]}
+image = "0.25.10"
+egui_extras = "0.32.0"
+egui_table = "0.7.0"
 
 [dev-dependencies]
 eframe = { version = "0.32.0", features = ["serde", "persistence"] }

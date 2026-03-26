@@ -1,4 +1,13 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use egui::{Color32, Stroke};
+use image::DynamicImage;
+use anyhow::Result;
+
+/// Global cache: avatar_id -> PNG buffer
+/// Populated in on_set_lineup, cleared on every call
+static AVATAR_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, Vec<u8>>>> = 
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn format_damage(value: f64) -> String {
     if value >= 1_000_000.0 {
@@ -70,4 +79,65 @@ pub fn get_window_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
 
 pub fn get_transparent_window_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
     egui::Frame::new().inner_margin(8.0).corner_radius(10.0)
+}
+
+/// Clear and populate the avatar buffer cache with the given avatar IDs
+pub fn populate_avatar_buffers(avatar_ids: &[u32]) {
+    let mut cache = AVATAR_BUFFER_CACHE.lock().unwrap();
+    cache.clear();
+    
+    for &avatar_id in avatar_ids {
+        if let Ok(buffer) = crate::kreide::helpers::get_avatar_png_bytes(avatar_id) {
+            cache.insert(avatar_id, buffer);
+        }
+    }
+}
+
+pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::TextureOptions) -> Option<egui::TextureHandle> {
+    const IMAGE_CACHE_ID: &str = "ui.helpers.avatar_image_cache";
+    type TextureCache = HashMap<u32, egui::TextureHandle>;
+
+    let cache_id = egui::Id::new(IMAGE_CACHE_ID);
+
+    // Check if already cached as texture
+    if let Some(cached_handle) = ctx.data(|data| {
+        data.get_temp::<TextureCache>(cache_id)
+            .and_then(|cache| cache.get(&avatar_id).cloned())
+    }) {
+        return Some(cached_handle);
+    }
+
+    // Get buffer from global cache (populated in on_set_lineup)
+    let buffer = {
+        let cache = AVATAR_BUFFER_CACHE.lock().unwrap();
+        cache.get(&avatar_id).cloned()?
+    };
+
+    use image::EncodableLayout;
+    let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
+    let color_image = match &image {
+        DynamicImage::ImageRgb8(image) => {
+            egui::ColorImage::from_rgb(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+        other => {
+            let image = other.to_rgba8();
+            egui::ColorImage::from_rgba_unmultiplied(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+    };
+    
+    // Cache the texture handle by avatar_id
+    let name = format!("avatar_{}", avatar_id);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(avatar_id, handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
+    Some(handle)
 }

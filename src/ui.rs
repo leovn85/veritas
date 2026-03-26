@@ -1,6 +1,6 @@
 pub mod app;
 mod widgets;
-mod helpers;
+pub mod helpers;
 mod config;
 mod themes;
 mod views;

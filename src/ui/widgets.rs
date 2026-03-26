@@ -1,5 +1,6 @@
-use crate::ui::app::GraphUnit;
-use egui::{Color32, Sense, Stroke, Ui, Vec2};
+use crate::{kreide, ui::app::GraphUnit};
+use egui::{Color32, Layout, Stroke, Ui};
+use egui_extras::Column;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::{battle::BattleContext, models::misc::Avatar};
@@ -49,13 +50,13 @@ impl App {
                             .stroke(Stroke::new(1.5, color))
                             .fill_color(color.linear_multiply(self.config.pie_chart_opacity))
                             .id(avatar.name.clone());
-                            // .name(format!(
-                            //     "{}: {:.0}% | {} DMG | {:.0} DPAV",
-                            //     avatar.name,
-                            //     percentage,
-                            //     helpers::format_damage(segment.value),
-                            //     segment.value / battle_context.action_value
-                            // ));
+                        // .name(format!(
+                        //     "{}: {:.0}% | {} DMG | {:.0} DPAV",
+                        //     avatar.name,
+                        //     percentage,
+                        //     helpers::format_damage(segment.value),
+                        //     segment.value / battle_context.action_value
+                        // ));
 
                         plot_ui.polygon(polygon);
                     }
@@ -66,37 +67,133 @@ impl App {
     pub fn show_character_legend(&mut self, ui: &mut Ui) {
         let battle_context = &BattleContext::get_instance();
 
-        // I need to make separate DPAV calcs in the battle context
-        for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
-            ui.horizontal(|ui| {
-                let style = ui.style_mut();
-                style.override_text_style = Some(self.config.legend_text_style.clone());
-                let (res, painter) = ui.allocate_painter(Vec2::splat(12.), Sense::empty());
-                let rect = res.rect;
-                let radius = rect.width() / 2.0 - 1.0;
-                painter.circle_filled(rect.center(), radius, helpers::get_character_color(i));
+        // // I need to make separate DPAV calcs in the battle context
+        // for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
+        //     ui.horizontal(|ui| {
+        //         let style = ui.style_mut();
+        //         style.override_text_style = Some(self.config.legend_text_style.clone());
+        //         let (res, painter) = ui.allocate_painter(Vec2::splat(12.), Sense::empty());
+        //         let rect = res.rect;
+        //         let radius = rect.width() / 2.0 - 1.0;
+        //         painter.circle_filled(rect.center(), radius, helpers::get_character_color(i));
 
-                let dmg = battle_context.real_time_damages[i];
+        //         let dmg = battle_context.real_time_damages[i];
 
-                let percentage = dmg / battle_context.total_damage * 100.0;
+        //         let percentage = dmg / battle_context.total_damage * 100.0;
 
-                
-                let dpav = if battle_context.action_value > 0.0 {
-                    dmg / battle_context.action_value
-                } else {
-                    dmg
-                };
+        //         let dpav = if battle_context.action_value > 0.0 {
+        //             dmg / battle_context.action_value
+        //         } else {
+        //             dmg
+        //         };
 
-                ui.label(format!(
-                    "{}: {:.1}% | {} DMG | {} DPAV",
-                    avatar.name,
-                    percentage,
-                    helpers::format_damage(dmg),
-                    helpers::format_damage(dpav)
-                ));
+        //         ui.label(format!(
+        //             "{}: {:.1}% | {} DMG | {} DPAV",
+        //             avatar.name,
+        //             percentage,
+        //             helpers::format_damage(dmg),
+        //             helpers::format_damage(dpav)
+        //         ));
+        //     });
+        // }
+
+        egui_extras::TableBuilder::new(ui)
+            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight))
+            .column(Column::auto_with_initial_suggestion(20.))
+            .column(Column::auto_with_initial_suggestion(20.))
+            .column(Column::auto_with_initial_suggestion(20.))
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.heading("Avatar");
+                });
+                header.col(|ui| {
+                    ui.heading("DMG");
+                });
+                header.col(|ui| {
+                    ui.heading("DPAV");
+                });
+
+            })
+            .body(|body| {
+                body.rows(52., battle_context.avatar_lineup.len(), |mut row| {
+                    let i = row.index();
+                    let dmg = battle_context.real_time_damages[i];
+
+                    row.col(|ui| {
+                        ui.with_layout(
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
+                            |ui| {
+                                if let Some(handle) = helpers::load_avatar_image(
+                                    ui.ctx(),
+                                    battle_context.avatar_lineup[i].id,
+                                    egui::TextureOptions::default(),
+                                ) {
+                                    let sized_image = egui::load::SizedTexture::new(
+                                        handle.id(),
+                                        egui::vec2(48.0, 48.0),
+                                    );
+                                    ui.add(egui::Image::from_texture(sized_image));
+                                }
+                            },
+                        );
+                    });
+
+                    row.col(|ui: &mut Ui| {
+                        ui.with_layout(
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
+                            |ui| {
+                                ui.label(format!{"{}", helpers::format_damage(dmg)});
+                            },
+                        );
+                    });
+
+                    row.col(|ui: &mut Ui| {
+                        ui.with_layout(
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
+                            |ui| {
+                            let dpav = if battle_context.action_value > 0.0 {
+                                dmg / battle_context.action_value
+                            } else {
+                                dmg
+                            };
+
+                                ui.label(format!{"{}", helpers::format_damage(dpav)});
+                            },
+                        );
+                    });
+
+
+                });
             });
-        }
 
+
+            // .body(|mut body| {
+            //     body.row(30.0, |mut row| {
+            //         row.col(|ui| {
+            //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
+            //                 for avatar in avatars {
+            //                     let handle = helpers::load_image(
+            //                         ui.ctx(),
+            //                         avatar,
+            //                         egui::TextureOptions::default(),
+            //                     );
+            //                     let sized_image = egui::load::SizedTexture::new(
+            //                         handle.id(),
+            //                         // egui::vec2(handle.size()[0] as f32, handle.size()[1] as f32),
+            //                         egui::vec2(64.0, 64.0),
+            //                     );
+            //                     ui.add(egui::Image::from_texture(sized_image));
+            //                 }
+            //         });
+
+            //         row.col(|ui: &mut Ui| {
+            //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
+            //                 for avatar in avatars {
+            //                     ui.label("700");
+            //                 }
+            //         });
+            //     });
+            // });
     }
 
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
@@ -118,10 +215,7 @@ impl App {
         let avatar_lineup_for_formatter = avatar_lineup.clone();
 
         Plot::new("damage_bars")
-            .legend(
-                Legend::default()
-                    .text_style(self.config.legend_text_style.clone()),
-            )
+            .legend(Legend::default().text_style(self.config.legend_text_style.clone()))
             .height(available.y)
             .width(available.x)
             .allow_drag(false)
@@ -154,7 +248,8 @@ impl App {
                     })
                     .collect();
 
-                let overkill_bars_data = create_bar_data(&real_time_overkill_damages, &avatar_lineup);
+                let overkill_bars_data =
+                    create_bar_data(&real_time_overkill_damages, &avatar_lineup);
                 let overkill_color = Color32::from_gray(140);
                 let overkill_bars: Vec<Bar> = overkill_bars_data
                     .iter()
@@ -167,13 +262,12 @@ impl App {
                     })
                     .collect();
                 let dmg_bar_chart = BarChart::new("", bars).id("dmg_bar_chart");
-                let overkill_bar_chart = BarChart::new("Overkill", overkill_bars).color(overkill_color)
-                        .id("overkill_dmg_bar_chart")
-                        .stack_on(&[&dmg_bar_chart]);
+                let overkill_bar_chart = BarChart::new("Overkill", overkill_bars)
+                    .color(overkill_color)
+                    .id("overkill_dmg_bar_chart")
+                    .stack_on(&[&dmg_bar_chart]);
                 plot_ui.bar_chart(dmg_bar_chart);
-                plot_ui.bar_chart(
-                    overkill_bar_chart
-                );
+                plot_ui.bar_chart(overkill_bar_chart);
             });
     }
 

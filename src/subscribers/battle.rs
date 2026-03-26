@@ -50,76 +50,6 @@ struct ComboFieldOffsets {
 static COMBO_FIELD_OFFSETS: OnceLock<ComboFieldOffsets> = OnceLock::new();
 static ATTACK_TYPE_OFFSET: OnceLock<usize> = OnceLock::new();
 
-fn normalize_color_channel(channel: f32) -> u8 {
-    let value = if channel <= 1.0 {
-        (channel * 255.0).round()
-    } else {
-        channel.round()
-    };
-    value.clamp(0.0, 255.0) as u8
-}
-
-fn dump_avatar_pixels_to_png(
-    avatar_id: u32,
-    width: i32,
-    height: i32,
-    pixels: &[UnityEngine_Color32],
-) -> Result<()> {
-    if width <= 0 || height <= 0 {
-        return Err(anyhow!(
-            "Invalid texture dimensions for avatar {}: {}x{}",
-            avatar_id,
-            width,
-            height
-        ));
-    }
-
-    let width_u32 = width as u32;
-    let height_u32 = height as u32;
-    let expected_len = (width_u32 as usize) * (height_u32 as usize);
-    if pixels.len() != expected_len {
-        return Err(anyhow!(
-            "Pixel count mismatch for avatar {}: expected {}, got {}",
-            avatar_id,
-            expected_len,
-            pixels.len()
-        ));
-    }
-
-    let mut rgba = Vec::with_capacity(expected_len * 4);
-    for px in pixels {
-        rgba.push(normalize_color_channel(px.r));
-        rgba.push(normalize_color_channel(px.g));
-        rgba.push(normalize_color_channel(px.b));
-        rgba.push(normalize_color_channel(px.a));
-    }
-
-    let out_dir = std::env::current_dir()?.join("avatar_pixel_dumps");
-    fs::create_dir_all(&out_dir)?;
-    let out_path = out_dir.join(format!("{}.png", avatar_id));
-
-    let file = fs::File::create(&out_path)?;
-    let writer = BufWriter::new(file);
-    let mut encoder = png::Encoder::new(writer, width_u32, height_u32);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut png_writer = encoder.write_header()?;
-    png_writer.write_image_data(&rgba)?;
-
-    log::info!("Saved avatar pixel dump: {}", out_path.display());
-    Ok(())
-}
-
-fn dump_avatar_png_bytes(avatar_id: u32, png_bytes: &[u8]) -> Result<()> {
-    let out_dir = std::env::current_dir()?.join("avatar_png_dumps");
-    fs::create_dir_all(&out_dir)?;
-    let out_path = out_dir.join(format!("{}.png", avatar_id));
-    fs::write(&out_path, png_bytes)?;
-
-    log::info!("Saved avatar PNG dump: {}", out_path.display());
-    Ok(())
-}
-
 unsafe fn resolve_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffsets> {
     let field_iter_1: *const c_void = null();
     let mut turn_based_ability_component_offset = None;
@@ -709,6 +639,23 @@ fn on_set_lineup(
     log::debug!(function_name!());
     safe_call!(unsafe {
         let light_team = a2.LightTeam()?;
+        let extra_team = a2.ExtraTeam()?;
+        
+        // Collect all avatar IDs first
+        let mut avatar_ids = Vec::new();
+        for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
+            let avatar_id = character.CharacterID()?;
+            avatar_ids.push((*avatar_id).into());
+        }
+        for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
+            let avatar_id = character.CharacterID()?;
+            avatar_ids.push((*avatar_id).into());
+        }
+        
+        // Populate the global buffer cache
+        crate::ui::helpers::populate_avatar_buffers(&avatar_ids);
+        
+        // Now process avatars
         let mut avatars = Vec::<Avatar>::new();
         let mut errors = Vec::<Error>::new();
         for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
@@ -717,91 +664,10 @@ fn on_set_lineup(
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
             }
-            // let avatar_data = helpers::get_avatar_data_from_id((*avatar_id).into())?;
-            // let row_data = avatar_data._AvatarRowData()?;
-            // let path = row_data.get_AvatarMiniIconPath()?;
-            let avatar_row = RPG_GameCore_AvatarExcelTable::GetData((*avatar_id).into())?;
-            log::info!("Support Avatar: {}, Icon Path: {}", (*avatar_id).0, avatar_row.AvatarSideIconPath()?.to_string());
-
-            use il2cpp_runtime::System_RuntimeType;
-            let type_name = UnityEngine_Sprite::ffi_name();
-            let runtime_type = System_RuntimeType::from_name(type_name)?;
-            let ty = runtime_type.get_il2cpp_type();
-            let type_handle = System_Type::get_type_from_handle(ty)?;
-
-            if type_handle.0.is_null() {
-                log::error!("Failed to get UnityEngine.Sprite type");
-                continue;
-            } else {
-                log::info!("Got Sprite Type");
-            }
-            log::info!("Sprite");
-            let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(avatar_row.AvatarSideIconPath()?, type_handle, false)?;
-            log::info!("Done");
-            // log::debug!("Sprite name: {}", sprite.get_name()?.to_string());
-            let sprite = UnityEngine_Sprite(sprite.0);
-            let tex = sprite.get_texture()?;
-            log::info!("tex");
-            let format = tex.get_format()?;
-            log::info!("format: {} {}", format, tex.get_is_readable()?);
-
-            let default_format = {
-                
-                let type_name = "UnityEngine.RenderTextureFormat";
-                let runtime_type = System_RuntimeType::from_name(type_name)?;
-                let ty = runtime_type.get_il2cpp_type();
-                let type_handle = System_Type::get_type_from_handle(ty)?;
-                let x = System_Int32__Boxed(System_Enum::parse(type_handle, Il2CppString::new("Default")?)?);
-                log::debug!("Default RenderTextureFormat value: {}", (*x).0);
-                (*x).0
-            };
-
-            let rw_format = {
-                let type_name = "UnityEngine.RenderTextureReadWrite";
-                let runtime_type = System_RuntimeType::from_name(type_name)?;
-                let ty = runtime_type.get_il2cpp_type();
-                let type_handle = System_Type::get_type_from_handle(ty)?;
-                let x = System_Int32__Boxed(System_Enum::parse(type_handle, Il2CppString::new("Linear")?)?);
-                log::debug!("Default RenderTextureReadWrite value: {}", (*x).0);
-                (*x).0
-            };
-
-            // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
-            let render_tex = UnityEngine_RenderTexture::GetTemporary(tex.as_base().get_width()?, tex.as_base().get_height()?, 0, default_format, rw_format)?;
-            UnityEngine_Graphics::Blit(tex, render_tex)?;
-            let prev = UnityEngine_RenderTexture::GetActive()?;
-            UnityEngine_RenderTexture::set_active(render_tex)?;
-            use il2cpp_runtime::api::il2cpp_object_new;
-            let readable_tex = UnityEngine_Texture2D(il2cpp_object_new((get_cached_class(UnityEngine_Texture2D::ffi_name())?)));
-            readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
-            readable_tex.read_pixels(UnityEngine_Rect { x: 0., y: 0., width: render_tex.get_width()? as f32, height: render_tex.get_height()? as f32 }, 0, 0)?;
-            readable_tex.apply()?;
-            UnityEngine_RenderTexture::set_active(prev)?;
-            UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
-
-            let readable = readable_tex.get_is_readable()?;
-            log::info!("Readable: {}", readable);
-            log::debug!("Width: {}, Height: {}", readable_tex.as_base().get_width()?, readable_tex.as_base().get_height()?);
-            let pixels = readable_tex.get_pixels32()?.to_vec::<UnityEngine_Color32>();
-            log::debug!("Pixel count: {}", pixels.len());
-
-            let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
-            let buffer = array.to_vec::<u8>();
-            if let Err(e) = dump_avatar_png_bytes((*avatar_id).into(), &buffer) {
-                log::error!("Failed to dump avatar {} PNG: {}", (*avatar_id).0, e);
-            }
-            // if let Err(e) = dump_avatar_pixels_to_png(
-            //     (*avatar_id).into(),
-            //     readable_tex.as_base().get_width()?,
-            //     readable_tex.as_base().get_height()?,
-            //     &pixels,
-            // ) {
-            //     log::error!("Failed to dump avatar {} pixels: {}", (*avatar_id).0, e);
-            // }
+            
         }
 
         // Unsure if you can have more than one support char
-        let extra_team = a2.ExtraTeam()?;
         for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
             match helpers::get_avatar_from_id((*avatar_id).into()) {

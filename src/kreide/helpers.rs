@@ -2,15 +2,13 @@ use std::{collections::HashMap, ptr::null, sync::LazyLock};
 
 use crate::{
     kreide::types::{
-        RPG_Client_AvatarData, RPG_Client_GlobalVars, RPG_Client_ModuleManager,
-        RPG_Client_UIGameEntityUtils, RPG_GameCore_MonsterDataComponent,
-        RPG_GameCore_ServantDataComponent,
+        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars, RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion, UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D
     },
     models::misc::{Avatar, Skill},
 };
 use anyhow::{Context, Result, anyhow};
 use function_name::named;
-use il2cpp_runtime::System_RuntimeType;
+use il2cpp_runtime::{Il2CppObject, System_RuntimeType, get_cached_class, types::{Il2CppString, System_Enum, System_Int32__Boxed, System_Type}};
 
 use super::types::{
     RPG_Client_TextID, RPG_Client_TextmapStatic, RPG_GameCore_AbilityProperty,
@@ -256,4 +254,103 @@ pub fn fixpoint_to_raw(fixpoint: &RPG_GameCore_FixPoint) -> f64 {
 pub fn is_obfuscated_name<S: AsRef<str>>(name: S) -> bool {
     let name = name.as_ref();
     name.len() == 11 && name.chars().all(|c| c.is_ascii_uppercase())
+}
+
+
+pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
+    let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
+    log::info!(
+        "Support Avatar: {}, Icon Path: {}",
+        avatar_id,
+        avatar_row.AvatarSideIconPath()?.to_string()
+    );
+
+    let type_name = UnityEngine_Sprite::ffi_name();
+    let runtime_type = System_RuntimeType::from_name(type_name)?;
+    let ty = runtime_type.get_il2cpp_type();
+    let type_handle = System_Type::get_type_from_handle(ty)?;
+
+    let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+        avatar_row.AvatarSideIconPath()?,
+        type_handle,
+        false,
+    )?;
+    let sprite = UnityEngine_Sprite(sprite.0);
+    let tex = sprite.get_texture()?;
+
+    let default_format = {
+        let type_name = "UnityEngine.RenderTextureFormat";
+        let runtime_type = System_RuntimeType::from_name(type_name)?;
+        let ty = runtime_type.get_il2cpp_type();
+        let type_handle = System_Type::get_type_from_handle(ty)?;
+        let x = System_Int32__Boxed(System_Enum::parse(
+            type_handle,
+            Il2CppString::new("Default")?,
+        )?);
+        log::debug!("Default RenderTextureFormat value: {}", (*x).0);
+        (*x).0
+    };
+
+    let rw_format = {
+        let type_name = "UnityEngine.RenderTextureReadWrite";
+        let runtime_type = System_RuntimeType::from_name(type_name)?;
+        let ty = runtime_type.get_il2cpp_type();
+        let type_handle = System_Type::get_type_from_handle(ty)?;
+        let x = System_Int32__Boxed(System_Enum::parse(
+            type_handle,
+            Il2CppString::new("Linear")?,
+        )?);
+        log::debug!("Default RenderTextureReadWrite value: {}", (*x).0);
+        (*x).0
+    };
+
+    // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
+    // https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures
+    let render_tex = UnityEngine_RenderTexture::GetTemporary(
+        tex.as_base().get_width()?,
+        tex.as_base().get_height()?,
+        0,
+        default_format,
+        rw_format,
+    )?;
+    UnityEngine_Graphics::Blit(tex, render_tex)?;
+    let prev = UnityEngine_RenderTexture::GetActive()?;
+    UnityEngine_RenderTexture::set_active(render_tex)?;
+    use il2cpp_runtime::api::il2cpp_object_new;
+    let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(
+        (get_cached_class(UnityEngine_Texture2D::ffi_name())?),
+    ));
+
+    readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
+    readable_tex.read_pixels(
+        UnityEngine_Rect {
+            x: 0.,
+            y: 0.,
+            width: render_tex.get_width()? as f32,
+            height: render_tex.get_height()? as f32,
+        },
+        0,
+        0,
+    )?;
+    readable_tex.apply()?;
+    UnityEngine_RenderTexture::set_active(prev)?;
+    UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
+
+    let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
+    let buffer = array.to_vec::<u8>();
+    // if let Err(e) = dump_avatar_png_bytes(avatar_id, &buffer) {
+    //     log::error!("Failed to dump avatar {} PNG: {}", avatar_id, e);
+    // }
+    Ok(buffer)
+}
+
+pub fn dump_avatar_png_bytes(avatar_id: u32, png_bytes: &[u8]) -> Result<()> {
+    use std::fs;
+    let out_dir = std::env::current_dir()?.join("avatar_png_dumps");
+    fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join(format!("{}.png", avatar_id));
+    fs::write(&out_path, png_bytes)?;
+
+    log::info!("Saved avatar PNG dump: {}", out_path.display());
+    Ok(())
 }
