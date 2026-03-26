@@ -599,7 +599,7 @@ impl RPG_GameCore_EntityManager {
     #[il2cpp_method(name = "GetEntityByRuntimeID", args = ["uint"])]
     pub fn get_entity_by_runtime_id(&self, runtime_id: u32) -> RPG_GameCore_GameEntity {}
 
-    #[il2cpp_method(name = "GetEntitySummoner", args = ["RPG.GameCore.GameEntity"])]
+    #[il2cpp_method(name = "_GetEntitySummoner", args = ["RPG.GameCore.GameEntity"])]
     pub fn get_entity_summoner(&self, entity: RPG_GameCore_GameEntity) -> RPG_GameCore_GameEntity {}
 }
 

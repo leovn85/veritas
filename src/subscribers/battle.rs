@@ -19,6 +19,7 @@ use il2cpp_runtime::Il2CppClass;
 use il2cpp_runtime::Il2CppObject;
 use il2cpp_runtime::api::il2cpp_class_get_fields;
 use il2cpp_runtime::api::il2cpp_field_get_name;
+use il2cpp_runtime::api::il2cpp_field_get_offset;
 use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::api::il2cpp_field_get_value_object;
 use il2cpp_runtime::get_cached_class;
@@ -31,7 +32,6 @@ use std::fs;
 use std::io::BufWriter;
 use std::ptr::null;
 use std::sync::OnceLock;
-use il2cpp_runtime::api::il2cpp_field_get_offset;
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
@@ -197,9 +197,8 @@ fn on_damage(
                 let damage_offset = get_damage_offset()?;
 
                 let damage = {
-                    let damage_ptr =
-                        damage_info.byte_offset(damage_offset as isize)
-                            as *const RPG_GameCore_FixPoint;
+                    let damage_ptr = damage_info.byte_offset(damage_offset as isize)
+                        as *const RPG_GameCore_FixPoint;
                     fixpoint_to_raw(&*damage_ptr)
                 };
 
@@ -213,14 +212,16 @@ fn on_damage(
                     0.0
                 };
 
-                let attack_type_offset = get_attack_type_offset(Il2CppClass(*(damage_info as *const *const c_void)))?;
-                
+                let attack_type_offset =
+                    get_attack_type_offset(Il2CppClass(*(damage_info as *const *const c_void)))?;
+
                 // let attack_type_offset = get_attack_type_offset(RPG_GameCore_GameEntity(damage_info).get_class())?;
-                
+
                 // let damage_type = RPG_GameCore_AttackType__Boxed(
                 //     *(damage_info.byte_offset(attack_type_offset as isize) as *const *const c_void),
                 // );
-                let damage_type = *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
+                let damage_type =
+                    *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
                     if !attack_owner.0.is_null() {
@@ -337,110 +338,107 @@ fn on_use_skill(
                 let skill_data = instance.get_skill_data(skill_index, skill_extra_use_param)?;
 
                 if !skill_data.0.is_null() {
-                    match *skill_owner._EntityType()? {
-                        RPG_GameCore_EntityType::Avatar => {
-                            let e = match get_skill_from_skilldata(skill_data) {
-                                Ok(skill) => match get_avatar_from_entity(skill_owner) {
-                                    Ok(avatar) => {
-                                        if skill.name.is_empty() {
-                                            return Ok(());
-                                        }
-                                        Ok(Event::OnUseSkill(OnUseSkillEvent {
-                                            avatar: Entity {
-                                                uid: avatar.id,
-                                                team: Team::Player,
-                                            },
-                                            skill,
-                                        }))
-                                    }
-                                    Err(e) => {
-                                        log::error!("Avatar Event Error: {}", e);
-
-                                        Err(anyhow!(
-                                            "{} Avatar Event Error: {}",
-                                            function_name!(),
-                                            e
-                                        ))
-                                    }
-                                },
-                                Err(e) => {
+                    let entity_type = skill_owner._EntityType()?;
+                    let ty = helpers::get_type_handle(entity_type.get_class().byval_arg().name())?;
+                    match System_Enum::get_name(ty, entity_type.0)?
+                        .to_string()
+                        .as_str()
+                    {
+                        "Avatar" => {
+                            let e = (|| -> Result<Option<Event>> {
+                                let avatar = get_avatar_from_entity(skill_owner).map_err(|e| {
                                     log::error!("Avatar Event Error: {}", e);
-                                    Err(anyhow!(
-                                        "{} Avatar Skill Event Error: {}",
-                                        function_name!(),
-                                        e
-                                    ))
+                                    anyhow!("{} Avatar Event Error: {}", function_name!(), e)
+                                })?;
+
+                                let skill = get_skill_from_skilldata(skill_data).map_err(|e| {
+                                    log::error!("Avatar Event Error: {}", e);
+                                    anyhow!("{} Avatar Skill Event Error: {}", function_name!(), e)
+                                })?;
+
+                                if skill.name.is_empty() {
+                                    return Ok(None);
                                 }
-                            };
-                            event = Some(e)
+
+                                Ok(Some(Event::OnUseSkill(OnUseSkillEvent {
+                                    avatar: Entity {
+                                        uid: avatar.id,
+                                        team: Team::Player,
+                                    },
+                                    skill,
+                                })))
+                            })();
+                            match e {
+                                Ok(Some(e)) => event = Some(Ok(e)),
+                                Ok(None) => {}
+                                Err(e) => event = Some(Err(e)),
+                            }
                         }
-                        RPG_GameCore_EntityType::Servant => {
-                            let e = match get_skill_from_skilldata(skill_data) {
-                                Ok(skill) => match get_avatar_from_servant_entity(skill_owner) {
-                                    Ok(avatar) => Ok(Event::OnUseSkill(OnUseSkillEvent {
-                                        avatar: Entity {
-                                            uid: avatar.id,
-                                            team: Team::Player,
-                                        },
-                                        skill,
-                                    })),
-                                    Err(e) => {
+                        "Servant" => {
+                            let e = (|| -> Result<Event> {
+                                let avatar =
+                                    get_avatar_from_servant_entity(skill_owner).map_err(|e| {
                                         log::error!("Servant Event Error: {}", e);
-                                        Err(anyhow!(
-                                            "{} Servant Event Error: {}",
-                                            function_name!(),
-                                            e
-                                        ))
-                                    }
-                                },
-                                Err(e) => {
+                                        anyhow!("{} Servant Event Error: {}", function_name!(), e)
+                                    })?;
+
+                                let skill = get_skill_from_skilldata(skill_data).map_err(|e| {
                                     log::error!("Servant Skill Error: {}", e);
-                                    Err(anyhow!(
-                                        "{} Servant Skill Event Error: {}",
-                                        function_name!(),
-                                        e
-                                    ))
-                                }
-                            };
+                                    anyhow!("{} Servant Skill Event Error: {}", function_name!(), e)
+                                })?;
+
+                                Ok(Event::OnUseSkill(OnUseSkillEvent {
+                                    avatar: Entity {
+                                        uid: avatar.id,
+                                        team: Team::Player,
+                                    },
+                                    skill,
+                                }))
+                            })();
                             event = Some(e);
                         }
-                        RPG_GameCore_EntityType::BattleEvent => {
-                            let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(
-                                instance._CharacterDataRef()?.0,
-                            );
+                        // "BattleEvent" => {
+                        //     // let battle_event_data_comp = RPG_GameCore_BattleEventDataComponent(
+                        //     //     instance._CharacterDataRef()?.Summoner()?,
+                        //     // );
 
-                            let avatar_entity =
-                                battle_event_data_comp._SourceCaster_k__BackingField()?;
+                        //     // let avatar_entity =
+                        //     //     battle_event_data_comp._SourceCaster_k__BackingField()?;
+                        //     let avatar_entity = instance._CharacterDataRef()?.Summoner()?;
 
-                            let e = match get_skill_from_skilldata(skill_data) {
-                                Ok(skill) => match get_avatar_from_entity(avatar_entity) {
-                                    Ok(avatar) => Ok(Event::OnUseSkill(OnUseSkillEvent {
-                                        avatar: Entity {
-                                            uid: avatar.id,
-                                            team: Team::Player,
-                                        },
-                                        skill,
-                                    })),
-                                    Err(e) => {
-                                        log::error!("Summon Event Error: {}", e);
-                                        Err(anyhow!(
-                                            "{} Summon Event Error: {}",
-                                            function_name!(),
-                                            e
-                                        ))
-                                    }
-                                },
-                                Err(e) => {
-                                    log::error!("Summon Skill Event Error: {}", e);
-                                    Err(anyhow!(
-                                        "{} Summon Skill Event Error: {}",
-                                        function_name!(),
-                                        e
-                                    ))
-                                }
-                            };
-                            event = Some(e);
-                        }
+                        //     if *avatar_entity._EntityType()? != *RPG_GameCore_EntityType__Boxed(System_Enum::parse(ty, Il2CppString::new("Avatar")?)?) {
+                        //         log::error!("Expected summoner to be an avatar, but got entity type {}", (*avatar_entity._EntityType()?) as usize);
+                        //         return Ok(());
+                        //     }
+                        //     let e = match get_skill_from_skilldata(skill_data) {
+                        //         Ok(skill) => match get_avatar_from_entity(avatar_entity) {
+                        //             Ok(avatar) => Ok(Event::OnUseSkill(OnUseSkillEvent {
+                        //                 avatar: Entity {
+                        //                     uid: avatar.id,
+                        //                     team: Team::Player,
+                        //                 },
+                        //                 skill,
+                        //             })),
+                        //             Err(e) => {
+                        //                 log::error!("Summon Event Error: {}", e);
+                        //                 Err(anyhow!(
+                        //                     "{} Summon Event Error: {}",
+                        //                     function_name!(),
+                        //                     e
+                        //                 ))
+                        //             }
+                        //         },
+                        //         Err(e) => {
+                        //             log::error!("Summon Skill Event Error: {}", e);
+                        //             Err(anyhow!(
+                        //                 "{} Summon Skill Event Error: {}",
+                        //                 function_name!(),
+                        //                 e
+                        //             ))
+                        //         }
+                        //     };
+                        //     event = Some(e);
+                        // }
                         _ => log::warn!(
                             "Light entity type {} was not matched",
                             *skill_owner._EntityType()? as usize
@@ -640,7 +638,7 @@ fn on_set_lineup(
     safe_call!(unsafe {
         let light_team = a2.LightTeam()?;
         let extra_team = a2.ExtraTeam()?;
-        
+
         // Collect all avatar IDs first
         let mut avatar_ids = Vec::new();
         for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
@@ -651,10 +649,10 @@ fn on_set_lineup(
             let avatar_id = character.CharacterID()?;
             avatar_ids.push((*avatar_id).into());
         }
-        
+
         // Populate the global buffer cache
         crate::ui::helpers::populate_avatar_buffers(&avatar_ids);
-        
+
         // Now process avatars
         let mut avatars = Vec::<Avatar>::new();
         let mut errors = Vec::<Error>::new();
@@ -664,7 +662,6 @@ fn on_set_lineup(
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
             }
-            
         }
 
         // Unsure if you can have more than one support char
@@ -1598,7 +1595,8 @@ unsafe fn resolve_defeated_entity_offset() -> Result<usize> {
     // mov     rdx, [r15+??h]
     // mov     rcx, r14
     // call    RPG::GameCore::TurnBasedGameMode::CheckLimboEntityCanDie
-    let method = RPG_GameCore_TurnBasedGameMode::get_class_static()?.find_method("_CheckLimboEntityCanDie", vec!["RPG.GameCore.GameEntity"])?;
+    let method = RPG_GameCore_TurnBasedGameMode::get_class_static()?
+        .find_method("_CheckLimboEntityCanDie", vec!["RPG.GameCore.GameEntity"])?;
     static PATTERN: &str = "49 8B 57 ? 4C 89 F1 E8 ? ? ? ?";
     let pattern_tokens = PATTERN.split_whitespace().collect::<Vec<_>>();
     let call_opcode_index = pattern_tokens
@@ -1606,10 +1604,10 @@ unsafe fn resolve_defeated_entity_offset() -> Result<usize> {
         .position(|token| *token == "E8")
         .context("Pattern does not contain E8 call opcode")?;
 
-    let locs = patternscan::scan(Cursor::new(buffer), &PATTERN)
-        .context("Failed to scan for pattern")?;
+    let locs =
+        patternscan::scan(Cursor::new(buffer), &PATTERN).context("Failed to scan for pattern")?;
     let addr = locs
-    .first()
+        .first()
         // .iter().map(|x| unsafe { target_fn.byte_offset(*x as _) })
         // // .find(|x| unsafe {
         // //     // Get call relative address
@@ -1657,7 +1655,9 @@ unsafe fn resolve_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
             }
 
             let field_type = il2cpp_field_get_type(field);
-            if field_type.name() == "RPG.GameCore.EntityType" && field_offset != defeated_entity_offset {
+            if field_type.name() == "RPG.GameCore.EntityType"
+                && field_offset != defeated_entity_offset
+            {
                 alternate_entity_type_offset = Some(field_offset);
                 if has_matching_offset {
                     break;
@@ -1968,54 +1968,54 @@ pub fn subscribe() -> Result<()> {
                 .va(),
             on_update_cycle
         )?;
-        subscribe_function!(
-            ON_DIRECT_CHANGE_HP_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
-                .find_method(
-                    "DirectChangeHP",
-                    vec![
-                        "RPG.GameCore.PropertyModifyFunction",
-                        "RPG.GameCore.FixPoint",
-                        "RPG.GameCore.FixPoint",
-                        "*"
-                    ],
-                )?
-                .va(),
-            on_direct_change_hp
-        )?;
-        subscribe_function!(
-            ON_DIRECT_DAMAGE_HP_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
-                // Not sure if I need keyword out
-                .find_method(
-                    "DirectDamageHP",
-                    vec![
-                        "RPG.GameCore.FixPoint",
-                        "RPG.GameCore.FixPoint",
-                        "RPG.GameCore.AntiLockHPStrength",
-                        "*",
-                        "RPG.GameCore.FixPoint&",
-                        "System.Nullable<RPG.GameCore.FixPoint>"
-                    ],
-                )?
-                .va(),
-            on_direct_damage_hp
-        )?;
-        subscribe_function!(
-            ON_STAT_CHANGE_Detour,
-            RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
-                .find_method(
-                    "ModifyProperty",
-                    vec![
-                        "RPG.GameCore.AbilityProperty",
-                        "RPG.GameCore.PropertyModifyFunction",
-                        "RPG.GameCore.FixPoint",
-                        "*"
-                    ]
-                )?
-                .va(),
-            on_stat_change
-        )?;
+        // subscribe_function!(
+        //     ON_DIRECT_CHANGE_HP_Detour,
+        //     RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
+        //         .find_method(
+        //             "DirectChangeHP",
+        //             vec![
+        //                 "RPG.GameCore.PropertyModifyFunction",
+        //                 "RPG.GameCore.FixPoint",
+        //                 "RPG.GameCore.FixPoint",
+        //                 "*"
+        //             ],
+        //         )?
+        //         .va(),
+        //     on_direct_change_hp
+        // )?;
+        // subscribe_function!(
+        //     ON_DIRECT_DAMAGE_HP_Detour,
+        //     RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
+        //         // Not sure if I need keyword out
+        //         .find_method(
+        //             "DirectDamageHP",
+        //             vec![
+        //                 "RPG.GameCore.FixPoint",
+        //                 "RPG.GameCore.FixPoint",
+        //                 "RPG.GameCore.AntiLockHPStrength",
+        //                 "*",
+        //                 "RPG.GameCore.FixPoint&",
+        //                 "System.Nullable<RPG.GameCore.FixPoint>"
+        //             ],
+        //         )?
+        //         .va(),
+        //     on_direct_damage_hp
+        // )?;
+        // subscribe_function!(
+        //     ON_STAT_CHANGE_Detour,
+        //     RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
+        //         .find_method(
+        //             "ModifyProperty",
+        //             vec![
+        //                 "RPG.GameCore.AbilityProperty",
+        //                 "RPG.GameCore.PropertyModifyFunction",
+        //                 "RPG.GameCore.FixPoint",
+        //                 "*"
+        //             ]
+        //         )?
+        //         .va(),
+        //     on_stat_change
+        // )?;
         subscribe_function!(
             ON_ENTITY_DEFEATED_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()

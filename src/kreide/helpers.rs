@@ -60,9 +60,9 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
         return Err(anyhow!("SkillData was null"));
     }
 
-    let row_data = skill_data.RowData().context("SkillData RowData was null")?;
+    let row_data = skill_data.RowData()?;
 
-    let text_id = row_data.get_SkillName().context("Skill name was null")?;
+    let text_id = row_data.get_SkillName()?;
 
     let skill_type = row_data.get_AttackType()?;
 
@@ -256,8 +256,16 @@ pub fn is_obfuscated_name<S: AsRef<str>>(name: S) -> bool {
     name.len() == 11 && name.chars().all(|c| c.is_ascii_uppercase())
 }
 
+pub fn get_type_handle<S: AsRef<str>>(type_name: S) -> Result<System_Type> {
+    let type_name = type_name.as_ref();
+    let runtime_type = System_RuntimeType::from_name(type_name)?;
+    let ty = runtime_type.get_il2cpp_type();
+    Ok(System_Type::get_type_from_handle(ty)?)
+}
+
 
 pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
+    // Add null checks.
     let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
     log::info!(
         "Support Avatar: {}, Icon Path: {}",
@@ -265,10 +273,7 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
         avatar_row.AvatarSideIconPath()?.to_string()
     );
 
-    let type_name = UnityEngine_Sprite::ffi_name();
-    let runtime_type = System_RuntimeType::from_name(type_name)?;
-    let ty = runtime_type.get_il2cpp_type();
-    let type_handle = System_Type::get_type_from_handle(ty)?;
+    let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
 
     let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
         avatar_row.AvatarSideIconPath()?,
@@ -279,29 +284,19 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
     let tex = sprite.get_texture()?;
 
     let default_format = {
-        let type_name = "UnityEngine.RenderTextureFormat";
-        let runtime_type = System_RuntimeType::from_name(type_name)?;
-        let ty = runtime_type.get_il2cpp_type();
-        let type_handle = System_Type::get_type_from_handle(ty)?;
-        let x = System_Int32__Boxed(System_Enum::parse(
-            type_handle,
-            Il2CppString::new("Default")?,
-        )?);
-        log::debug!("Default RenderTextureFormat value: {}", (*x).0);
-        (*x).0
+        // let x = System_Int32__Boxed(System_Enum::parse(
+        //     System_Type(System_RuntimeType::from_name("UnityEngine.RenderTextureFormat")?.0),
+        //     Il2CppString::new("Default")?,
+        // )?);
+        7        
     };
 
     let rw_format = {
-        let type_name = "UnityEngine.RenderTextureReadWrite";
-        let runtime_type = System_RuntimeType::from_name(type_name)?;
-        let ty = runtime_type.get_il2cpp_type();
-        let type_handle = System_Type::get_type_from_handle(ty)?;
-        let x = System_Int32__Boxed(System_Enum::parse(
-            type_handle,
-            Il2CppString::new("Linear")?,
-        )?);
-        log::debug!("Default RenderTextureReadWrite value: {}", (*x).0);
-        (*x).0
+        // let x = System_Int32__Boxed(System_Enum::parse(
+        //     System_Type(System_RuntimeType::from_name("UnityEngine.RenderTextureReadWrite")?.0),
+        //     Il2CppString::new("Linear")?,
+        // )?);
+        1
     };
 
     // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script

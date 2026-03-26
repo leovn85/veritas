@@ -1,5 +1,5 @@
 use crate::{kreide, ui::app::GraphUnit};
-use egui::{Color32, Layout, Stroke, Ui};
+use egui::{Align2, Color32, FontId, Layout, Stroke, Ui};
 use egui_extras::Column;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
@@ -112,27 +112,65 @@ impl App {
                 header.col(|ui| {
                     ui.heading("DPAV");
                 });
-
             })
             .body(|body| {
-                body.rows(52., battle_context.avatar_lineup.len(), |mut row| {
+                body.rows(52., battle_context.avatar_lineup.len() + 1, |mut row| {
+                    if battle_context.avatar_lineup.len() == 0 {
+                        return;
+                    }
+                    
                     let i = row.index();
-                    let dmg = battle_context.real_time_damages[i];
+                    let dmg = if i >= battle_context.avatar_lineup.len() {
+                        battle_context.total_damage
+                    } else {
+                        battle_context.real_time_damages[i]
+                    };
 
                     row.col(|ui| {
                         ui.with_layout(
                             Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                if let Some(handle) = helpers::load_avatar_image(
-                                    ui.ctx(),
-                                    battle_context.avatar_lineup[i].id,
-                                    egui::TextureOptions::default(),
-                                ) {
-                                    let sized_image = egui::load::SizedTexture::new(
-                                        handle.id(),
-                                        egui::vec2(48.0, 48.0),
-                                    );
-                                    ui.add(egui::Image::from_texture(sized_image));
+                                if i == battle_context.avatar_lineup.len() {
+                                    ui.label(t!("Total"));
+                                } else {
+                                    if let Some(handle) = helpers::load_avatar_image(
+                                        ui.ctx(),
+                                        battle_context.avatar_lineup[i].id,
+                                        egui::TextureOptions::default(),
+                                    ) {
+                                        let percentage = if battle_context.total_damage > 0.0 {
+                                            dmg / battle_context.total_damage * 100.0
+                                        } else {
+                                            0.0
+                                        };
+
+                                        let dim = 48.0;
+                                        let sized_image = egui::load::SizedTexture::new(
+                                            handle.id(),
+                                            egui::vec2(dim, dim),
+                                        );
+                                        let image_response =
+                                            ui.add(egui::Image::from_texture(sized_image));
+
+                                        let text_pos = image_response.rect.right_bottom()
+                                            - egui::vec2(0.0, 0.0);
+                                        let percentage_text = format!("{percentage:.0}%");
+
+                                        ui.painter().text(
+                                            text_pos + egui::vec2(1.0, 1.0),
+                                            Align2::RIGHT_BOTTOM,
+                                            &percentage_text,
+                                            FontId::proportional(dim / 4.0),
+                                            Color32::BLACK,
+                                        );
+                                        ui.painter().text(
+                                            text_pos,
+                                            Align2::RIGHT_BOTTOM,
+                                            &percentage_text,
+                                            FontId::proportional(dim / 4.0),
+                                            Color32::WHITE,
+                                        );
+                                    }
                                 }
                             },
                         );
@@ -142,7 +180,7 @@ impl App {
                         ui.with_layout(
                             Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                ui.label(format!{"{}", helpers::format_damage(dmg)});
+                                ui.label(format! {"{}", helpers::format_damage(dmg)});
                             },
                         );
                     });
@@ -151,49 +189,46 @@ impl App {
                         ui.with_layout(
                             Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                            let dpav = if battle_context.action_value > 0.0 {
-                                dmg / battle_context.action_value
-                            } else {
-                                dmg
-                            };
+                                let dpav = if battle_context.action_value > 0.0 {
+                                    dmg / battle_context.action_value
+                                } else {
+                                    dmg
+                                };
 
-                                ui.label(format!{"{}", helpers::format_damage(dpav)});
+                                ui.label(format! {"{}", helpers::format_damage(dpav)});
                             },
                         );
                     });
-
-
                 });
             });
 
+        // .body(|mut body| {
+        //     body.row(30.0, |mut row| {
+        //         row.col(|ui| {
+        //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
+        //                 for avatar in avatars {
+        //                     let handle = helpers::load_image(
+        //                         ui.ctx(),
+        //                         avatar,
+        //                         egui::TextureOptions::default(),
+        //                     );
+        //                     let sized_image = egui::load::SizedTexture::new(
+        //                         handle.id(),
+        //                         // egui::vec2(handle.size()[0] as f32, handle.size()[1] as f32),
+        //                         egui::vec2(64.0, 64.0),
+        //                     );
+        //                     ui.add(egui::Image::from_texture(sized_image));
+        //                 }
+        //         });
 
-            // .body(|mut body| {
-            //     body.row(30.0, |mut row| {
-            //         row.col(|ui| {
-            //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
-            //                 for avatar in avatars {
-            //                     let handle = helpers::load_image(
-            //                         ui.ctx(),
-            //                         avatar,
-            //                         egui::TextureOptions::default(),
-            //                     );
-            //                     let sized_image = egui::load::SizedTexture::new(
-            //                         handle.id(),
-            //                         // egui::vec2(handle.size()[0] as f32, handle.size()[1] as f32),
-            //                         egui::vec2(64.0, 64.0),
-            //                     );
-            //                     ui.add(egui::Image::from_texture(sized_image));
-            //                 }
-            //         });
-
-            //         row.col(|ui: &mut Ui| {
-            //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
-            //                 for avatar in avatars {
-            //                     ui.label("700");
-            //                 }
-            //         });
-            //     });
-            // });
+        //         row.col(|ui: &mut Ui| {
+        //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
+        //                 for avatar in avatars {
+        //                     ui.label("700");
+        //                 }
+        //         });
+        //     });
+        // });
     }
 
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
