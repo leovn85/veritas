@@ -1,5 +1,4 @@
 use crate::battle::BattleContext;
-use crate::get_module_handle;
 use crate::kreide::helpers::*;
 use crate::kreide::types::*;
 use crate::kreide::*;
@@ -21,15 +20,10 @@ use il2cpp_runtime::api::il2cpp_class_get_fields;
 use il2cpp_runtime::api::il2cpp_field_get_name;
 use il2cpp_runtime::api::il2cpp_field_get_offset;
 use il2cpp_runtime::api::il2cpp_field_get_type;
-use il2cpp_runtime::api::il2cpp_field_get_value_object;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
 use il2cpp_runtime::types::System_Enum;
-use il2cpp_runtime::types::System_Int32__Boxed;
-use il2cpp_runtime::types::System_Type;
 use std::ffi::c_void;
-use std::fs;
-use std::io::BufWriter;
 use std::ptr::null;
 use std::sync::OnceLock;
 
@@ -161,7 +155,9 @@ fn on_damage(
 ) -> bool {
     log::debug!(function_name!());
 
-    let hp_initial = match defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) {
+    let hp_initial = match unsafe {
+        defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP)
+    } {
         Ok(value) => value,
         Err(e) => {
             log::error!("{} HP initial error: {}", function_name!(), e);
@@ -180,7 +176,9 @@ fn on_damage(
         flag,
         a10,
     );
-    let hp_final = match defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) {
+    let hp_final = match unsafe {
+        defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP)
+    } {
         Ok(value) => value,
         Err(e) => {
             log::error!("{} HP final error: {}", function_name!(), e);
@@ -1595,11 +1593,11 @@ unsafe fn resolve_defeated_entity_offset() -> Result<usize> {
     // mov     rdx, [r15+??h]
     // mov     rcx, r14
     // call    RPG::GameCore::TurnBasedGameMode::CheckLimboEntityCanDie
-    let method = RPG_GameCore_TurnBasedGameMode::get_class_static()?
+    let _method = RPG_GameCore_TurnBasedGameMode::get_class_static()?
         .find_method("_CheckLimboEntityCanDie", vec!["RPG.GameCore.GameEntity"])?;
     static PATTERN: &str = "49 8B 57 ? 4C 89 F1 E8 ? ? ? ?";
     let pattern_tokens = PATTERN.split_whitespace().collect::<Vec<_>>();
-    let call_opcode_index = pattern_tokens
+    let _call_opcode_index = pattern_tokens
         .iter()
         .position(|token| *token == "E8")
         .context("Pattern does not contain E8 call opcode")?;
@@ -1630,7 +1628,7 @@ unsafe fn resolve_defeated_entity_offset() -> Result<usize> {
 }
 
 unsafe fn resolve_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
-    let defeated_entity_offset = resolve_defeated_entity_offset()?;
+    let defeated_entity_offset = unsafe { resolve_defeated_entity_offset()? };
 
     let mut has_matching_offset = false;
     let mut alternate_entity_type_offset = None;
@@ -1780,9 +1778,9 @@ pub fn on_initialize_enemy(
     safe_call!({
         let row_data = instance._MonsterRowData()?;
         let row = row_data._Row()?;
-        let monster_id = instance.get_monster_id()?;
+        let monster_id = unsafe { instance.get_monster_id()? };
         let base_stats = Stats {
-            level: row_data.get_Level()?,
+            level: unsafe { row_data.get_Level()? },
             hp: fixpoint_to_raw(&*instance._DefaultMaxHP()?),
         };
 
@@ -1824,7 +1822,7 @@ retour::static_detour! {
 
 pub fn subscribe() -> Result<()> {
     unsafe {
-        let mut combo_instance_class = None;
+        let mut _combo_instance_class = None;
 
         let mut on_damage_method = None;
         for (key, class) in il2cpp_runtime::get_type_table()? {
@@ -1863,7 +1861,7 @@ pub fn subscribe() -> Result<()> {
 
         let field_iter: *const c_void = null();
 
-        let mut on_combo_method = None;
+        let mut _on_combo_method = None;
         loop {
             let field = il2cpp_class_get_fields(
                 get_cached_class("RPG.GameCore.LevelSingleInsertAbilityFinishOrAbort")?,
@@ -1879,8 +1877,8 @@ pub fn subscribe() -> Result<()> {
                     .class()
                     .find_method("*", vec!["RPG.GameCore.TurnBasedGameMode"])
                 {
-                    combo_instance_class = Some(field_type.class());
-                    on_combo_method = Some(method);
+                    _combo_instance_class = Some(field_type.class());
+                    _on_combo_method = Some(method);
                     break;
                 }
             }

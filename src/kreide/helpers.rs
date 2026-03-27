@@ -8,7 +8,9 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 use function_name::named;
-use il2cpp_runtime::{Il2CppObject, System_RuntimeType, get_cached_class, types::{Il2CppString, System_Enum, System_Int32__Boxed, System_Type}};
+use il2cpp_runtime::{
+    Il2CppObject, System_RuntimeType, get_cached_class, types::{Il2CppString, System_Enum, System_Int32__Boxed, System_Type},
+};
 
 use super::types::{
     RPG_Client_TextID, RPG_Client_TextmapStatic, RPG_GameCore_AbilityProperty,
@@ -17,7 +19,7 @@ use super::types::{
 };
 
 pub fn get_textmap_content(hash: &RPG_Client_TextID) -> Result<String> {
-    Ok(RPG_Client_TextmapStatic::get_text(hash, null()).map(|s| s.to_string())?)
+    Ok(unsafe { RPG_Client_TextmapStatic::get_text(hash, null()) }.map(|s| s.to_string())?)
 }
 
 #[named]
@@ -31,7 +33,7 @@ pub fn get_avatar_data_from_id(avatar_id: u32) -> Result<RPG_Client_AvatarData> 
     log::debug!(function_name!());
     let s_module_manager = get_module_manager()?;
     let avatar_module = s_module_manager.AvatarModule()?;
-    Ok(avatar_module.get_avatar(avatar_id)?)
+    Ok(unsafe { avatar_module.get_avatar(avatar_id)? })
 }
 
 #[named]
@@ -41,8 +43,7 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
     let avatar_data = get_avatar_data_from_id(avatar_id)
         .context(format!("AvatarData with id {avatar_id} was null"))?;
 
-    let avatar_name = avatar_data
-        .AvatarName()
+    let avatar_name = unsafe { avatar_data.AvatarName() }
         .map(|name| name.to_string())
         .unwrap_or_default();
 
@@ -62,9 +63,9 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
 
     let row_data = skill_data.RowData()?;
 
-    let text_id = row_data.get_SkillName()?;
+    let text_id = unsafe { row_data.get_SkillName()? };
 
-    let skill_type = row_data.get_AttackType()?;
+    let skill_type = unsafe { row_data.get_AttackType()? };
 
     Ok(Skill {
         name: get_textmap_content(&text_id)?,
@@ -81,14 +82,13 @@ pub unsafe fn get_avatar_from_entity(entity: RPG_GameCore_GameEntity) -> Result<
         return Err(anyhow!("Avatar entity was null"));
     }
 
-    let id = RPG_Client_UIGameEntityUtils::get_avatar_id(entity)
+    let id = unsafe { RPG_Client_UIGameEntityUtils::get_avatar_id(entity) }
         .context("Failed to get AvatarID from GameEntity")?;
 
     let avatar_data =
         get_avatar_data_from_id(id).context(format!("AvatarData with id {id} was null"))?;
 
-    let name = avatar_data
-        .AvatarName()
+    let name = unsafe { avatar_data.AvatarName() }
         .map(|name| name.to_string())
         .unwrap_or_default();
 
@@ -108,7 +108,7 @@ pub unsafe fn get_avatar_from_servant_entity(entity: RPG_GameCore_GameEntity) ->
         ._BattleInstanceRef_k__BackingField()?;
 
     let entity_manager = battle_instance._GameWorld()?._EntityManager()?;
-    let avatar_entity = entity_manager.get_entity_summoner(entity)?;
+    let avatar_entity = unsafe { entity_manager.get_entity_summoner(entity)? };
     unsafe { get_avatar_from_entity(avatar_entity) }
 }
 
@@ -116,10 +116,12 @@ pub unsafe fn get_avatar_from_servant_entity(entity: RPG_GameCore_GameEntity) ->
 pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result<Avatar> {
     log::debug!(function_name!());
     let monster_data_comp = RPG_GameCore_MonsterDataComponent(
-        entity
+        unsafe {
+            entity
             .get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.MonsterDataComponent",
             )?)?
+        }
             .0,
     );
 
@@ -129,7 +131,7 @@ pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 
     let monster_name = monster_data_comp._MonsterRowData()?._Row()?.MonsterName()?;
 
-    let monster_id = monster_data_comp.get_monster_id()?;
+    let monster_id = unsafe { monster_data_comp.get_monster_id()? };
 
     Ok(Avatar {
         id: monster_id,
@@ -141,10 +143,12 @@ pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result<Avatar> {
     log::debug!(function_name!());
     let servant_data_comp = RPG_GameCore_ServantDataComponent(
-        entity
+        unsafe {
+            entity
             .get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.ServantDataComponent",
             )?)?
+        }
             .0,
     );
 
@@ -203,10 +207,12 @@ pub unsafe fn get_entity_ability_properties(
     entity: RPG_GameCore_GameEntity,
 ) -> Result<HashMap<String, f64>> {
     let ability_comp = RPG_GameCore_TurnBasedAbilityComponent(
-        entity
+        unsafe {
+            entity
             .get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.TurnBasedAbilityComponent",
             )?)?
+        }
             .0,
     );
 
@@ -218,7 +224,7 @@ pub unsafe fn get_entity_ability_properties(
         .filter_map(|i| {
             let property_enum =
                 unsafe { std::mem::transmute::<i32, RPG_GameCore_AbilityProperty>(i) };
-            let value = fixpoint_to_raw(&ability_comp.get_property(property_enum).ok()?);
+            let value = fixpoint_to_raw(&unsafe { ability_comp.get_property(property_enum).ok()? });
 
             (value != 0.0).then_some((format!("{property_enum:?}"), value))
         })
@@ -260,83 +266,85 @@ pub fn get_type_handle<S: AsRef<str>>(type_name: S) -> Result<System_Type> {
     let type_name = type_name.as_ref();
     let runtime_type = System_RuntimeType::from_name(type_name)?;
     let ty = runtime_type.get_il2cpp_type();
-    Ok(System_Type::get_type_from_handle(ty)?)
+    Ok(unsafe { System_Type::get_type_from_handle(ty)? })
 }
 
 
 pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
     // Add null checks.
-    let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
-    log::info!(
-        "Support Avatar: {}, Icon Path: {}",
-        avatar_id,
-        avatar_row.AvatarSideIconPath()?.to_string()
-    );
+    unsafe {
+        let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
+        log::info!(
+            "Support Avatar: {}, Icon Path: {}",
+            avatar_id,
+            avatar_row.AvatarSideIconPath()?.to_string()
+        );
 
-    let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
 
-    let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
-        avatar_row.AvatarSideIconPath()?,
-        type_handle,
-        false,
-    )?;
-    let sprite = UnityEngine_Sprite(sprite.0);
-    let tex = sprite.get_texture()?;
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            avatar_row.AvatarSideIconPath()?,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
 
     let default_format = {
-        // let x = System_Int32__Boxed(System_Enum::parse(
-        //     System_Type(System_RuntimeType::from_name("UnityEngine.RenderTextureFormat")?.0),
-        //     Il2CppString::new("Default")?,
-        // )?);
-        7        
+        let value = System_Int32__Boxed(System_Enum::parse(
+            get_type_handle("UnityEngine.RenderTextureFormat")?,
+            Il2CppString::new("Default")?,
+        )?);
+        (*value).0
     };
 
     let rw_format = {
-        // let x = System_Int32__Boxed(System_Enum::parse(
-        //     System_Type(System_RuntimeType::from_name("UnityEngine.RenderTextureReadWrite")?.0),
-        //     Il2CppString::new("Linear")?,
-        // )?);
-        1
+        let value = System_Int32__Boxed(System_Enum::parse(
+            get_type_handle("UnityEngine.RenderTextureReadWrite")?,
+            Il2CppString::new("Linear")?,
+        )?);
+        (*value).0
     };
 
     // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
     // https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures
-    let render_tex = UnityEngine_RenderTexture::GetTemporary(
-        tex.as_base().get_width()?,
-        tex.as_base().get_height()?,
-        0,
-        default_format,
-        rw_format,
-    )?;
-    UnityEngine_Graphics::Blit(tex, render_tex)?;
-    let prev = UnityEngine_RenderTexture::GetActive()?;
-    UnityEngine_RenderTexture::set_active(render_tex)?;
-    use il2cpp_runtime::api::il2cpp_object_new;
-    let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(
-        (get_cached_class(UnityEngine_Texture2D::ffi_name())?),
-    ));
+        let render_tex = UnityEngine_RenderTexture::GetTemporary(
+            tex.as_base().get_width()?,
+            tex.as_base().get_height()?,
+            0,
+            default_format,
+            rw_format,
+        )?;
+        UnityEngine_Graphics::Blit(tex, render_tex)?;
+        let prev = UnityEngine_RenderTexture::GetActive()?;
+        UnityEngine_RenderTexture::set_active(render_tex)?;
+        use il2cpp_runtime::api::il2cpp_object_new;
+        let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(
+            get_cached_class(UnityEngine_Texture2D::ffi_name())?,
+        ));
 
-    readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
-    readable_tex.read_pixels(
-        UnityEngine_Rect {
-            x: 0.,
-            y: 0.,
-            width: render_tex.get_width()? as f32,
-            height: render_tex.get_height()? as f32,
-        },
-        0,
-        0,
-    )?;
-    readable_tex.apply()?;
-    UnityEngine_RenderTexture::set_active(prev)?;
-    UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
+        readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
+        readable_tex.read_pixels(
+            UnityEngine_Rect {
+                x: 0.,
+                y: 0.,
+                width: render_tex.get_width()? as f32,
+                height: render_tex.get_height()? as f32,
+            },
+            0,
+            0,
+        )?;
+        readable_tex.apply()?;
+        UnityEngine_RenderTexture::set_active(prev)?;
+        UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
 
-    let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
-    let buffer = array.to_vec::<u8>();
-    // if let Err(e) = dump_avatar_png_bytes(avatar_id, &buffer) {
-    //     log::error!("Failed to dump avatar {} PNG: {}", avatar_id, e);
-    // }
-    Ok(buffer)
+        let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
+        let buffer = array.to_vec::<u8>();
+        // if let Err(e) = dump_avatar_png_bytes(avatar_id, &buffer) {
+        //     log::error!("Failed to dump avatar {} PNG: {}", avatar_id, e);
+        // }
+        Ok(buffer)
+    }
 }
 
 pub fn dump_avatar_png_bytes(avatar_id: u32, png_bytes: &[u8]) -> Result<()> {
