@@ -45,7 +45,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             style: CS_HREDRAW | CS_VREDRAW,
             // This is fine as the wrapper sig matches the imported sig
             lpfnWndProc: Some(mem::transmute(DefWindowProcW as *const c_void)),
-            lpszClassName: PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            lpszClassName: PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             ..Default::default()
         };
 
@@ -54,7 +54,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         let window = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             window_class.lpszClassName,
-            PCWSTR(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
+            PCWSTR::from_raw(u16str!(env!("CARGO_PKG_NAME")).as_ptr()),
             WS_OVERLAPPEDWINDOW,
             0,
             0,
@@ -66,7 +66,12 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             None,
         )?;
 
-        let mut feature_levels = [D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0];
+        let mut feature_levels = [
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_11_1,
+        ];
 
         let refresh_rate = DXGI_RATIONAL {
             Numerator: 60,
@@ -102,7 +107,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         let mut device: Option<ID3D11Device> = None;
         let mut context: Option<ID3D11DeviceContext> = None;
 
-        D3D11CreateDeviceAndSwapChain(
+        let mut created = D3D11CreateDeviceAndSwapChain(
             None,
             D3D_DRIVER_TYPE_HARDWARE,
             HMODULE(null_mut()),
@@ -114,7 +119,69 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
             Some(&mut device),
             Some(feature_levels.as_mut_ptr()),
             Some(&mut context),
-        )?;
+        )
+        .is_ok();
+
+        if !created {
+            let mut adapters = Vec::new();
+            unsafe {
+                if let Ok(factory) = CreateDXGIFactory::<IDXGIFactory>() {
+                    let mut adapter_index = 0;
+                    loop {
+                        match factory.EnumAdapters(adapter_index) {
+                            Ok(_adapter) => {
+                                adapters.push(_adapter);
+                                adapter_index += 1;
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                } else {
+                    log::error!("Failed to create DXGI Factory, cannot enumerate adapters");
+                }
+            }
+
+            for (i, adapter) in adapters.iter().enumerate() {
+                let mut feature_levels = [
+                    D3D_FEATURE_LEVEL_10_1,
+                    D3D_FEATURE_LEVEL_10_0,
+                    D3D_FEATURE_LEVEL_11_0,
+                    D3D_FEATURE_LEVEL_11_1,
+                ];
+
+                match D3D11CreateDeviceAndSwapChain(
+                    adapter,
+                    D3D_DRIVER_TYPE_UNKNOWN,
+                    HMODULE(null_mut()),
+                    D3D11_CREATE_DEVICE_FLAG(0),
+                    Some(&feature_levels.clone()),
+                    D3D11_SDK_VERSION,
+                    Some(&swap_chain_desc),
+                    Some(&mut swap_chain),
+                    Some(&mut device),
+                    Some(feature_levels.as_mut_ptr()),
+                    Some(&mut context),
+                ) {
+                    Ok(_) => {
+                        created = true;
+                        break;
+                    }
+                    Err(e) => {
+                        if i == adapters.len() - 1 {
+                            return Err(anyhow::anyhow!(
+                                "Failed to create D3D11 device and swap chain: {e:#?}"
+                            ));
+                        }
+                    }
+                };
+            }
+        }
+
+        if !created {
+            return Err(anyhow::anyhow!(
+                "Failed to create D3D11 device and swap chain"
+            ));
+        }
 
         let mut vtable = Box::new([0usize; 205]);
 
@@ -147,6 +214,7 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
         Ok(vtable)
     }
 }
+
 
 pub fn initialize(toasts: Vec<Toast>) -> Result<()> {
     let vtable = get_vtable()?;
