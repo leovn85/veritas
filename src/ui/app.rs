@@ -31,7 +31,6 @@ use windows::Win32::{
 
 use crate::RUNTIME;
 use crate::battle::BattleContext;
-use crate::entry::InitErrorInfo;
 use crate::export::BattleDataExporter;
 use crate::updater::Status;
 use crate::updater::Update;
@@ -93,7 +92,6 @@ pub struct App {
     pub beta_channel: bool,
     pub skip_version_mismatch_popup: bool,
     pub reopen_changelog: bool,
-    pub init_err: Option<InitErrorInfo>,
     pub updater_hint: Option<String>,
     pub updater_window_last_size: Option<egui::Vec2>,
 }
@@ -107,32 +105,6 @@ impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn update(&mut self, ctx: &egui::Context) {
         // Get rid of this and just switch to egui-toast
-        if self.update.is_some() {
-            // let message = format!("Version {} is available! Click here to open settings and update.",
-            //     self.state.update_available.as_ref().unwrap());
-
-            if let Some(screen_rect) = ctx.input(|i| i.pointer.hover_pos()) {
-                if ctx.input(|i| i.pointer.primary_clicked()) {
-                    let notification_area = egui::Rect::from_min_max(
-                        egui::pos2(
-                            ctx.screen_rect().right() - 200.0,
-                            ctx.screen_rect().top() * self.notifs.len() as f32,
-                        ),
-                        egui::pos2(
-                            ctx.screen_rect().right(),
-                            (ctx.screen_rect().top() + 50.0) * self.notifs.len() as f32,
-                        ),
-                    );
-
-                    if notification_area.contains(screen_rect) {
-                        self.state.show_menu = true;
-                        self.state.show_settings = true;
-                        self.notifs.dismiss_all_toasts();
-                    }
-                }
-            }
-        }
-
         if self.state.show_changelog {
             self.show_changelog_window(ctx);
         }
@@ -230,11 +202,11 @@ impl Overlay for App {
                     None => {
                         self.notifs
                             .info(t!(
-                                "Version %{version} is available! Click here to open settings and update.", version = new_version
+                                "Version %{version} is available!", version = new_version
                             ))
                             .closable(true)
                             .show_progress_bar(true)
-                            .duration(Some(std::time::Duration::from_secs_f32(20.0)));
+                            .duration(Some(std::time::Duration::from_secs_f32(10.0)));
                     }
                 }
             }
@@ -577,7 +549,6 @@ impl App {
             beta_channel,
             skip_version_mismatch_popup: false,
             reopen_changelog: false,
-            init_err: None,
             updater_hint: None,
             updater_window_last_size: None,
         };
@@ -593,14 +564,6 @@ impl App {
                     .set_light(&mut Ui::new(ctx.clone(), "".into(), UiBuilder::new()))
             }
         }
-
-        let init_err = crate::entry::take_init_error();
-        if app.config.nag_versions
-            && matches!(init_err, Some(InitErrorInfo::ObfuscationMismatch { .. }))
-        {
-            app.state.show_version_mismatch = true;
-        }
-        app.init_err = init_err;
 
         app.queue_update_check();
 
@@ -638,7 +601,6 @@ impl App {
             self.state.show_changelog = true;
             self.reopen_changelog = false;
         }
-        self.init_err = None;
     }
 
     pub fn set_beta_flag(&mut self, enabled: bool) -> bool {

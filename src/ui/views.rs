@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use crate::LOCALES;
 use crate::export::BattleDataExporter;
 use crate::ui::themes;
-use crate::{CHANGELOG, RUNTIME, entry::InitErrorInfo, ui::{app::App, helpers::{get_transparent_window_frame, get_window_frame}}, updater::{Status, Update, Updater}};
+use crate::{CHANGELOG, RUNTIME, ui::{app::App, helpers::{get_transparent_window_frame, get_window_frame}}, updater::{Status, Update, Updater}};
 
 impl App {
     pub fn show_changelog_window(&mut self, ctx: &egui::Context) {
@@ -131,20 +131,6 @@ impl App {
                 )
                 .wrap(),
             );
-
-            if let Some(info) = &self.init_err {
-                let message = match info {
-                    InitErrorInfo::Other { message } => message,
-                    InitErrorInfo::ObfuscationMismatch { message, .. } => message,
-                };
-
-                if !message.is_empty() {
-                    CollapsingHeader::new("Error details")
-                        .show_unindented(ui, |ui| {
-                            ui.add(Label::new(message).wrap());
-                        });
-                }
-            }
 
             ui.add(
                 Label::new(

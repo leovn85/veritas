@@ -11,34 +11,12 @@ use std::ffi::{OsString, c_void};
 use std::io::{Cursor, Write};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex};
 use std::{
     thread::{self},
     time::Duration,
 };
 use windows::Win32::System::LibraryLoader::{GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW, GetModuleHandleExA, GetModuleHandleW};
 use anyhow::{Context, Result, anyhow};
-
-#[derive(Clone, Debug)]
-pub enum InitErrorInfo {
-    ObfuscationMismatch {
-        class_name: Option<String>,
-        message: String,
-    },
-    Other {
-        message: String,
-    },
-}
-
-pub static INIT_ERROR: LazyLock<Mutex<Option<InitErrorInfo>>> = LazyLock::new(|| Mutex::new(None));
-
-pub fn take_init_error() -> Option<InitErrorInfo> {
-    INIT_ERROR.lock().unwrap().take()
-}
-
-fn store_init_error(info: InitErrorInfo) {
-    *INIT_ERROR.lock().unwrap() = Some(info);
-}
 
 #[ctor]
 #[cfg(not(test))]
@@ -65,9 +43,6 @@ fn init() {
         Err(e) => {
             let err = format!("Core failed to initialize and has been disabled: {e}");
             log::error!("{}", err);
-            if let Some(info) = classify_init_error(&e) {
-                store_init_error(info);
-            }
             let mut toast = Toast::error(err);
             toast.duration(None);
             toasts.push(toast);
@@ -122,55 +97,6 @@ fn get_il2cpp_table_offset() -> Result<usize> {
             + module.0 as usize;
 
         let qword_addr = addr + 7 + *((addr + 3) as *const i32) as usize;
-
-        // let gameassembly_handle = get_module_handle(w!("GameAssembly"))?;
-        // let target_addr = gameassembly_handle + 0x1861420;
-        // let dump_path = std::env::current_dir()?.join("il2cpp_fn_addr_dump.txt");
-        // let mut dump_file = std::fs::File::create(&dump_path)
-        //     .with_context(|| format!("Failed to create dump file at {}", dump_path.display()))?;
-
-        // writeln!(
-        //     dump_file,
-        //     "index\tmod_path\trva\ttarget_addr"
-        // )?;
-
-        // for x in 0..300 {
-        //     let fn_addr = *((qword_addr.wrapping_add(x * 8)) as *const *const c_void) as usize;
-
-        //     let mut h_module = HMODULE::default();
-        //     GetModuleHandleExA(
-        //         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        //         windows::core::PCSTR(fn_addr as *const u8),
-        //         &mut h_module,
-        //     )
-        //     .with_context(|| format!("GetModuleFileNameW failed with error {:#?}", GetLastError()))?;
-
-        //     let mut lp_filename = [0u16; MAX_PATH as usize];
-        //     let len = GetModuleFileNameW(Some(h_module), &mut lp_filename) as usize;
-        //     let mod_path = if len == 0 {
-        //         Err(anyhow!(
-        //             "GetModuleFileNameW failed with error {:#?}",
-        //             GetLastError()
-        //         ))
-        //     } else {
-        //         Ok(PathBuf::from(OsString::from_wide(&lp_filename[..len])))
-        //     }?;
-
-        //     let module_base = h_module.0 as usize;
-        //     let rva = fn_addr.wrapping_sub(module_base);
-
-        //     writeln!(
-        //         dump_file,
-        //         "{}\t{}\t{:#x}\t{:#x}",
-        //         x,
-        //         mod_path.display(),
-        //         rva,
-        //         target_addr,
-        //     )?;
-        // }
-
-        // log::info!("Wrote il2cpp fn dump to {}", dump_path.display());
-
         Ok(qword_addr)
     }
 }
@@ -215,30 +141,3 @@ fn setup_subscribers() -> anyhow::Result<()> {
     }
 }
 
-fn classify_init_error(error: &anyhow::Error) -> Option<InitErrorInfo> {
-    let message = error.to_string();
-    if let Some(class_name) = extract_missing_class(&message) {
-        Some(InitErrorInfo::ObfuscationMismatch {
-            class_name: Some(class_name),
-            message,
-        })
-    } else {
-        Some(InitErrorInfo::Other { message })
-    }
-}
-
-fn extract_missing_class(message: &str) -> Option<String> {
-    let needle = "no such class";
-    if !message.contains(needle) {
-        return None;
-    }
-
-    let after = message.split(needle).nth(1)?;
-    let class_name = after
-        .trim()
-        .split(|c: char| c.is_whitespace() || c == ':' || c == ')')
-        .next()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim_matches('"').to_string())?;
-    Some(class_name)
-}
