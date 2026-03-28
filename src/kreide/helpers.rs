@@ -2,7 +2,11 @@ use std::{collections::HashMap, ptr::null, sync::LazyLock};
 
 use crate::{
     kreide::types::{
-        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars, RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed, RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion, UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D
+        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
+        RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
+        RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent,
+        RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
+        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D,
     },
     models::misc::{Avatar, Skill},
 };
@@ -18,6 +22,15 @@ use super::types::{
     RPG_GameCore_BattleInstance, RPG_GameCore_FixPoint, RPG_GameCore_GameEntity,
     RPG_GameCore_SkillData, RPG_GameCore_TurnBasedAbilityComponent,
 };
+
+fn sanitize_entity_name<S: AsRef<str>>(name: S) -> String {
+    let name = name.as_ref();
+    if !name.contains("<ub>") && !name.contains("</ub>") {
+        return name.to_string();
+    }
+
+    name.replace("<ub>", "").replace("</ub>", "")
+}
 
 pub fn get_textmap_content(hash: &RPG_Client_TextID) -> Result<String> {
     Ok(unsafe { RPG_Client_TextmapStatic::get_text(hash, null()) }.map(|s| s.to_string())?)
@@ -57,7 +70,7 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
 
     Ok(Avatar {
         id: avatar_id,
-        name: avatar_name,
+        name: sanitize_entity_name(avatar_name),
     })
 }
 
@@ -107,7 +120,10 @@ pub unsafe fn get_avatar_from_entity(entity: RPG_GameCore_GameEntity) -> Result<
         .map(|name| name.to_string())
         .unwrap_or_default();
 
-    Ok(Avatar { id, name })
+    Ok(Avatar {
+        id,
+        name: sanitize_entity_name(name),
+    })
 }
 
 #[named]
@@ -149,7 +165,7 @@ pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 
     Ok(Avatar {
         id: monster_id,
-        name: get_textmap_content(&*monster_name)?,
+        name: sanitize_entity_name(get_textmap_content(&*monster_name)?),
     })
 }
 
@@ -173,7 +189,7 @@ pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 
     Ok(Avatar {
         id: u32::try_from(*servant_row.ServantID()?)?,
-        name: get_textmap_content(&*servant_row.ServantName()?)?,
+        name: sanitize_entity_name(get_textmap_content(&*servant_row.ServantName()?)?),
     })
 }
 
@@ -216,32 +232,32 @@ pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result
 //         .collect::<Vec<_>>())
 // }
 
-pub unsafe fn get_entity_ability_properties(
-    entity: RPG_GameCore_GameEntity,
-) -> Result<HashMap<String, f64>> {
-    let ability_comp = RPG_GameCore_TurnBasedAbilityComponent(
-        unsafe {
-            entity.get_component(System_RuntimeType::from_name(
-                "RPG.GameCore.TurnBasedAbilityComponent",
-            )?)?
-        }
-        .0,
-    );
+// pub unsafe fn get_entity_ability_properties(
+//     entity: RPG_GameCore_GameEntity,
+// ) -> Result<HashMap<String, f64>> {
+//     let ability_comp = RPG_GameCore_TurnBasedAbilityComponent(
+//         unsafe {
+//             entity.get_component(System_RuntimeType::from_name(
+//                 "RPG.GameCore.TurnBasedAbilityComponent",
+//             )?)?
+//         }
+//         .0,
+//     );
 
-    if ability_comp.0.is_null() {
-        return Err(anyhow!("entity does not have TurnBasedAbilityComponent!"));
-    }
+//     if ability_comp.0.is_null() {
+//         return Err(anyhow!("entity does not have TurnBasedAbilityComponent!"));
+//     }
 
-    Ok((0..=193)
-        .filter_map(|i| {
-            let property_enum =
-                unsafe { std::mem::transmute::<i32, RPG_GameCore_AbilityProperty>(i) };
-            let value = fixpoint_to_raw(&unsafe { ability_comp.get_property(property_enum).ok()? });
+//     Ok((0..=193)
+//         .filter_map(|i| {
+//             let property_enum =
+//                 unsafe { std::mem::transmute::<i32, RPG_GameCore_AbilityProperty>(i) };
+//             let value = fixpoint_to_raw(&unsafe { ability_comp.get_property(property_enum).ok()? });
 
-            (value != 0.0).then_some((format!("{property_enum:?}"), value))
-        })
-        .collect::<HashMap<String, f64>>())
-}
+//             (value != 0.0).then_some((format!("{property_enum:?}"), value))
+//         })
+//         .collect::<HashMap<String, f64>>())
+// }
 
 #[named]
 pub unsafe fn get_monster_from_runtime_id(
