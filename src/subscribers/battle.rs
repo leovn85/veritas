@@ -235,13 +235,18 @@ fn on_damage(
                 let attack_type_offset =
                     get_attack_type_offset(Il2CppClass(*(damage_info as *const *const c_void)))?;
 
-                // let attack_type_offset = get_attack_type_offset(RPG_GameCore_GameEntity(damage_info).get_class())?;
-
-                // let damage_type = RPG_GameCore_AttackType__Boxed(
-                //     *(damage_info.byte_offset(attack_type_offset as isize) as *const *const c_void),
-                // );
-                let damage_type =
-                    *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
+                let r#type = {
+                    let damage_type = *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
+                    let boxed = RPG_GameCore_AttackType__Boxed(System_Enum::to_object_from_int(
+                        get_type_handle("RPG.GameCore.AttackType")?,
+                        damage_type,
+                    )?);
+                    System_Enum::get_name(
+                        get_type_handle("RPG.GameCore.AttackType")?,
+                        boxed.0,
+                    )?.to_string()
+                };
+                    
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
                     if !attack_owner.0.is_null() {
@@ -263,8 +268,8 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
                                 overkill_damage,
+                                r#type
                             })),
                             Err(e) => {
                                 log::error!("Avatar Event Error: {}", e);
@@ -284,8 +289,8 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
                                 overkill_damage,
+                                r#type
                             })),
                             Err(e) => {
                                 log::error!("Servant Event Error: {}", e);
@@ -306,8 +311,8 @@ fn on_damage(
                                     team: Team::Player,
                                 },
                                 damage,
-                                damage_type: damage_type as isize,
                                 overkill_damage,
+                                r#type
                             })),
                             Err(e) => {
                                 log::error!("Snapshot Event Error: {}", e);
@@ -700,23 +705,13 @@ fn on_set_lineup(
 
         // Collect all avatar IDs first
         let mut avatar_ids = Vec::new();
-        for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
-            let avatar_id = character.CharacterID()?;
-            avatar_ids.push((*avatar_id).into());
-        }
-        for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
-            let avatar_id = character.CharacterID()?;
-            avatar_ids.push((*avatar_id).into());
-        }
-
-        // Populate the global buffer cache
-        crate::ui::helpers::populate_avatar_buffers(&avatar_ids);
 
         // Now process avatars
         let mut avatars = Vec::<Avatar>::new();
         let mut errors = Vec::<Error>::new();
         for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
+            avatar_ids.push((*avatar_id).into());
             match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
@@ -726,11 +721,16 @@ fn on_set_lineup(
         // Unsure if you can have more than one support char
         for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
+            avatar_ids.push((*avatar_id).into());
             match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
             }
         }
+ 
+        // Populate the global buffer cache
+        crate::ui::helpers::populate_avatar_buffers(&avatar_ids);
+
 
         let event = if !errors.is_empty() {
             let errors = errors
@@ -858,9 +858,6 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
     log::debug!(function_name!());
     use std::string::ToString;
     safe_call!(unsafe {
-        // let boxed = RPG_GameCore_AbilityProperty__Boxed(System_Enum::to_object_from_int(get_type_handle("RPG.GameCore.AbilityProperty")?, property as i32)?);
-        // let property_kind = System_Enum::get_name(get_type_handle("RPG.GameCore.AbilityProperty")?, boxed.0)?;
-        // let property_value = fixpoint_to_raw(&new_stat);
         let property_kind = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
         let property = RPG_GameCore_AbilityProperty__Boxed(System_Enum::parse(
             get_type_handle("RPG.GameCore.AbilityProperty")?,
@@ -875,12 +872,12 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(entity) {
-                    Ok(avatar) => Ok(Event::OnStatChange(OnStatChangeEvent {
+                    Ok(avatar) => Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity {
                             uid: avatar.id,
                             team: Team::Player,
                         },
-                        stat: Property {
+                        property: Property {
                             kind: property_kind,
                             value: property_value,
                         },
@@ -894,12 +891,12 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                 BattleContext::handle_event(e);
             }
             RPG_GameCore_EntityType::Monster => {
-                BattleContext::handle_event(Ok(Event::OnStatChange(OnStatChangeEvent {
+                BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
-                    stat: Property {
+                    property: Property {
                         kind: property_kind,
                         value: property_value,
                     },
@@ -965,12 +962,12 @@ pub fn on_stat_change(
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(entity) {
-                    Ok(avatar) => Ok(Event::OnStatChange(OnStatChangeEvent {
+                    Ok(avatar) => Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity {
                             uid: avatar.id,
                             team: Team::Player,
                         },
-                        stat: Property {
+                        property: Property {
                             kind: property_kind.to_string(),
                             value: property_value,
                         },
@@ -984,12 +981,12 @@ pub fn on_stat_change(
                 BattleContext::handle_event(e);
             }
             RPG_GameCore_EntityType::Monster => {
-                BattleContext::handle_event(Ok(Event::OnStatChange(OnStatChangeEvent {
+                BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
-                    stat: Property {
+                    property: Property {
                         kind: property_kind.to_string(),
                         value: property_value,
                     },

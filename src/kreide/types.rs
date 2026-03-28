@@ -266,6 +266,7 @@ pub enum RPG_GameCore_AbilityProperty {
 	QuantumResistanceBase,
 	ImaginaryResistanceBase,
 	WindResistanceBase,
+	AllDamageTypeResistanceOverrideBase,
 	PhysicalResistanceDelta,
 	FireResistanceDelta,
 	IceResistanceDelta,
@@ -334,6 +335,11 @@ pub enum RPG_GameCore_AbilityProperty {
 	BreakDamageAddedRatioBase,
 	BreakDamageAddedRatioConvert,
 	BreakDamageExtraAddedRatio,
+	ElationDamageAddedRatio,
+	ElationDamageAddedRatioBase,
+	ElationDamageAddedRatioConvert,
+	ElationDamageExtraAddedRatio,
+	ElationEchoPoint,
 	PhysicalStanceBreakResistance,
 	FireStanceBreakResistance,
 	IceStanceBreakResistance,
@@ -367,6 +373,7 @@ pub enum RPG_GameCore_AbilityProperty {
 	ExtraAllDamageTypeAddedRatio2,
 	ExtraAllDamageTypeAddedRatio3,
 	ExtraAllDamageTypeAddedRatio4,
+	ExtraAllDamageTypeAddedRatio5,
 	ExtraAllDamageReduce,
 	ExtraShieldAddedRatio,
 	ExtraSpeedAddedRatio1,
@@ -799,6 +806,9 @@ pub struct RPG_GameCore_AvatarRow;
 impl RPG_GameCore_AvatarRow {
 	#[il2cpp_field(name = "AvatarSideIconPath")]
 	pub fn AvatarSideIconPath(&self) -> Il2CppString {}
+
+	#[il2cpp_field(name = "AvatarName")]
+	pub fn AvatarName(&self) -> RPG_Client_TextID__Boxed {}
 }
 
 

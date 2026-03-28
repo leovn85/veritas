@@ -11,7 +11,7 @@ pub enum Event {
     OnBattleEnd,
     OnUpdateWave(OnUpdateWaveEvent),
     OnUpdateCycle(OnUpdateCycleEvent),
-    OnStatChange(OnStatChangeEvent),
+    OnPropertyChange(OnPropertyChangeEvent),
     OnEntityDefeated(OnEntityDefeatedEvent),
     OnUpdateTeamFormation(OnUpdateTeamFormationEvent),
     OnInitializeEnemy(OnInitializeEnemyEvent)
@@ -48,8 +48,8 @@ pub struct OnSetLineupEvent {
 pub struct OnDamageEvent {
     pub attacker: Entity,
     pub damage: f64,
-    pub damage_type: isize,
-    pub overkill_damage: f64
+    pub overkill_damage: f64,
+    pub r#type: String,
 }
 
 pub struct OnEntityDefeatedEvent {
@@ -57,9 +57,9 @@ pub struct OnEntityDefeatedEvent {
     pub entity_defeated: Entity
 }
 
-pub struct OnStatChangeEvent {
+pub struct OnPropertyChangeEvent {
     pub entity: Entity,
-    pub stat: Property
+    pub property: Property
 }
 
 pub struct OnUpdateTeamFormationEvent {

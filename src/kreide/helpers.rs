@@ -2,14 +2,15 @@ use std::{collections::HashMap, ptr::null, sync::LazyLock};
 
 use crate::{
     kreide::types::{
-        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars, RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion, UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D
+        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars, RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed, RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent, RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion, UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D
     },
     models::misc::{Avatar, Skill},
 };
 use anyhow::{Context, Result, anyhow};
 use function_name::named;
 use il2cpp_runtime::{
-    Il2CppObject, System_RuntimeType, get_cached_class, types::{Il2CppString, System_Enum, System_Int32__Boxed, System_Type},
+    Il2CppObject, System_RuntimeType, get_cached_class,
+    types::{Il2CppString, System_Enum, System_Int32__Boxed, System_Type},
 };
 
 use super::types::{
@@ -47,6 +48,13 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
         .map(|name| name.to_string())
         .unwrap_or_default();
 
+    let avatar_name = if avatar_name.is_empty() {
+        let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
+        get_textmap_content(&*data.AvatarName()?)?
+    } else {
+        avatar_name
+    };
+
     Ok(Avatar {
         id: avatar_id,
         name: avatar_name,
@@ -66,10 +74,17 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
     let text_id = unsafe { row_data.get_SkillName()? };
 
     let skill_type = unsafe { row_data.get_AttackType()? };
+    let skill_type = unsafe {
+        let boxed = RPG_GameCore_AttackType__Boxed(System_Enum::to_object_from_int(
+            get_type_handle("RPG.GameCore.AttackType")?,
+            row_data.get_AttackType()? as i32,
+        )?);
+        System_Enum::get_name(get_type_handle("RPG.GameCore.AttackType")?, boxed.0)?.to_string()
+    };
 
     Ok(Skill {
         name: get_textmap_content(&text_id)?,
-        skill_type: skill_type as isize,
+        skill_type,
         skill_config_id: isize::try_from(*skill_data.SkillConfigID()?)?,
     })
 }
@@ -117,12 +132,11 @@ pub unsafe fn get_monster_from_entity(entity: RPG_GameCore_GameEntity) -> Result
     log::debug!(function_name!());
     let monster_data_comp = RPG_GameCore_MonsterDataComponent(
         unsafe {
-            entity
-            .get_component(System_RuntimeType::from_name(
+            entity.get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.MonsterDataComponent",
             )?)?
         }
-            .0,
+        .0,
     );
 
     if monster_data_comp.0.is_null() {
@@ -144,12 +158,11 @@ pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result
     log::debug!(function_name!());
     let servant_data_comp = RPG_GameCore_ServantDataComponent(
         unsafe {
-            entity
-            .get_component(System_RuntimeType::from_name(
+            entity.get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.ServantDataComponent",
             )?)?
         }
-            .0,
+        .0,
     );
 
     if servant_data_comp.0.is_null() {
@@ -208,12 +221,11 @@ pub unsafe fn get_entity_ability_properties(
 ) -> Result<HashMap<String, f64>> {
     let ability_comp = RPG_GameCore_TurnBasedAbilityComponent(
         unsafe {
-            entity
-            .get_component(System_RuntimeType::from_name(
+            entity.get_component(System_RuntimeType::from_name(
                 "RPG.GameCore.TurnBasedAbilityComponent",
             )?)?
         }
-            .0,
+        .0,
     );
 
     if ability_comp.0.is_null() {
@@ -269,7 +281,6 @@ pub fn get_type_handle<S: AsRef<str>>(type_name: S) -> Result<System_Type> {
     Ok(unsafe { System_Type::get_type_from_handle(ty)? })
 }
 
-
 pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
     // Add null checks.
     unsafe {
@@ -290,24 +301,24 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
         let sprite = UnityEngine_Sprite(sprite.0);
         let tex = sprite.get_texture()?;
 
-    let default_format = {
-        let value = System_Int32__Boxed(System_Enum::parse(
-            get_type_handle("UnityEngine.RenderTextureFormat")?,
-            Il2CppString::new("Default")?,
-        )?);
-        (*value).0
-    };
+        let default_format = {
+            let value = System_Int32__Boxed(System_Enum::parse(
+                get_type_handle("UnityEngine.RenderTextureFormat")?,
+                Il2CppString::new("Default")?,
+            )?);
+            (*value).0
+        };
 
-    let rw_format = {
-        let value = System_Int32__Boxed(System_Enum::parse(
-            get_type_handle("UnityEngine.RenderTextureReadWrite")?,
-            Il2CppString::new("Linear")?,
-        )?);
-        (*value).0
-    };
+        let rw_format = {
+            let value = System_Int32__Boxed(System_Enum::parse(
+                get_type_handle("UnityEngine.RenderTextureReadWrite")?,
+                Il2CppString::new("Linear")?,
+            )?);
+            (*value).0
+        };
 
-    // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
-    // https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures
+        // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
+        // https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures
         let render_tex = UnityEngine_RenderTexture::GetTemporary(
             tex.as_base().get_width()?,
             tex.as_base().get_height()?,
@@ -319,9 +330,9 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
         let prev = UnityEngine_RenderTexture::GetActive()?;
         UnityEngine_RenderTexture::set_active(render_tex)?;
         use il2cpp_runtime::api::il2cpp_object_new;
-        let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(
-            get_cached_class(UnityEngine_Texture2D::ffi_name())?,
-        ));
+        let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(get_cached_class(
+            UnityEngine_Texture2D::ffi_name(),
+        )?));
 
         readable_tex.new(tex.as_base().get_width()?, tex.as_base().get_height()?)?;
         readable_tex.read_pixels(

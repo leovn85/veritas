@@ -56,7 +56,8 @@ packet!(
     OnDamage {
         attacker: Entity,
         damage: f64,
-        damage_type: isize
+        overkill_damage: f64,
+        r#type: String
     }
 
     OnTurnBegin {
@@ -86,9 +87,9 @@ packet!(
         cycle: u32
     }
 
-    OnStatChange {
+    OnPropertyChange {
         entity: Entity,
-        stat: Property
+        property: Property
     }
 
     OnUpdateTeamFormation {

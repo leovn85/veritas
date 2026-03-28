@@ -56,8 +56,8 @@ pub enum Team {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Property {
+    pub value: f64,
     pub kind: String,
-    pub value: f64
 }
 
 impl BattleStats {
@@ -94,7 +94,7 @@ impl fmt::Display for Avatar {
 pub struct Skill {
     pub name: String,
     #[serde(rename = "type")]
-    pub skill_type: isize,
+    pub skill_type: String,
     pub skill_config_id: isize
 }
 

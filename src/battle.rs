@@ -3,11 +3,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use anyhow::{Context, Result};
 
 use crate::{
-    models::{
-        events::*,
-        misc::*,
-        packets::Packet,
-    },
+    models::{events::*, misc::*, packets::Packet},
     server,
 };
 
@@ -15,9 +11,9 @@ use crate::{
 pub struct SkillHistoryEntry {
     pub avatar_id: u32,
     pub skill_name: String,
-    pub skill_type: u32,
+    pub skill_type: String,
     pub total_damage: f64,
-    pub damage_detail: Vec<(f64, isize)>,
+    pub damage_detail: Vec<(f64, f64, String)>,
     pub turn_battle_id: u32,
 }
 
@@ -46,7 +42,7 @@ pub struct BattleContext {
     pub entity_turn_history: Vec<(Entity, f64, u32, u32)>,
     pub skill_history: Vec<SkillHistoryEntry>,
     pub current_turn_battle_id: u32,
-    // This is really only relevant for MOC and 
+    // This is really only relevant for MOC and
     // is the relative AV
     pub last_wave_action_value: f64,
     pub action_value: f64,
@@ -65,7 +61,6 @@ pub struct BattleContext {
     pub max_cycle: u32,
     pub stage_id: u32,
     pub battle_mode: BattleMode,
-
     // TODO: Move everything not meant to be exposed in the API here
     // pub internal: BattleContextInternal,
 }
@@ -137,13 +132,11 @@ impl BattleContext {
 
     fn get_battle_mode(stage_id: u32) -> BattleMode {
         match stage_id {
-            30010000..=31000000 => {
-                match stage_id % 100 {
-                    21 | 22 => BattleMode::MOC,
-                    41 | 42 => BattleMode::PF,
-                    _ => BattleMode::Other,
-                }
-            }
+            30010000..=31000000 => match stage_id % 100 {
+                21 | 22 => BattleMode::MOC,
+                41 | 42 => BattleMode::PF,
+                _ => BattleMode::Other,
+            },
             420101..=420999 => BattleMode::AS,
             _ => BattleMode::Other,
         }
@@ -213,15 +206,23 @@ impl BattleContext {
         battle_context.real_time_overkill_damages[lineup_index] += e.overkill_damage as f64;
         battle_context.total_damage += e.damage as f64;
 
-        if let Some(last_skill) = battle_context.skill_history.iter_mut().rev().find(|skill| skill.avatar_id == e.attacker.uid) {
-            last_skill.damage_detail.push((e.damage as f64, e.damage_type as isize));
+        if let Some(last_skill) = battle_context
+            .skill_history
+            .iter_mut()
+            .rev()
+            .find(|skill| skill.avatar_id == e.attacker.uid)
+        {
+            last_skill
+                .damage_detail
+                .push((e.damage as f64, e.overkill_damage as f64, e.r#type.clone()));
             last_skill.total_damage += e.damage as f64;
         }
 
         Ok(Packet::OnDamage {
             attacker: e.attacker,
             damage: e.damage,
-            damage_type: e.damage_type,
+            overkill_damage: e.overkill_damage,
+            r#type: e.r#type,
         })
     }
 
@@ -325,9 +326,9 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.state = Some(BattleState::Ended);
-        
+
         let exporter = crate::export::BattleDataExporter::new();
-        
+
         match std::panic::catch_unwind(|| {
             let export_data = exporter.export_battle_data(&battle_context);
             let csv_data = exporter.generate_comprehensive_chart_data(&battle_context);
@@ -365,11 +366,11 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         let turn_battle_id = battle_context.entity_turn_history.len() as u32;
-        
+
         battle_context.skill_history.push(SkillHistoryEntry {
             avatar_id: e.avatar.uid,
             skill_name: e.skill.name.clone(),
-            skill_type: e.skill.skill_type as u32,
+            skill_type: e.skill.skill_type.clone(),
             total_damage: 0.0,
             damage_detail: Vec::new(),
             turn_battle_id,
@@ -408,8 +409,8 @@ impl BattleContext {
         Ok(Packet::OnUpdateCycle { cycle: e.cycle })
     }
 
-    fn handle_on_stat_change_event(
-        e: OnStatChangeEvent,
+    fn handle_on_property_change_event(
+        e: OnPropertyChangeEvent,
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         match e.entity.team {
@@ -419,23 +420,23 @@ impl BattleContext {
                     .iter_mut()
                     .find(|x| x.entity == e.entity)
                 {
-                    avatar.properties.set_property(e.stat.clone());
+                    avatar.properties.set_property(e.property.clone());
                 }
-            },
+            }
             Team::Enemy => {
                 if let Some(enemy) = battle_context
                     .battle_enemies
                     .iter_mut()
                     .find(|x| x.entity == e.entity)
                 {
-                    enemy.properties.set_property(e.stat.clone());
+                    enemy.properties.set_property(e.property.clone());
                 }
             }
         }
 
-        Ok(Packet::OnStatChange {
+        Ok(Packet::OnPropertyChange {
             entity: e.entity,
-            stat: e.stat,
+            property: e.property,
         })
     }
 
@@ -482,9 +483,7 @@ impl BattleContext {
                 Event::OnDamage(e) => Self::handle_on_damage_event(e, battle_context),
                 Event::OnTurnBegin(e) => Self::handle_on_turn_begin_event(e, battle_context),
                 Event::OnTurnEnd => Self::handle_on_turn_end_event(battle_context),
-                Event::OnEntityDefeated(e) => {
-                    Self::handle_on_entity_defeated_event(e, battle_context)
-                }
+                Event::OnEntityDefeated(e) => Self::handle_on_entity_defeated_event(e, battle_context),
                 Event::OnBattleEnd => Self::handle_on_battle_end_event(battle_context),
                 Event::OnUseSkill(e) => Self::handle_on_use_skill_event(e, battle_context),
                 Event::OnUpdateWave(e) => Self::handle_on_update_wave_event(e, battle_context),
@@ -494,13 +493,9 @@ impl BattleContext {
                     }
                     Self::handle_on_update_cycle_event(e, battle_context)
                 }
-                Event::OnStatChange(e) => Self::handle_on_stat_change_event(e, battle_context),
-                Event::OnInitializeEnemy(e) => {
-                    Self::handle_on_initialize_enemy_event(e, battle_context)
-                }
-                Event::OnUpdateTeamFormation(e) => {
-                    Self::handle_on_update_team_formation_event(e, battle_context)
-                }
+                Event::OnPropertyChange(e) => Self::handle_on_property_change_event(e, battle_context),
+                Event::OnInitializeEnemy(e) => Self::handle_on_initialize_enemy_event(e, battle_context),
+                Event::OnUpdateTeamFormation(e) => Self::handle_on_update_team_formation_event(e, battle_context)
             },
             Err(e) => Ok({
                 log::error!("{}", e);

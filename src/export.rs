@@ -7,6 +7,7 @@ use chrono::DateTime;
 
 use crate::battle::BattleContext;
 use crate::kreide::types::RPG_GameCore_AbilityProperty;
+use crate::overlay;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ComprehensiveData {
@@ -28,7 +29,7 @@ pub struct ComprehensiveData {
     pub cycle: Option<u32>,
     pub action_value: Option<f64>,
     pub skill_name: Option<String>,
-    pub skill_type: Option<u32>,
+    pub skill_type: Option<String>,
     pub skill_type_name: Option<String>,
     pub skill_damage: Option<f64>,
     pub cumulative_damage: Option<f64>,
@@ -59,8 +60,8 @@ pub struct ExportTurnBattleInfo {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ExportDamageDetail {
     pub damage: f64,
-    #[serde(rename = "damage_type")]
-    pub damage_type: isize,
+    pub overkill_damage: f64,
+    pub r#type: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -72,7 +73,7 @@ pub struct ExportSkillBattleInfo {
     #[serde(rename = "totalDamage")]
     pub total_damage: f64,
     #[serde(rename = "skillType")]
-    pub skill_type: u32,
+    pub skill_type: String,
     #[serde(rename = "skillName")]
     pub skill_name: String,
     #[serde(rename = "turnBattleId")]
@@ -310,13 +311,14 @@ impl BattleDataExporter {
                 damage_detail: skill
                     .damage_detail
                     .iter()
-                    .map(|(damage, damage_type)| ExportDamageDetail {
+                    .map(|(damage, overkill_damage, damage_type)| ExportDamageDetail {
                         damage: *damage,
-                        damage_type: *damage_type,
+                        overkill_damage: *overkill_damage,
+                        r#type: damage_type.to_string(),
                     })
                     .collect(),
                 total_damage: skill.total_damage,
-                skill_type: skill.skill_type,
+                skill_type: skill.skill_type.clone(),
                 skill_name: skill.skill_name.clone(),
                 turn_battle_id: skill.turn_battle_id,
             })
@@ -562,8 +564,8 @@ impl BattleDataExporter {
                 cycle: Some(turn_info.2),
                 action_value: Some(turn_info.0),
                 skill_name: Some(skill.skill_name.clone()),
-                skill_type: Some(skill.skill_type),
-                skill_type_name: Some(self.get_skill_type_name(skill.skill_type)),
+                skill_type: Some(skill.skill_type.clone()),
+                skill_type_name: Some(skill.skill_type.clone()),
                 skill_damage: Some(skill.total_damage),
                 cumulative_damage: Some(cumulative_total_damage),
                 cumulative_character_damage: Some(*char_cumulative),
@@ -576,16 +578,6 @@ impl BattleDataExporter {
         }
 
         all_data
-    }
-
-    fn get_skill_type_name(&self, skill_type: u32) -> String {
-        match skill_type {
-            0 => "Basic".to_string(),
-            1 => "Skill".to_string(),
-            2 => "Ultimate".to_string(),
-            3 => "Talent".to_string(),
-            _ => format!("Type_{}", skill_type), // lazy
-        }
     }
 
     fn write_csv<T: Serialize>(&self, data: &[T], filename: &str) -> Result<(), Box<dyn std::error::Error>> {
