@@ -133,6 +133,7 @@ impl App {
                                 if i == battle_context.avatar_lineup.len() {
                                     ui.label(t!("Total"));
                                 } else {
+                                    // Load avatar image with caching, display name if loading fails
                                     if let Some(handle) = helpers::load_avatar_image(
                                         ui.ctx(),
                                         battle_context.avatar_lineup[i].id,
@@ -156,13 +157,15 @@ impl App {
                                             - egui::vec2(0.0, 0.0);
                                         let percentage_text = format!("{percentage:.0}%");
 
+                                        // Text Shadow
                                         ui.painter().text(
-                                            text_pos + egui::vec2(1.0, 1.0),
+                                            text_pos + egui::vec2(-1., 1.),
                                             Align2::RIGHT_BOTTOM,
                                             &percentage_text,
                                             FontId::proportional(dim / 4.0),
                                             Color32::BLACK,
                                         );
+
                                         ui.painter().text(
                                             text_pos,
                                             Align2::RIGHT_BOTTOM,
@@ -170,6 +173,8 @@ impl App {
                                             FontId::proportional(dim / 4.0),
                                             Color32::WHITE,
                                         );
+                                    } else {
+                                        ui.label(format!("{}", battle_context.avatar_lineup[i].name));
                                     }
                                 }
                             },
@@ -437,7 +442,7 @@ impl App {
 
                             ui.label(format!(
                                 "{:.2}",
-                                battle_context.battle_avatars[i].battle_stats.av
+                                battle_context.battle_avatars[i].properties.av()
                                     + current_action_value,
                             ));
                         });
@@ -486,7 +491,7 @@ impl App {
                         ui.label(format!("{}: ", &battle_context.enemies[i].name));
                         ui.label(format!(
                             "{:.2} {}",
-                            battle_context.battle_enemies[i].battle_stats.hp,
+                            battle_context.battle_enemies[i].properties.current_hp(),
                             t!("HP")
                         ));
                     });

@@ -186,7 +186,7 @@ impl BattleContext {
                     uid: avatar.id,
                     team: Team::Player,
                 },
-                battle_stats: BattleStats::default(),
+                properties: BattleStats::default(),
             });
         }
         battle_context.battle_avatars = battle_avatars;
@@ -419,16 +419,7 @@ impl BattleContext {
                     .iter_mut()
                     .find(|x| x.entity == e.entity)
                 {
-                    match e.stat {
-                        crate::models::misc::Stat::HP(stat) => avatar.battle_stats.hp = stat,
-                        crate::models::misc::Stat::Attack(stat) => avatar.battle_stats.attack = stat,
-                        crate::models::misc::Stat::Defense(stat) => {
-                            avatar.battle_stats.defense = stat
-                        }
-                        crate::models::misc::Stat::Speed(stat) => avatar.battle_stats.speed = stat,
-                        crate::models::misc::Stat::AV(stat) => avatar.battle_stats.av = stat,
-                        _ => {}
-                    }
+                    avatar.properties.set_property(e.stat.clone());
                 }
             },
             Team::Enemy => {
@@ -437,16 +428,7 @@ impl BattleContext {
                     .iter_mut()
                     .find(|x| x.entity == e.entity)
                 {
-                    match e.stat {
-                        crate::models::misc::Stat::HP(stat) => enemy.battle_stats.hp = stat,
-                        crate::models::misc::Stat::Attack(stat) => enemy.battle_stats.attack = stat,
-                        crate::models::misc::Stat::Defense(stat) => {
-                            enemy.battle_stats.defense = stat
-                        }
-                        crate::models::misc::Stat::Speed(stat) => enemy.battle_stats.speed = stat,
-                        crate::models::misc::Stat::AV(stat) => enemy.battle_stats.av = stat,
-                        _ => {}
-                    }
+                    enemy.properties.set_property(e.stat.clone());
                 }
             }
         }
@@ -462,15 +444,15 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.enemies.push(e.enemy.clone());
+        let mut properties = BattleStats::default();
+        properties.set_value("MaxHP", e.enemy.base_stats.hp());
+        properties.set_value("CurrentHP", e.enemy.base_stats.hp());
         battle_context.battle_enemies.push(BattleEntity {
             entity: Entity {
                 uid: e.enemy.uid,
                 team: Team::Enemy,
             },
-            battle_stats: BattleStats {
-                hp: e.enemy.base_stats.hp,
-                ..Default::default()
-            },
+            properties,
         });
         Ok(Packet::OnInitializeEnemy { enemy: e.enemy })
     }

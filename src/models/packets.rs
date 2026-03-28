@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::misc::{Avatar, Enemy, Entity, Skill, Stat, Team, TurnInfo};
+use super::misc::{Avatar, Enemy, Entity, Skill, Property, Team, TurnInfo};
 
 macro_rules! packet {
     ($(
@@ -88,7 +88,7 @@ packet!(
 
     OnStatChange {
         entity: Entity,
-        stat: Stat
+        stat: Property
     }
 
     OnUpdateTeamFormation {

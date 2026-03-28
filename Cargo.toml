@@ -63,13 +63,12 @@ semver = "1.0.26"
 indoc = "2.0.6"
 widestring = "1.2.0"
 ron = "0.10.1"
+strum = { version = "0.28", features = ["derive"] }
 parse-changelog = { version = "0.6.12", default-features = false }
-# il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "1ac11e7" , features = ["log"]}
-il2cpp-runtime = { path = "../il2cpp-rust/il2cpp-runtime", features = ["log"] }
+il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "a592c94" , features = ["log"]}
 image = "0.25.10"
 egui_extras = "0.32.0"
 egui_table = "0.7.0"
-strum = { version = "0.28", features = ["derive"] }
 
 [dev-dependencies]
 eframe = { version = "0.32.0", features = ["serde", "persistence"] }

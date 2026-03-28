@@ -6,6 +6,7 @@ use directories::BaseDirs;
 use chrono::DateTime;
 
 use crate::battle::BattleContext;
+use crate::kreide::types::RPG_GameCore_AbilityProperty;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ComprehensiveData {
@@ -191,13 +192,25 @@ impl BattleDataExporter {
             .as_secs()
     }
 
-    fn build_stats_map(battle_stats: &crate::models::misc::BattleStats) -> HashMap<String, f64> {
+    fn build_stats_map(properties: &crate::models::misc::BattleStats) -> HashMap<String, f64> {
         let mut stats = HashMap::new();
-        stats.insert("HP".to_string(), battle_stats.hp);
-        stats.insert("Attack".to_string(), battle_stats.attack);
-        stats.insert("Defense".to_string(), battle_stats.defense);
-        stats.insert("Speed".to_string(), battle_stats.speed);
-        stats.insert("AV".to_string(), battle_stats.av);
+
+        let tracked = [
+            RPG_GameCore_AbilityProperty::CurrentHP,
+            RPG_GameCore_AbilityProperty::MaxHP,
+            RPG_GameCore_AbilityProperty::Attack,
+            RPG_GameCore_AbilityProperty::Defence,
+            RPG_GameCore_AbilityProperty::Speed,
+            RPG_GameCore_AbilityProperty::ActionDelay,
+        ];
+
+        for prop in tracked {
+            let key = prop.to_string();
+            if let Some(value) = properties.get_value(&key) {
+                stats.insert(key, value);
+            }
+        }
+
         stats
     }
 
@@ -315,7 +328,7 @@ impl BattleDataExporter {
                 .battle_avatars
                 .iter()
                 .find(|ba| ba.entity.uid == avatar.id)
-                .map(|ba| Self::build_stats_map(&ba.battle_stats))
+                .map(|be| Self::build_stats_map(&be.properties))
                 .unwrap_or_default();
             
             let stats_history = Self::create_stats_history(&stats);
@@ -338,7 +351,7 @@ impl BattleDataExporter {
                 .battle_enemies
                 .iter()
                 .find(|be| be.entity.uid == enemy.uid)
-                .map(|be| Self::build_stats_map(&be.battle_stats))
+                .map(|be| Self::build_stats_map(&be.properties))
                 .unwrap_or_default();
             
             let stats_history = Self::create_stats_history(&stats);
@@ -352,8 +365,8 @@ impl BattleDataExporter {
                     position_index: index as u32,
                     wave_index: battle_context.wave,
                     name: enemy.name.clone(),
-                    max_hp: enemy.base_stats.hp,
-                    level: enemy.base_stats.level,
+                    max_hp: enemy.base_stats.hp(),
+                    level: enemy.base_stats.level(),
                     stats,
                     stats_history,
                 },
