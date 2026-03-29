@@ -5,7 +5,7 @@
       "name": "Attach to Process",
       "type": "lldb",
       "request": "attach",
-      "pid": "${command:pickProcess}",  // This will allow you to select the process from a list
+      "pid": "${command:pickProcess}",
       "stopOnEntry": false,
     }
   ]

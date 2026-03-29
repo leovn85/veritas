@@ -96,8 +96,6 @@ pub struct AppState {
     #[serde(skip)]
     pub update_bttn_enabled: bool,
     #[serde(skip)]
-    pub show_version_mismatch: bool,
-    #[serde(skip)]
     pub center_updater_window: bool,
     pub show_character_legend: bool,
     pub auto_save_battle_data: bool,
@@ -116,8 +114,6 @@ pub struct App {
     pub export_inbox: UiInbox<ExportNotification>,
     pub update: Option<Update>,
     pub beta_channel: bool,
-    pub skip_version_mismatch_popup: bool,
-    pub reopen_changelog: bool,
     pub updater_hint: Option<String>,
     pub updater_window_last_size: Option<egui::Vec2>,
 }
@@ -129,8 +125,6 @@ fn default_true() -> bool {
 pub const HIDE_UI_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::H);
 pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::M);
 
-static LOAD: Once = Once::new();
-
 impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn update(&mut self, ctx: &egui::Context) {
@@ -141,10 +135,6 @@ impl Overlay for App {
 
         if self.state.show_help {
             self.show_help_window(ctx);
-        }
-
-        if self.state.show_version_mismatch {
-            self.show_version_mismatch_popup(ctx);
         }
 
         if self.config.streamer_mode {
@@ -197,21 +187,6 @@ impl Overlay for App {
             }
         }
 
-        // This is a weird quirk of immediate mode where we must initialize our state a frame later
-        LOAD.call_once(|| {
-            let keep_popup = self.state.show_version_mismatch;
-            self.state = AppState::load().unwrap_or_else(|e| {
-                log::error!("{e}");
-                AppState::default()
-            });
-            if keep_popup {
-                self.state.show_version_mismatch = true;
-            }
-            if env!("CARGO_PKG_VERSION") != self.config.version {
-                self.state.show_changelog = true
-            }
-        });
-
         if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI_SHORTCUT)) {
             self.state.should_hide = !self.state.should_hide;
         }
@@ -261,9 +236,8 @@ impl Overlay for App {
             }
         }
 
-        if self.update.is_some() {
-            // let message = format!("Version {} is available! Click here to open settings and update.",
-            //     self.state.update_available.as_ref().unwrap());
+        if env!("CARGO_PKG_VERSION") != self.config.version {
+            self.state.show_changelog = true
         }
 
         if let Some(state) = BattleContext::get_instance().state.take() {
@@ -436,7 +410,6 @@ impl Default for AppState {
             show_damage_breakdown_legend: false,
             use_custom_color: false,
             update_bttn_enabled: false,
-            show_version_mismatch: false,
             center_updater_window: false,
             show_character_legend: false,
             auto_save_battle_data: false,
@@ -529,10 +502,6 @@ impl App {
     }
 
     pub fn new(ctx: Context) -> Self {
-        if App::load_persist(&ctx).is_err() {
-            log::error!("Failed to load persistence.");
-        }
-
         let fonts = vec![("zh-cn.ttf", "game_font"), ("ja-jp.ttf", "game_font_jp")];
 
         for font in fonts {
@@ -587,8 +556,6 @@ impl App {
             export_inbox: UiInbox::new(),
             update: None,
             beta_channel,
-            skip_version_mismatch_popup: false,
-            reopen_changelog: false,
             updater_hint: None,
             updater_window_last_size: None,
         };
@@ -607,40 +574,15 @@ impl App {
 
         app.queue_update_check();
 
+        if App::load_persist(&ctx).is_err() {
+            log::error!("Failed to load persistence.");
+        }
+        app.state = AppState::load().unwrap_or_else(|e| {
+            log::error!("{e}");
+            AppState::default()
+        });
+
         app
-    }
-
-    pub fn pick_build(&mut self, beta: bool) {
-        if self.set_beta_flag(beta) {
-            self.state.show_menu = true;
-            self.state.show_updater_window = true;
-            self.state.center_updater_window = true;
-            let channel = if beta { "beta" } else { "live" };
-
-            self.updater_hint = Some(
-                "Click Update Now so your version matches the correct version for the client you're running".to_owned(),
-            );
-
-            self.notifs.info(format!(
-                "Updates window opened on the {channel} channel. Click Update Now to download the version that matches your client"
-            ));
-            self.close_version_mismatch_popup();
-        }
-    }
-
-    pub fn close_version_mismatch_popup(&mut self) {
-        if self.skip_version_mismatch_popup && self.config.nag_versions {
-            self.config.nag_versions = false;
-            if let Err(e) = self.config.save() {
-                log::error!("{e}");
-            }
-        }
-        self.state.show_version_mismatch = false;
-        self.skip_version_mismatch_popup = false;
-        if self.reopen_changelog {
-            self.state.show_changelog = true;
-            self.reopen_changelog = false;
-        }
     }
 
     pub fn set_beta_flag(&mut self, enabled: bool) -> bool {
