@@ -27,6 +27,8 @@ egui-notify = "0.20.0"
 egui_logger = "0.8.0"
 egui_inbox = "0.9.0"
 egui_commonmark = "0.21.1"
+egui_extras = "0.32.0"
+egui_table = "0.7.0"
 
 # Logging
 log = "0.4.29"
@@ -67,8 +69,6 @@ strum = { version = "0.28", features = ["derive"] }
 parse-changelog = { version = "0.6.12", default-features = false }
 il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "a592c94" , features = ["log"]}
 image = "0.25.10"
-egui_extras = "0.32.0"
-egui_table = "0.7.0"
 
 [dev-dependencies]
 eframe = { version = "0.32.0", features = ["serde", "persistence"] }

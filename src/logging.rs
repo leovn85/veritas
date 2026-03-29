@@ -47,7 +47,7 @@ impl MultiLogger {
 
         // Info+ log file
         {
-            let log_path = "veritas.log";
+            let log_path = format!("{}.log", env!("CARGO_PKG_NAME"));
             let file = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -64,7 +64,7 @@ impl MultiLogger {
 
         // Debug+ log file
         {
-            let log_path = "veritas.debug.log";
+            let log_path = format!("{}.debug.log", env!("CARGO_PKG_NAME"));
             let file = OpenOptions::new()
                 .create(true)
                 .write(true)

@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use directories::ProjectDirs;
 use egui::{
     FontFamily, FontId, TextStyle, Theme
@@ -8,11 +8,10 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 const CONFIG_FILENAME: &'static str = "config.json";
+const UPDATE_CONFIG_FILENAME: &'static str = "update.json";
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Config {
-    #[serde(default)]
-    pub version: String,
     #[serde(default = "default_locale")]
     pub locale: String,
     // pub fps: i32,
@@ -36,8 +35,14 @@ pub struct Config {
     pub defender_exclusion: bool,
     #[serde(default = "default_auto_showhide_ui")]
     pub auto_showhide_ui: bool,
-    #[serde(default = "default_nag_versions")]
-    pub nag_versions: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct UpdateConfig {
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub beta: bool,
 }
 
 fn default_locale() -> String {
@@ -85,14 +90,9 @@ fn default_auto_showhide_ui() -> bool {
     false
 }
 
-fn default_nag_versions() -> bool {
-    true
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: String::new(),
             locale: default_locale(),
             // fps: 60,
             widget_opacity: default_widget_opacity(),
@@ -105,7 +105,6 @@ impl Default for Config {
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),
             auto_showhide_ui: default_auto_showhide_ui(),
-            nag_versions: default_nag_versions(),
         }
     }
 }
@@ -171,5 +170,54 @@ impl Config {
             }
             None => Err(anyhow!("Failed to load/create config project dirs.")),
         }
+    }
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            version: String::new(),
+            beta: false,
+        }
+    }
+}
+
+impl UpdateConfig {
+    fn config_path() -> Result<PathBuf> {
+        let exe_dir = std::env::current_exe()
+            .with_context(|| "Failed to resolve current executable for update config path")?
+            .parent()
+            .ok_or_else(|| anyhow!("Failed to determine executable directory for update config"))?
+            .to_path_buf();
+        Ok(exe_dir.join(UPDATE_CONFIG_FILENAME))
+    }
+
+    pub fn new() -> Result<Self> {
+        let config_path = Self::config_path()?;
+
+        if !config_path.exists() {
+            let update_config = Self::default();
+            update_config.save()?;
+            Ok(update_config)
+        } else {
+            let mut file = File::open(&config_path)?;
+            match serde_json::from_reader(&file) {
+                Ok(v) => Ok(v),
+                Err(_) => {
+                    file.flush()?;
+                    let update_config = Self::default();
+                    update_config.save()?;
+                    Ok(update_config)
+                }
+            }
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let config_path = Self::config_path()?;
+        let mut file = File::create(config_path)?;
+        serde_json::to_writer(&mut file, self)?;
+        file.flush()?;
+        Ok(())
     }
 }

@@ -31,7 +31,7 @@ impl App {
 
                             if ui.button(t!("Close")).clicked() {
                                 self.state.show_changelog = false;
-                                self.config.version = env!("CARGO_PKG_VERSION").to_string();
+                                self.update_config.version = env!("CARGO_PKG_VERSION").to_string();
                             }
                         });
                     });
@@ -77,7 +77,7 @@ impl App {
 
                         if ui.button(t!("Close")).clicked() {
                             self.state.show_help = false;
-                            self.config.version = env!("CARGO_PKG_VERSION").to_string();
+                            self.update_config.version = env!("CARGO_PKG_VERSION").to_string();
                         }
                     });
                 });
@@ -302,10 +302,11 @@ impl App {
                         let defender_exclusion = self.config.defender_exclusion;
                         let new_version = new_version.clone();
                         let sender = self.update_inbox.sender();
+                        let allow_prerelease = self.update_config.beta;
                         self.state.update_bttn_enabled = false;
                         self.notifs.success(t!("Update in progress"));
                         RUNTIME.spawn(async move {
-                            let status = if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"))
+                            let status = if let Err(e) = Updater::new(env!("CARGO_PKG_VERSION"), allow_prerelease)
                                 .download_update(defender_exclusion)
                                 .await
                             {
@@ -342,10 +343,10 @@ impl App {
         
         ui.group(|ui| {
             ui.label(RichText::new(format!("{} Settings", egui_phosphor::regular::GEAR)).strong());
-            let prev_beta = self.beta_channel;
+            let prev_beta = self.update_config.beta;
             ui.horizontal(|ui| {
                 let changed = ui
-                    .checkbox(&mut self.beta_channel, "Check beta updates (pre-release)")
+                    .checkbox(&mut self.update_config.beta, "Check beta updates (pre-release)")
                     .changed();
 
                 ui.add(
@@ -358,8 +359,8 @@ impl App {
                     "Only enable this if you're running on a beta client, installing a DLL meant for the newest beta client on release client (current official version of the game) might break things",
                 );
 
-                if changed && !self.set_beta_flag(self.beta_channel) {
-                    self.beta_channel = prev_beta;
+                if changed && !self.set_beta_flag(self.update_config.beta) {
+                    self.update_config.beta = prev_beta;
                 }
             });
             ui.horizontal(|ui| {
@@ -615,18 +616,6 @@ impl App {
                 &mut self.config.auto_showhide_ui,
                 t!("Auto(show/hide) UI on battle (start/end)."),
             );
-
-            if ui
-                .checkbox(
-                    &mut self.config.nag_versions,
-                    "Show version mismatch help when startup fails",
-                )
-                .changed()
-            {
-                if let Err(e) = self.config.save() {
-                    log::error!("{e}");
-                }
-            }
 
             // TODO:
             // Change using a grid like so:

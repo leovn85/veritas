@@ -108,12 +108,12 @@ pub struct AppState {
 pub struct App {
     pub state: AppState,
     pub config: Config,
+    pub update_config: super::config::UpdateConfig,
     pub notifs: Toasts,
     pub colorix: Colorix,
     pub update_inbox: UiInbox<Option<Update>>,
     pub export_inbox: UiInbox<ExportNotification>,
     pub update: Option<Update>,
-    pub beta_channel: bool,
     pub updater_hint: Option<String>,
     pub updater_window_last_size: Option<egui::Vec2>,
 }
@@ -193,7 +193,9 @@ impl Overlay for App {
 
         if ctx.input_mut(|i| i.consume_shortcut(&SHOW_MENU_SHORTCUT)) {
             if self.state.should_hide {
-                self.notifs.info(t!("`Hide UI` is still active. Use the `Hide UI` shortcut to unhide the UI."));
+                self.notifs.info(t!(
+                    "`Hide UI` is still active. Use the `Hide UI` shortcut to unhide the UI."
+                ));
             }
         }
 
@@ -211,7 +213,8 @@ impl Overlay for App {
                     None => {
                         self.notifs
                             .info(t!(
-                                "Version %{version} is available!", version = new_version
+                                "Version %{version} is available!",
+                                version = new_version
                             ))
                             .closable(true)
                             .show_progress_bar(true)
@@ -236,8 +239,8 @@ impl Overlay for App {
             }
         }
 
-        if env!("CARGO_PKG_VERSION") != self.config.version {
-            self.state.show_changelog = true
+        if env!("CARGO_PKG_VERSION") != self.update_config.version {
+            self.state.show_changelog = true;
         }
 
         if let Some(state) = BattleContext::get_instance().state.take() {
@@ -270,8 +273,12 @@ impl Overlay for App {
                                         .unwrap_or_default()
                                         .as_secs();
 
-                                    let json_filename =
-                                        format!("veritas_battledata_{}.json", timestamp);
+                                    let json_filename = format!(
+                                        "{}_{}/{}.json",
+                                        env!("CARGO_PKG_NAME"),
+                                        timestamp,
+                                        env!("CARGO_PKG_NAME")
+                                    );
                                     let json_result = export_json_data(
                                         &export_data,
                                         &json_filename,
@@ -279,8 +286,12 @@ impl Overlay for App {
                                         auto_create_date_folders,
                                     );
 
-                                    let csv_filename =
-                                        format!("veritas_battledata_{}.csv", timestamp);
+                                    let csv_filename = format!(
+                                        "{}_{}/{}.csv",
+                                        env!("CARGO_PKG_NAME"),
+                                        timestamp,
+                                        env!("CARGO_PKG_NAME")
+                                    );
                                     let csv_result = export_csv_data(
                                         &csv_data,
                                         &csv_filename,
@@ -381,6 +392,9 @@ impl Overlay for App {
         }
 
         self.config.save().unwrap_or_else(|e| log::error!("{e}"));
+        self.update_config
+            .save()
+            .unwrap_or_else(|e| log::error!("{e}"));
     }
 }
 
@@ -502,6 +516,11 @@ impl App {
     }
 
     pub fn new(ctx: Context) -> Self {
+        // This should be called first
+        if App::load_persist(&ctx).is_err() {
+            log::error!("Failed to load persistence.");
+        }
+
         let fonts = vec![("zh-cn.ttf", "game_font"), ("ja-jp.ttf", "game_font_jp")];
 
         for font in fonts {
@@ -545,17 +564,23 @@ impl App {
             Config::default()
         });
 
-        let beta_channel = Updater::beta_channel_enabled();
+        let update_config = super::config::UpdateConfig::new().unwrap_or_else(|e| {
+            log::error!("{e}");
+            super::config::UpdateConfig::default()
+        });
 
         let mut app = Self {
             colorix: Colorix::global(&ctx, config.theme),
             config,
+            update_config,
             notifs: Toasts::default(),
-            state: AppState::default(),
+            state: AppState::load().unwrap_or_else(|e| {
+                log::error!("{e}");
+                AppState::default()
+            }),
             update_inbox: UiInbox::new(),
             export_inbox: UiInbox::new(),
             update: None,
-            beta_channel,
             updater_hint: None,
             updater_window_last_size: None,
         };
@@ -574,26 +599,11 @@ impl App {
 
         app.queue_update_check();
 
-        if App::load_persist(&ctx).is_err() {
-            log::error!("Failed to load persistence.");
-        }
-        app.state = AppState::load().unwrap_or_else(|e| {
-            log::error!("{e}");
-            AppState::default()
-        });
-
         app
     }
 
     pub fn set_beta_flag(&mut self, enabled: bool) -> bool {
-        if let Err(err) = Updater::set_beta_channel(enabled) {
-            log::error!("failed to update beta toggle: {err}");
-            self.notifs
-                .error("Failed to switch update channel. See logs for details.");
-            return false;
-        }
-
-        self.beta_channel = enabled;
+        self.update_config.beta = enabled;
         self.update = None;
         self.state.update_bttn_enabled = true;
         self.queue_update_check();
@@ -602,8 +612,12 @@ impl App {
 
     fn queue_update_check(&self) {
         let sender = self.update_inbox.sender();
+        let allow_prerelease = self.update_config.beta;
         RUNTIME.spawn(async move {
-            match Updater::new(env!("CARGO_PKG_VERSION")).check_update().await {
+            match Updater::new(env!("CARGO_PKG_VERSION"), allow_prerelease)
+                .check_update()
+                .await
+            {
                 Ok(new_ver) => {
                     if sender
                         .send(Some(Update {

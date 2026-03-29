@@ -19,9 +19,6 @@ use windows::Win32::{
     UI::WindowsAndMessaging::SW_HIDE,
 };
 
-const LOCAL_UPDATE_CONFIG_NAME: &str = "veritas.local.cfg";
-const GITHUB_RELEASES_ENDPOINT: &str = "https://api.github.com/repos/hessiser/veritas/releases";
-const DLL_ASSET_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".dll");
 
 #[derive(Clone, Debug, Deserialize)]
 struct GithubRelease {
@@ -35,11 +32,6 @@ struct GithubRelease {
 struct GithubAsset {
     name: String,
     browser_download_url: String,
-}
-
-#[derive(Debug, Default)]
-struct LocalUpdateConfig {
-    beta: bool,
 }
 
 #[derive(Clone)]
@@ -60,9 +52,7 @@ pub struct Update {
 }
 
 impl Updater {
-    pub fn new(current_version: &str) -> Self {
-        let allow_prereleases = Self::beta_channel_enabled();
-
+    pub fn new(current_version: &str, allow_prereleases: bool) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(env!("CARGO_PKG_NAME"))
@@ -126,28 +116,20 @@ impl Updater {
         }
     }
 
-    pub fn beta_channel_enabled() -> bool {
-        LocalUpdateConfig::load_or_create()
-            .map(|cfg| cfg.beta)
-            .unwrap_or(false)
-    }
-
-    pub fn set_beta_channel(enabled: bool) -> Result<()> {
-        LocalUpdateConfig::write(enabled)
-    }
-
     pub async fn download_update(&self, defender_exclusion: bool) -> Result<()> {
         let release = self
             .fetch_latest_release()
             .await?
             .ok_or_else(|| anyhow!("No eligible release found during download"))?;
 
+        let dll_asset_name = concat!(env!("CARGO_PKG_NAME"), ".dll");
         let dll_asset = release
             .assets
             .iter()
-            .find(|a| a.name == DLL_ASSET_NAME)
+            .find(|a| a.name == dll_asset_name)
             .ok_or_else(|| anyhow::anyhow!(
-                "{DLL_ASSET_NAME} not found in release {}",
+                "{} not found in release {}",
+                dll_asset_name,
                 release.tag_name
             ))?;
 
@@ -228,9 +210,18 @@ impl Updater {
     }
 
     async fn fetch_latest_release(&self) -> Result<Option<GithubRelease>> {
+        // Construct endpoint from CARGO_PKG_REPOSITORY
+        // e.g., "https://github.com/owner/repo" -> "https://api.github.com/repos/owner/repo/releases"
+        let repository = env!("CARGO_PKG_REPOSITORY");
+        let repo_path = repository
+            .strip_prefix("https://github.com/")
+            .or_else(|| repository.strip_prefix("http://github.com/"))
+            .unwrap_or(repository);
+        let endpoint = format!("https://api.github.com/repos/{}/releases", repo_path);
+        
         let response = self
             .client
-            .get(GITHUB_RELEASES_ENDPOINT)
+            .get(&endpoint)
             .query(&[("per_page", "10")])
             .send()
             .await?;
@@ -250,64 +241,10 @@ impl Updater {
             release
                 .assets
                 .iter()
-                .any(|asset| asset.name == DLL_ASSET_NAME)
+                .any(|asset| asset.name == concat!(env!("CARGO_PKG_NAME"), ".dll"))
         });
 
         Ok(release)
-    }
-}
-
-impl LocalUpdateConfig {
-    fn load_or_create() -> Result<Self> {
-        let path = local_update_config_path()?;
-
-        if !path.exists() {
-            fs::write(&path, b"beta = false\n")?;
-            return Ok(Self::default());
-        }
-
-        let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read local update config at {}", path.display()))?;
-
-        let beta = Self::parse(&contents)?;
-        Ok(Self { beta })
-    }
-
-    fn write(beta: bool) -> Result<()> {
-        let path = local_update_config_path()?;
-        let value = if beta { "true" } else { "false" };
-        fs::write(&path, format!("beta = {value}\n"))?;
-        Ok(())
-    }
-
-    fn parse(contents: &str) -> Result<bool> {
-        for (idx, line) in contents.lines().enumerate() {
-            let line = line.split('#').next().unwrap_or("").trim();
-
-            if line.is_empty() {
-                continue;
-            }
-
-            if let Some((key, value)) = line.split_once('=') {
-                if key.trim().eq_ignore_ascii_case("beta") {
-                    let normalized = value
-                        .trim()
-                        .trim_matches(|c| c == '"' || c == '\'')
-                        .to_ascii_lowercase();
-
-                    return match normalized.as_str() {
-                        "true" | "1" | "yes" | "on" => Ok(true),
-                        "false" | "0" | "no" | "off" => Ok(false),
-                        other => Err(anyhow!(
-                            "Invalid boolean value '{other}' for beta on line {}",
-                            idx + 1
-                        )),
-                    };
-                }
-            }
-        }
-
-        Ok(false)
     }
 }
 
@@ -332,14 +269,4 @@ fn module_path() -> Result<PathBuf> {
             Ok(PathBuf::from(OsString::from_wide(&lp_filename[..len])))
         }
     }
-}
-
-fn local_update_config_path() -> Result<PathBuf> {
-    let exe_dir = env::current_exe()
-        .with_context(|| "Failed to resolve current executable for local config path")?
-        .parent()
-        .ok_or_else(|| anyhow!("Failed to determine executable directory for config"))?
-        .to_path_buf();
-
-    Ok(exe_dir.join(LOCAL_UPDATE_CONFIG_NAME))
 }

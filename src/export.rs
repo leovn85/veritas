@@ -247,7 +247,7 @@ impl BattleDataExporter {
         } else {
             if let Some(base_dirs) = BaseDirs::new() {
                 base_dirs.data_local_dir()
-                    .join("veritas")
+                    .join(env!("CARGO_PKG_NAME"))
                     .join("battledata")
             } else {
                 return Err("Could not determine local data directory".into());
@@ -405,7 +405,7 @@ impl BattleDataExporter {
         
         let export_dir = Self::get_export_directory_with_custom_path(custom_path, auto_create_date_folders)?;
         let filename = filename.unwrap_or_else(|| {
-            format!("veritas_battledata_{}.json", Self::generate_timestamp())
+            format!("{}_{}/{}.json", env!("CARGO_PKG_NAME"), Self::generate_timestamp(), env!("CARGO_PKG_NAME"))
         });
         
         let full_path = export_dir.join(&filename);
@@ -422,7 +422,7 @@ impl BattleDataExporter {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let export_dir = Self::get_export_directory_with_custom_path(custom_path, auto_create_date_folders)?;
         let filename = filename.unwrap_or_else(|| {
-            format!("veritas_battledata_{}.csv", Self::generate_timestamp())
+            format!("{}_{}/{}.csv", env!("CARGO_PKG_NAME"), Self::generate_timestamp(), env!("CARGO_PKG_NAME"))
         });
         
         let full_path = export_dir.join(&filename);
