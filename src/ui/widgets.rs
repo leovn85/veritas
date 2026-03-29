@@ -1,5 +1,5 @@
-use crate::ui::app::{DamageBreakdownChart, DamageBreakdownScope, GraphUnit};
-use egui::{Align2, Color32, FontId, Layout, Stroke, Ui};
+use crate::{kreide::types::RPG_GameCore_AvatarPropertyType, ui::app::{DamageBreakdownChart, DamageBreakdownScope, GraphUnit}};
+use egui::{Align2, Color32, FontId, Layout, Stroke, TextStyle, Ui};
 use egui_extras::Column;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
@@ -101,21 +101,22 @@ impl App {
         //     });
         // }
 
-        egui_extras::TableBuilder::new(ui)
-            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight))
-            .column(Column::auto_with_initial_suggestion(20.))
-            .column(Column::auto_with_initial_suggestion(20.))
-            .column(Column::auto_with_initial_suggestion(20.))
+        let mut table_builder = egui_extras::TableBuilder::new(ui)
+            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
+
+        let headers = [t!("Avatar"), t!("DMG"), t!("DPAV")];
+
+        for _ in &headers {
+            table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
+        }
+
+        table_builder
             .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.heading("Avatar");
-                });
-                header.col(|ui| {
-                    ui.heading("DMG");
-                });
-                header.col(|ui| {
-                    ui.heading("DPAV");
-                });
+                for label in &headers {
+                    header.col(|ui| {
+                        ui.heading(label.as_ref());
+                    });
+                }
             })
             .body(|body| {
                 body.rows(52., battle_context.avatar_lineup.len() + 1, |mut row| {
@@ -628,26 +629,113 @@ impl App {
         let battle_context = BattleContext::get_instance();
         let enemy_lineup = battle_context.enemy_lineup.clone();
 
-        ui.vertical(|ui| {
-            for enemy in &enemy_lineup {
-                if let Some(i) = battle_context
-                    .battle_enemies
-                    .iter()
-                    .enumerate()
-                    .find(|(_, x)| x.entity == *enemy)
-                    .map(|(i, _)| i)
-                {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{}: ", &battle_context.enemies[i].name));
-                        ui.label(format!(
-                            "{:.2} {}",
-                            battle_context.battle_enemies[i].properties.current_hp(),
-                            t!("HP")
-                        ));
-                    });
-                }
-            }
-        });
+        let mut table_builder = egui_extras::TableBuilder::new(ui)
+            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
+
+        let headers = ["Enemy", "HP"];
+        for _ in &headers {
+            table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
+        }
+
+        table_builder
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.heading(headers[0]);
+                });
+
+                header.col(|ui| {
+                    if let Some(handle) = helpers::load_property_icon_image(
+                        ui.ctx(),
+                        &RPG_GameCore_AvatarPropertyType::BaseHP.to_string(),
+                        egui::TextureOptions::default(),
+                    ) {
+                        let dim = ui
+                            .style()
+                            .text_styles
+                            .get(&TextStyle::Heading)
+                            .map(|font_id| font_id.size)
+                            .unwrap_or(14.0);
+                        let sized_image = egui::load::SizedTexture::new(handle.id(), egui::vec2(dim, dim));
+                        ui.add(egui::Image::from_texture(sized_image));
+                    }
+                });
+            })
+            .body(|body| {
+                body.rows(52.0, enemy_lineup.len(), |mut row| {
+                    let row_idx = row.index();
+                    let enemy = &enemy_lineup[row_idx];
+
+                    if let Some(i) = battle_context
+                        .battle_enemies
+                        .iter()
+                        .enumerate()
+                        .find(|(_, x)| x.entity == *enemy)
+                        .map(|(i, _)| i)
+                    {
+                        row.col(|ui| {
+                            ui.with_layout(
+                                Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                |ui| {
+                                    if let Some(handle) = helpers::load_monster_image(
+                                        ui.ctx(),
+                                        battle_context.enemies[i].id,
+                                        egui::TextureOptions::default(),
+                                    ) {
+                                        let dim = 48.0;
+                                        let sized_image = egui::load::SizedTexture::new(
+                                            handle.id(),
+                                            egui::vec2(dim, dim),
+                                        );
+                                        let image_response =
+                                            ui.add(egui::Image::from_texture(sized_image));
+
+                                        let text_pos = image_response.rect.right_bottom()
+                                            - egui::vec2(0.0, 0.0);
+                                        let percentage = if battle_context.battle_enemies[i].properties.max_hp() > 0.0 {
+                                            (battle_context.battle_enemies[i].properties.current_hp()
+                                                / battle_context.battle_enemies[i].properties.max_hp())
+                                                * 100.0
+                                        } else {
+                                            0.0
+                                        };
+                                        let percentage_text = format!("{percentage:.0}%");
+
+                                        // Text Shadow
+                                        ui.painter().text(
+                                            text_pos + egui::vec2(-1., 1.),
+                                            Align2::RIGHT_BOTTOM,
+                                            &percentage_text,
+                                            FontId::proportional(dim / 4.0),
+                                            Color32::BLACK,
+                                        );
+
+                                        ui.painter().text(
+                                            text_pos,
+                                            Align2::RIGHT_BOTTOM,
+                                            &percentage_text,
+                                            FontId::proportional(dim / 4.0),
+                                            Color32::WHITE,
+                                        );
+
+                                    }
+                                },
+                            );
+                        });
+
+                        row.col(|ui| {
+                            ui.with_layout(
+                                Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                |ui| {
+                                    ui.label(format!(
+                                        "{:.0}",
+                                        battle_context.battle_enemies[i].properties.current_hp(),
+                                    ));
+                                },
+                            );
+                        });
+                    }
+                });
+            });
     }
 }
 

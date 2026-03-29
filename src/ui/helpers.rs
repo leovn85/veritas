@@ -4,9 +4,21 @@ use egui::{Color32, Stroke};
 use image::DynamicImage;
 use anyhow::Result;
 
+use crate::kreide::types::RPG_GameCore_AvatarPropertyType;
+
 /// Global cache: avatar_id -> PNG buffer
 /// Populated in on_set_lineup, cleared on every call
 static AVATAR_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, Vec<u8>>>> = 
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Global cache: monster_id -> PNG buffer
+/// Cleared on every lineup set and repopulated as enemies initialize
+static MONSTER_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, Vec<u8>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Global cache: property_name -> PNG buffer
+/// Populated on demand as properties are encountered
+static PROPERTY_BUFFER_CACHE: LazyLock<Mutex<HashMap<String, Vec<u8>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn format_damage(value: f64) -> String {
@@ -82,7 +94,7 @@ pub fn get_transparent_window_frame(ctx: &egui::Context, opacity: f32) -> egui::
 }
 
 /// Clear and populate the avatar buffer cache with the given avatar IDs
-pub fn populate_avatar_buffers(avatar_ids: &[u32]) {
+pub fn populate_avatar_buffers(avatar_ids: &Vec<u32>) {
     let mut cache = AVATAR_BUFFER_CACHE.lock().unwrap();
     cache.clear();
     
@@ -90,6 +102,36 @@ pub fn populate_avatar_buffers(avatar_ids: &[u32]) {
         if let Ok(buffer) = crate::kreide::helpers::get_avatar_png_bytes(avatar_id) {
             cache.insert(avatar_id, buffer);
         }
+    }
+}
+
+/// Clear all cached monster icon PNG buffers
+pub fn clear_monster_buffers() {
+    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    cache.clear();
+}
+
+/// Cache a monster icon PNG buffer if it is not already cached
+pub fn cache_monster_buffer(monster_id: u32) {
+    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    if cache.contains_key(&monster_id) {
+        return;
+    }
+
+    if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(monster_id) {
+        cache.insert(monster_id, buffer);
+    }
+}
+
+/// Cache a property icon PNG buffer if it is not already cached
+pub fn cache_property_buffer(property_name: RPG_GameCore_AvatarPropertyType) {
+    let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
+    if cache.contains_key(&property_name.to_string()) {
+        return;
+    }
+
+    if let Ok(buffer) = crate::kreide::helpers::get_property_icon_png_bytes(&property_name.to_string()) {
+        cache.insert(property_name.to_string(), buffer);
     }
 }
 
@@ -137,6 +179,112 @@ pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::Tex
     ctx.data_mut(|data| {
         let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
         cache.insert(avatar_id, handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
+    Some(handle)
+}
+
+pub fn load_monster_image(
+    ctx: &egui::Context,
+    monster_id: u32,
+    options: egui::TextureOptions,
+) -> Option<egui::TextureHandle> {
+    const IMAGE_CACHE_ID: &str = "ui.helpers.monster_image_cache";
+    type TextureCache = HashMap<u32, egui::TextureHandle>;
+
+    let cache_id = egui::Id::new(IMAGE_CACHE_ID);
+
+    // Check if already cached as texture
+    if let Some(cached_handle) = ctx.data(|data| {
+        data.get_temp::<TextureCache>(cache_id)
+            .and_then(|cache| cache.get(&monster_id).cloned())
+    }) {
+        return Some(cached_handle);
+    }
+
+    // Get buffer from global cache (populated during enemy initialization)
+    let buffer = {
+        let cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+        cache.get(&monster_id).cloned()?
+    };
+
+    use image::EncodableLayout;
+    let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
+    let color_image = match &image {
+        DynamicImage::ImageRgb8(image) => {
+            egui::ColorImage::from_rgb(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+        other => {
+            let image = other.to_rgba8();
+            egui::ColorImage::from_rgba_unmultiplied(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+    };
+
+    // Cache the texture handle by monster_id
+    let name = format!("monster_{}", monster_id);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(monster_id, handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
+    Some(handle)
+}
+
+pub fn load_property_icon_image(
+    ctx: &egui::Context,
+    property_name: &str,
+    options: egui::TextureOptions,
+) -> Option<egui::TextureHandle> {
+    const IMAGE_CACHE_ID: &str = "ui.helpers.property_icon_cache";
+    type TextureCache = HashMap<String, egui::TextureHandle>;
+
+    let cache_id = egui::Id::new(IMAGE_CACHE_ID);
+
+    // Check if already cached as texture
+    if let Some(cached_handle) = ctx.data(|data| {
+        data.get_temp::<TextureCache>(cache_id)
+            .and_then(|cache| cache.get(property_name).cloned())
+    }) {
+        return Some(cached_handle);
+    }
+
+    // Get buffer from global cache (populated on demand)
+    let buffer = {
+        let cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
+        cache.get(property_name).cloned()?
+    };
+
+    use image::EncodableLayout;
+    let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
+    let color_image = match &image {
+        DynamicImage::ImageRgb8(image) => {
+            egui::ColorImage::from_rgb(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+        other => {
+            let image = other.to_rgba8();
+            egui::ColorImage::from_rgba_unmultiplied(
+                [image.width() as usize, image.height() as usize],
+                image.as_bytes(),
+            )
+        }
+    };
+
+    // Cache the texture handle by property_name
+    let name = format!("property_{}", property_name);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(property_name.to_string(), handle.clone());
         data.insert_temp(cache_id, cache);
     });
     Some(handle)

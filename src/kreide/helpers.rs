@@ -1,12 +1,8 @@
-use std::{collections::HashMap, ptr::null, sync::LazyLock};
+use std::{ptr::null, sync::LazyLock};
 
 use crate::{
     kreide::types::{
-        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
-        RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
-        RPG_GameCore_AvatarExcelTable, RPG_GameCore_MonsterDataComponent,
-        RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
-        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D,
+        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars, RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed, RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterTemplateExcelTable, RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion, UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D
     },
     models::misc::{Avatar, Skill},
 };
@@ -18,9 +14,9 @@ use il2cpp_runtime::{
 };
 
 use super::types::{
-    RPG_Client_TextID, RPG_Client_TextmapStatic, RPG_GameCore_AbilityProperty,
+    RPG_Client_TextID, RPG_Client_TextmapStatic,
     RPG_GameCore_BattleInstance, RPG_GameCore_FixPoint, RPG_GameCore_GameEntity,
-    RPG_GameCore_SkillData, RPG_GameCore_TurnBasedAbilityComponent,
+    RPG_GameCore_SkillData,
 };
 
 fn sanitize_entity_name<S: AsRef<str>>(name: S) -> String {
@@ -86,7 +82,6 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
 
     let text_id = unsafe { row_data.get_SkillName()? };
 
-    let skill_type = unsafe { row_data.get_AttackType()? };
     let skill_type = unsafe {
         let boxed = RPG_GameCore_AttackType__Boxed(System_Enum::to_object_from_int(
             get_type_handle("RPG.GameCore.AttackType")?,
@@ -297,26 +292,9 @@ pub fn get_type_handle<S: AsRef<str>>(type_name: S) -> Result<System_Type> {
     Ok(unsafe { System_Type::get_type_from_handle(ty)? })
 }
 
-pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
-    // Add null checks.
+/// Extract render texture formats for texture-to-PNG conversion
+unsafe fn get_render_texture_formats() -> Result<(i32, i32)> {
     unsafe {
-        let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
-        log::info!(
-            "Support Avatar: {}, Icon Path: {}",
-            avatar_id,
-            avatar_row.AvatarSideIconPath()?.to_string()
-        );
-
-        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
-
-        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
-            avatar_row.AvatarSideIconPath()?,
-            type_handle,
-            false,
-        )?;
-        let sprite = UnityEngine_Sprite(sprite.0);
-        let tex = sprite.get_texture()?;
-
         let default_format = {
             let value = System_Int32__Boxed(System_Enum::parse(
                 get_type_handle("UnityEngine.RenderTextureFormat")?,
@@ -333,8 +311,15 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
             (*value).0
         };
 
-        // https://stackoverflow.com/questions/44733841/how-to-make-texture2d-readable-via-script
-        // https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures
+        Ok((default_format, rw_format))
+    }
+}
+
+/// Common texture rendering pipeline: texture → render target → readable texture → PNG bytes
+unsafe fn render_texture_to_png_bytes(tex: UnityEngine_Texture2D) -> Result<Vec<u8>> {
+    unsafe {
+        let (default_format, rw_format) = get_render_texture_formats()?;
+
         let render_tex = UnityEngine_RenderTexture::GetTemporary(
             tex.as_base().get_width()?,
             tex.as_base().get_height()?,
@@ -345,6 +330,7 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
         UnityEngine_Graphics::Blit(tex, render_tex)?;
         let prev = UnityEngine_RenderTexture::GetActive()?;
         UnityEngine_RenderTexture::set_active(render_tex)?;
+
         use il2cpp_runtime::api::il2cpp_object_new;
         let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(get_cached_class(
             UnityEngine_Texture2D::ffi_name(),
@@ -366,11 +352,71 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
         UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
 
         let array = UnityEngine_ImageConversion::EncodeToPNG(readable_tex)?;
-        let buffer = array.to_vec::<u8>();
-        // if let Err(e) = dump_avatar_png_bytes(avatar_id, &buffer) {
-        //     log::error!("Failed to dump avatar {} PNG: {}", avatar_id, e);
-        // }
-        Ok(buffer)
+        Ok(array.to_vec::<u8>())
+    }
+}
+
+pub fn get_monster_png_bytes(monster_id: u32) -> Result<Vec<u8>> {
+    unsafe {
+        let monster_row = RPG_GameCore_MonsterTemplateExcelTable::GetData(monster_id)?;
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            monster_row.RoundIconPath()?,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_png_bytes(tex)
+    }
+}
+
+pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
+    unsafe {
+        let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
+        log::info!(
+            "Support Avatar: {}, Icon Path: {}",
+            avatar_id,
+            avatar_row.AvatarSideIconPath()?.to_string()
+        );
+
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            avatar_row.AvatarSideIconPath()?,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_png_bytes(tex)
+    }
+}
+
+pub fn get_property_icon_png_bytes(property_name: &str) -> Result<Vec<u8>> {
+    unsafe {
+        let property_type = RPG_GameCore_AvatarPropertyType__Boxed(System_Enum::parse(
+            get_type_handle("RPG.GameCore.AvatarPropertyType")?,
+            Il2CppString::new(property_name)?,
+        )?);
+        
+        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(*property_type)?;
+        let icon_path = row.IconPath()?;
+
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+        
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            icon_path,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_png_bytes(tex)
     }
 }
 

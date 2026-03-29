@@ -5,10 +5,10 @@ use crate::kreide::*;
 
 use crate::models::events::*;
 use crate::models::misc::Avatar;
+use crate::models::misc::BattleStats;
 use crate::models::misc::Enemy;
 use crate::models::misc::Entity;
 use crate::models::misc::Property;
-use crate::models::misc::Stats;
 use crate::models::misc::Team;
 
 use anyhow::Result;
@@ -703,15 +703,11 @@ fn on_set_lineup(
         let light_team = a2.LightTeam()?;
         let extra_team = a2.ExtraTeam()?;
 
-        // Collect all avatar IDs first
-        let mut avatar_ids = Vec::new();
-
         // Now process avatars
         let mut avatars = Vec::<Avatar>::new();
         let mut errors = Vec::<Error>::new();
         for character in light_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
-            avatar_ids.push((*avatar_id).into());
             match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
@@ -721,7 +717,6 @@ fn on_set_lineup(
         // Unsure if you can have more than one support char
         for character in extra_team.to_vec::<RPG_GameCore_LineUpCharacter>() {
             let avatar_id = character.CharacterID()?;
-            avatar_ids.push((*avatar_id).into());
             match helpers::get_avatar_from_id((*avatar_id).into()) {
                 Ok(avatar) => avatars.push(avatar),
                 Err(e) => errors.push(e),
@@ -729,8 +724,10 @@ fn on_set_lineup(
         }
  
         // Populate the global buffer cache
-        crate::ui::helpers::populate_avatar_buffers(&avatar_ids);
-
+        crate::ui::helpers::populate_avatar_buffers(&avatars.iter().map(|a| a.id).collect::<Vec<u32>>());
+        crate::ui::helpers::clear_monster_buffers();
+        let property_kind = RPG_GameCore_AvatarPropertyType::BaseHP;
+        crate::ui::helpers::cache_property_buffer(property_kind);
 
         let event = if !errors.is_empty() {
             let errors = errors
@@ -1283,16 +1280,19 @@ pub fn on_initialize_enemy(
         let row_data = instance._MonsterRowData()?;
         let row = row_data._Row()?;
         let monster_id = unsafe { instance.get_monster_id()? };
-        let mut base_stats = Stats {
+        crate::ui::helpers::cache_monster_buffer(monster_id);
+        let mut base_stats = BattleStats {
             properties: HashMap::new(),
         };
         base_stats.set_value(RPG_GameCore_AbilityProperty::Level.to_string(), unsafe { row_data.get_Level()? } as f64);
         base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
+        base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
 
         let name_id = row.MonsterName()?;
         let monster_name = get_textmap_content(&name_id)?;
         let entity = instance._OwnerRef()?;
 
+        
         BattleContext::handle_event(Ok(Event::OnInitializeEnemy(OnInitializeEnemyEvent {
             enemy: Enemy {
                 id: monster_id,

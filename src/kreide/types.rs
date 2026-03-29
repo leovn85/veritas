@@ -187,6 +187,158 @@ impl RPG_GameCore_GameComponentBase {
     pub fn _OwnerRef(&self) -> RPG_GameCore_GameEntity {}
 }
 
+#[il2cpp_ref_type("RPG.GameCore.AvatarPropertyRow")]
+pub struct RPG_GameCore_AvatarPropertyRow;
+impl RPG_GameCore_AvatarPropertyRow {
+    #[il2cpp_field(name = "IconPath")]
+    pub fn IconPath(&self) -> Il2CppString {}
+}
+
+#[il2cpp_ref_type("RPG.GameCore.AvatarPropertyExcelTable")]
+pub struct RPG_GameCore_AvatarPropertyExcelTable;
+impl RPG_GameCore_AvatarPropertyExcelTable {
+    #[il2cpp_method(name = "GetData", args = ["RPG.GameCore.AvatarPropertyType"])]
+    pub fn GetData(property_type: RPG_GameCore_AvatarPropertyType) -> RPG_GameCore_AvatarPropertyRow {}
+}
+
+#[il2cpp_enum_type(i32)]
+pub enum RPG_GameCore_AvatarPropertyType {
+	Unknown,
+	MaxHP,
+	Attack,
+	Defence,
+	Speed,
+	CriticalChance,
+	CriticalDamage,
+	HealRatio,
+	StanceBreakAddedRatio,
+	SPRatio,
+	StatusProbability,
+	StatusResistance,
+	PhysicalAddedRatio,
+	PhysicalResistance,
+	FireAddedRatio,
+	FireResistance,
+	IceAddedRatio,
+	IceResistance,
+	ThunderAddedRatio,
+	ThunderResistance,
+	WindAddedRatio,
+	WindResistance,
+	QuantumAddedRatio,
+	QuantumResistance,
+	ImaginaryAddedRatio,
+	ImaginaryResistance,
+	BaseHP,
+	HPDelta,
+	BaseAttack,
+	AttackDelta,
+	BaseDefence,
+	DefenceDelta,
+	HPAddedRatio,
+	AttackAddedRatio,
+	DefenceAddedRatio,
+	BaseSpeed,
+	HealTakenRatio,
+	PhysicalResistanceDelta,
+	FireResistanceDelta,
+	IceResistanceDelta,
+	ThunderResistanceDelta,
+	WindResistanceDelta,
+	QuantumResistanceDelta,
+	ImaginaryResistanceDelta,
+	AllDamageReduce,
+	RelicValueExtraAdditionRatio,
+	EquipValueExtraAdditionRatio,
+	EquipExtraRank,
+	AvatarExtraRank,
+	AllDamageTypeAddedRatio,
+	SpeedAddedRatio,
+	SpeedDelta,
+	CriticalChanceBase,
+	CriticalDamageBase,
+	SPRatioBase,
+	HealRatioBase,
+	StatusProbabilityBase,
+	StatusResistanceBase,
+	BreakDamageAddedRatio,
+	BreakDamageAddedRatioBase,
+	MaxSP,
+	SpecialMaxSP,
+	PhysicalPenetrate,
+	FirePenetrate,
+	IcePenetrate,
+	ThunderPenetrate,
+	WindPenetrate,
+	QuantumPenetrate,
+	ImaginaryPenetrate,
+	AllDamageTypePenetrate,
+	BreakDamageExtraAddedRatio,
+	ElationDamageAddedRatio,
+	ElationDamageAddedRatioBase,
+	ExtraAttackAddedRatio1,
+	ExtraAttackAddedRatio2,
+	ExtraAttackAddedRatio3,
+	ExtraAttackAddedRatio4,
+	ExtraDefenceAddedRatio1,
+	ExtraDefenceAddedRatio2,
+	ExtraDefenceAddedRatio3,
+	ExtraDefenceAddedRatio4,
+	ExtraHPAddedRatio1,
+	ExtraHPAddedRatio2,
+	ExtraHPAddedRatio3,
+	ExtraHPAddedRatio4,
+	ExtraHealAddedRatio,
+	ExtraAllDamageTypeAddedRatio1,
+	ExtraAllDamageTypeAddedRatio2,
+	ExtraAllDamageTypeAddedRatio3,
+	ExtraAllDamageTypeAddedRatio4,
+	ExtraAllDamageReduce,
+	ExtraShieldAddedRatio,
+	ExtraSpeedAddedRatio1,
+	ExtraSpeedAddedRatio2,
+	ExtraSpeedAddedRatio3,
+	ExtraSpeedAddedRatio4,
+	ExtraLuckChance,
+	ExtraLuckDamage,
+	ExtraFrontPowerBase,
+	ExtraFrontPowerAddedRatio1,
+	ExtraFrontPowerAddedRatio2,
+	ExtraBackPowerBase,
+	ExtraBackPowerAddedRatio1,
+	ExtraBackPowerAddedRatio2,
+	ExtraUltraDamageAddedRatio1,
+	ExtraSkillDamageAddedRatio1,
+	ExtraNormalDamageAddedRatio1,
+	ExtraInsertDamageAddedRatio1,
+	ExtraTotalFrontPower,
+	ExtraTotalBackPower,
+	ExtraDOTDamageAddedRatio1,
+	ExtraHealBase,
+	ExtraShieldBase,
+	ExtraTotalShieldPower,
+	ExtraTotalHealPower,
+	ExtraTotalSpeedAddedRatio,
+	ExtraEnergyBar,
+	ExtraInitSP,
+	ExtraElementDamageAddedRatio1,
+	ExtraTotalLuckChance,
+	ExtraLuckChanceBase,
+	ExtraTotalLuckDamage,
+	ExtraLuckDamageBase,
+	ExtraDamageAddedRatio1,
+	ExtraQuantumResonance,
+	ExtraFrontPowerConvert,
+	ExtraBackPowerConvert,
+	ExtraLuckDamageConvert,
+	ExtraLuckChanceConvert,
+	ExtraHealConvert,
+	ExtraShieldConvert,
+	ExtraAllDamageReduceConvert,
+	ExtraTotalAllDamageReduce,
+	ExtraAllDamageTypeAddedRatio5
+}
+
 #[il2cpp_enum_type(i32)]
 pub enum RPG_GameCore_AbilityProperty {
 	Unknow,
@@ -792,20 +944,6 @@ pub struct UnityEngine_Color32 {
 	pub a: u8,
 }
 
-
-#[il2cpp_ref_type("RPG.GameCore.AvatarRowData")]
-pub struct RPG_GameCore_AvatarRowData;
-
-impl RPG_GameCore_AvatarRowData {
-	#[il2cpp_getter_property(property = "AvatarMiniIconPath")]
-	pub fn get_AvatarMiniIconPath(&self) -> Il2CppString {}
-}
-
-impl RPG_Client_AvatarData {
-	#[il2cpp_field(name = "_AvatarRowData")]
-	pub fn _AvatarRowData(&self) -> RPG_GameCore_AvatarRowData {}
-}
-
 #[il2cpp_ref_type("RPG.GameCore.AvatarExcelTable")]
 pub struct RPG_GameCore_AvatarExcelTable;
 impl RPG_GameCore_AvatarExcelTable {
@@ -823,6 +961,19 @@ impl RPG_GameCore_AvatarRow {
 	pub fn AvatarName(&self) -> RPG_Client_TextID__Boxed {}
 }
 
+#[il2cpp_ref_type("RPG.GameCore.MonsterTemplateExcelTable")]
+pub struct RPG_GameCore_MonsterTemplateExcelTable;
+impl RPG_GameCore_MonsterTemplateExcelTable {
+	#[il2cpp_method(name = "GetData", args = ["uint"])]
+	pub fn GetData(template_id: u32) -> RPG_GameCore_MonsterTemplateRow {}
+}
+
+#[il2cpp_ref_type("RPG.GameCore.MonsterTemplateRow")]
+pub struct RPG_GameCore_MonsterTemplateRow;
+impl RPG_GameCore_MonsterTemplateRow {
+	#[il2cpp_field(name = "RoundIconPath")]
+	pub fn RoundIconPath(&self) -> Il2CppString {}
+}
 
 #[il2cpp_ref_type("UnityEngine.RenderTexture")]
 pub struct UnityEngine_RenderTexture;

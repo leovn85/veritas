@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 
 use crate::{
-    kreide::types::RPG_GameCore_AttackType,
+    kreide::types::{RPG_GameCore_AbilityProperty, RPG_GameCore_AttackType},
     models::{events::*, misc::*, packets::Packet},
     server,
 };
@@ -99,6 +99,7 @@ pub enum BattleMode {
     MOC,
     PF,
     AS,
+    AA,
     #[default]
     Other,
 }
@@ -162,11 +163,12 @@ impl BattleContext {
 
     fn get_battle_mode(stage_id: u32) -> BattleMode {
         match stage_id {
-            30010000..=31000000 => match stage_id % 100 {
+            30010000..30500000 => match stage_id % 100 {
                 21 | 22 => BattleMode::MOC,
                 41 | 42 => BattleMode::PF,
                 _ => BattleMode::Other,
             },
+            30500000..=31000000 => BattleMode::Other,
             420101..=420999 => BattleMode::AS,
             _ => BattleMode::Other,
         }
@@ -483,15 +485,12 @@ impl BattleContext {
         mut battle_context: MutexGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.enemies.push(e.enemy.clone());
-        let mut properties = BattleStats::default();
-        properties.set_value("MaxHP", e.enemy.base_stats.hp());
-        properties.set_value("CurrentHP", e.enemy.base_stats.hp());
         battle_context.battle_enemies.push(BattleEntity {
             entity: Entity {
                 uid: e.enemy.uid,
                 team: Team::Enemy,
             },
-            properties,
+            properties: e.enemy.base_stats.clone(),
         });
         Ok(Packet::OnInitializeEnemy { enemy: e.enemy })
     }

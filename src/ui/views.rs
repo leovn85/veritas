@@ -901,11 +901,13 @@ impl App {
     pub fn show_enemy_stats_window(&mut self, ctx: &egui::Context) {
         egui::containers::Window::new(t!("Enemy Stats"))
             .id("enemy_stats_window".into())
+            .title_bar(false)
             .frame(get_window_frame(ctx, self.config.widget_opacity))
             .resizable(true)
             .min_width(200.0)
             .min_height(150.0)
             .show(ctx, |ui| {
+                ui.style_mut().interaction.selectable_labels = false;
                 self.show_enemy_stats_widget(ui);
             });
     }

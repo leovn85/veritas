@@ -367,7 +367,7 @@ impl BattleDataExporter {
                     position_index: index as u32,
                     wave_index: battle_context.wave,
                     name: enemy.name.clone(),
-                    max_hp: enemy.base_stats.hp(),
+                    max_hp: enemy.base_stats.max_hp(),
                     level: enemy.base_stats.level(),
                     stats,
                     stats_history,

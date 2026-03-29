@@ -20,7 +20,7 @@ pub struct Enemy {
     pub id: u32,
     pub uid: u32,
     pub name: String,
-    pub base_stats: Stats,
+    pub base_stats: BattleStats,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -33,12 +33,6 @@ pub struct BattleEntity {
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct BattleStats {
     pub properties: HashMap<String, f64>,
-}
-
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Stats {
-    pub properties: HashMap<String, f64>
 }
 
 
@@ -82,6 +76,15 @@ impl BattleStats {
         let key = RPG_GameCore_AbilityProperty::ActionDelay.to_string();
         self.get_value(&key).unwrap_or_default()
     }
+
+    pub fn max_hp(&self) -> f64 {
+        let key = RPG_GameCore_AbilityProperty::MaxHP.to_string();
+        self.get_value(&key).unwrap_or_default()
+    }
+
+    pub fn level(&self) -> u32 {
+        self.get_value("Level").unwrap_or_default() as u32
+    }
 }
 
 impl fmt::Display for Avatar {
@@ -114,20 +117,3 @@ pub struct TurnInfo {
     pub total_damage: f64,
 }
 
-impl Stats {
-    pub fn set_value<S: Into<String>>(&mut self, kind: S, value: f64) {
-        self.properties.insert(kind.into(), value);
-    }
-
-    pub fn get_value(&self, kind: &str) -> Option<f64> {
-        self.properties.get(kind).copied()
-    }
-
-    pub fn hp(&self) -> f64 {
-        self.get_value("HP").unwrap_or_default()
-    }
-
-    pub fn level(&self) -> u32 {
-        self.get_value("Level").unwrap_or_default() as u32
-    }
-}
