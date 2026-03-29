@@ -1,3 +1,30 @@
+# 0.2.47 - 2026-03-29
+  - Reworked the Enemy Stats window into a compact table layout with monster portraits, HP icon header, and live HP percentage overlays.
+  - Added image caching pipelines for avatar, monster, and property icon textures to reduce repeated runtime asset loads.
+  - Improved enemy initialization/state handling by storing enemy base stats as battle stats and keeping MaxHP and CurrentHP aligned from spawn.
+  - Fixed exported enemy max HP values to use MaxHP instead of HP in battle data exports.
+  - Added IL2CPP bindings for avatar property tables and monster template icon paths used by the new UI asset loaders.
+
+# 0.2.46 - 2026-03-22
+  - Fixed Servant damage logging
+  - Added Damage Type Breakdown window
+
+# 0.2.45 - 2026-03-18
+  - Fixed Resizing
+
+# 0.2.44 - 2026-03-17
+  - Fixed for 4.1.51
+
+# 0.2.43 - 2026-02-14
+  - Fixed for 4.0.51
+  - Added overkill damage in damage chart
+
+# 0.2.42 - 2026-02-10
+  - Fixed for 4.0.51
+
+# 0.2.41 - 2026-01-07
+  - Fixed for 3.8.51
+
 # 0.2.40 - 2026-XX-XX
   - Added a localized notification that appears when the menu shortcut is used while the UI is hidden, making it clearer how to restore the interface.
   - Improved the reliability of keyboard navigation by fixing an issue that could cause tabbing to become unresponsive in-game.
