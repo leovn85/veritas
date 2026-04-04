@@ -1,4 +1,4 @@
-use crate::{get_module_handle, kreide, logging, overlay, server, subscribers};
+use crate::{get_module_handle, kreide, logging, overlay, server, subscribers, relic_server};
 use ctor::ctor;
 use egui_notify::Toast;
 use il2cpp_runtime::api::ApiIndexTable;
@@ -136,6 +136,7 @@ fn setup_subscribers() -> anyhow::Result<()> {
         };
         il2cpp_runtime::init(get_il2cpp_table_offset()?, table)?;
         subscribers::battle::subscribe()?;
+		subscribers::relics::subscribe()?;
         subscribers::enable_subscribers!()?;
         Ok(())
     }

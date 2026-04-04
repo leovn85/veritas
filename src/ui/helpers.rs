@@ -106,22 +106,22 @@ pub fn populate_avatar_buffers(avatar_ids: &Vec<u32>) {
 }
 
 /// Clear all cached monster icon PNG buffers
-pub fn clear_monster_buffers() {
-    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
-    cache.clear();
-}
+// pub fn clear_monster_buffers() {
+    // let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    // cache.clear();
+// }
 
 /// Cache a monster icon PNG buffer if it is not already cached
-pub fn cache_monster_buffer(monster_id: u32) {
-    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
-    if cache.contains_key(&monster_id) {
-        return;
-    }
+// pub fn cache_monster_buffer(monster_id: u32) {
+    // let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    // if cache.contains_key(&monster_id) {
+        // return;
+    // }
 
-    if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(monster_id) {
-        cache.insert(monster_id, buffer);
-    }
-}
+    // if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(monster_id) {
+        // cache.insert(monster_id, buffer);
+    // }
+// }
 
 /// Cache a property icon PNG buffer if it is not already cached
 pub fn cache_property_buffer(property_name: RPG_GameCore_AvatarPropertyType) {
@@ -184,11 +184,23 @@ pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::Tex
     Some(handle)
 }
 
-pub fn load_monster_image(
-    ctx: &egui::Context,
-    monster_id: u32,
-    options: egui::TextureOptions,
-) -> Option<egui::TextureHandle> {
+// Gọi khi trận đấu bắt đầu để dọn dẹp RAM
+pub fn clear_monster_buffers() {
+    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    cache.clear();
+}
+
+// Gọi từng lần khi quái xuất hiện
+pub fn cache_monster_buffer(monster_id: u32, row_data: &crate::kreide::types::RPG_GameCore_MonsterRowData) {
+    let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
+    if !cache.contains_key(&monster_id) {
+        if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(row_data) {
+            cache.insert(monster_id, buffer);
+        }
+    }
+}
+
+pub fn load_monster_image(ctx: &egui::Context, monster_id: u32, options: egui::TextureOptions) -> Option<egui::TextureHandle> {
     const IMAGE_CACHE_ID: &str = "ui.helpers.monster_image_cache";
     type TextureCache = HashMap<u32, egui::TextureHandle>;
 
@@ -211,6 +223,14 @@ pub fn load_monster_image(
     use image::EncodableLayout;
     let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
     let color_image = match &image {
+        // image::DynamicImage::ImageRgb8(image) => {
+            // egui::ColorImage::from_rgb([image.width() as usize, image.height() as usize], image.as_bytes())
+        // }
+        // other => {
+            // let image = other.to_rgba8();
+            // egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], image.as_bytes())
+        // }
+    // };
         DynamicImage::ImageRgb8(image) => {
             egui::ColorImage::from_rgb(
                 [image.width() as usize, image.height() as usize],

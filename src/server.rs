@@ -13,6 +13,15 @@ static SOCKET_IO: OnceLock<SocketIo> = OnceLock::new();
 
 pub fn start_server() {
     RUNTIME.block_on(async {
+		
+		// --- THÊM ĐOẠN NÀY ĐỂ CHẠY WEBSOCKET CỦA OREXIS ---
+		// tokio::spawn(async {
+            // if let Err(e) = crate::relic_server::start_ws_server().await {
+                // log::error!("Orexis WebSocket server error: {e}");
+            // }
+        // });
+		
+		
         let (layer, io) = SocketIo::new_layer();
         io.ns("/", on_connect);
         if SOCKET_IO.set(io).is_err() {

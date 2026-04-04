@@ -16,6 +16,8 @@ mod server;
 mod subscribers;
 mod ui;
 mod updater;
+mod relic_server;
+mod relic_utils;
 
 use phf::phf_map;
 use std::sync::LazyLock;

@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::null;
 use std::str::FromStr;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, LazyLock, Mutex};
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
@@ -45,6 +45,30 @@ struct ComboFieldOffsets {
 
 static COMBO_FIELD_OFFSETS: OnceLock<ComboFieldOffsets> = OnceLock::new();
 static ATTACK_TYPE_OFFSET: OnceLock<usize> = OnceLock::new();
+static PROPERTY_NAME_CACHE: LazyLock<Mutex<HashMap<i32, String>>> = 
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn get_property_name_cached(property: RPG_GameCore_AbilityProperty) -> Result<String> {
+    let prop_i32 = property as i32;
+    
+    // 1. Kiểm tra xem trong RAM Rust đã có chữ này chưa?
+    {
+        let cache = PROPERTY_NAME_CACHE.lock().unwrap();
+        if let Some(name) = cache.get(&prop_i32) {
+            return Ok(name.clone()); // Có rồi thì trả về luôn, siêu nhanh (O(1))
+        }
+    }
+
+    // 2. Nếu chưa có, mới lội sang C++ (Il2cpp) để hỏi
+    let ty = helpers::get_type_handle("RPG.GameCore.AbilityProperty")?;
+    let boxed = unsafe { RPG_GameCore_AbilityProperty__Boxed(System_Enum::to_object_from_int(ty, prop_i32)?) };
+    let name = unsafe { System_Enum::get_name(ty, boxed.0)?.to_string() };
+
+    // 3. Lưu vào Cache để lần sau không phải hỏi C++ nữa
+    PROPERTY_NAME_CACHE.lock().unwrap().insert(prop_i32, name.clone());
+    
+    Ok(name)
+}
 
 fn parse_il2cpp_enum<TObj, TEnum>(enum_obj: TObj) -> Result<TEnum>
 where
@@ -131,7 +155,7 @@ unsafe fn get_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffset
 unsafe fn resolve_attack_type_offset(class: Il2CppClass) -> Result<usize> {
     let field_iter: *const c_void = null();
     loop {
-        log::debug!("{}", class.name());
+        //log::debug!("{}", class.name());
         let field = il2cpp_class_get_fields(get_cached_class(class.name())?, &field_iter);
         if field.0.is_null() {
             break;
@@ -748,6 +772,7 @@ fn on_set_lineup(
 fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
     log::debug!(function_name!());
     let res = ON_BATTLE_BEGIN_Detour.call(instance);
+	crate::ui::helpers::clear_monster_buffers();
     safe_call!({
         BattleContext::handle_event(Ok(Event::OnBattleBegin(OnBattleBeginEvent {
             max_waves: u32::try_from(i32::from(
@@ -855,13 +880,20 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
     log::debug!(function_name!());
     use std::string::ToString;
     safe_call!(unsafe {
-        let property_kind = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
-        let property = RPG_GameCore_AbilityProperty__Boxed(System_Enum::parse(
-            get_type_handle("RPG.GameCore.AbilityProperty")?,
-            Il2CppString::new(&property_kind)?,
-        )?);
+        // let property_kind = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
+        // let property = RPG_GameCore_AbilityProperty__Boxed(System_Enum::parse(
+            // get_type_handle("RPG.GameCore.AbilityProperty")?,
+            // Il2CppString::new(&property_kind)?,
+        // )?);
 
-        let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(*property)?);
+        //let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(*property)?);
+		let property = RPG_GameCore_AbilityProperty::CurrentHP;
+		
+		// Gọi hàm Cache ta vừa viết ở câu trước để lấy tên "CurrentHP" (O(1))
+        let property_kind = get_property_name_cached(property.clone())?; 
+        
+        // Lấy giá trị máu hiện tại trực tiếp bằng hằng số
+        let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(property)?);
 
         let entity = turn_based_ability_component.as_base()._OwnerRef()?;
         let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
@@ -947,12 +979,14 @@ pub fn on_stat_change(
     let res = ON_STAT_CHANGE_Detour.call(instance, property, a2, new_stat, a4);
     safe_call!(unsafe {
         let entity = instance.as_base()._OwnerRef()?;
-        let boxed = RPG_GameCore_AbilityProperty__Boxed(System_Enum::to_object_from_int(
-            get_type_handle("RPG.GameCore.AbilityProperty")?,
-            property as i32,
-        )?);
-        let property_kind =
-            System_Enum::get_name(get_type_handle("RPG.GameCore.AbilityProperty")?, boxed.0)?;
+        // let boxed = RPG_GameCore_AbilityProperty__Boxed(System_Enum::to_object_from_int(
+            // get_type_handle("RPG.GameCore.AbilityProperty")?,
+            // property as i32,
+        // )?);
+        // let property_kind =
+            // System_Enum::get_name(get_type_handle("RPG.GameCore.AbilityProperty")?, boxed.0)?;
+		
+		let property_kind = get_property_name_cached(property)?;
         let property_value = fixpoint_to_raw(&new_stat);
         let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
 
@@ -1085,7 +1119,7 @@ struct EntityDefeatedOffsets {
 }
 
 static ENTITY_DEFEATED_OFFSETS: OnceLock<EntityDefeatedOffsets> = OnceLock::new();
-
+/*
 unsafe fn resolve_defeated_entity_offset() -> Result<EntityDefeatedOffsets> {
     // This should be enough
     let buffer = vec![0u8; 0x9A];
@@ -1180,12 +1214,61 @@ unsafe fn resolve_defeated_entity_offset() -> Result<EntityDefeatedOffsets> {
             .context("Failed to find alternate RPG.GameCore.EntityType field offset")?,
     })
 }
+*/
+unsafe fn resolve_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
+    // 1. Tìm hàm _MakeLimboEntityDie để moi ra Class Event
+    let game_mode_class = get_cached_class("RPG.GameCore.TurnBasedGameMode")?;
+    let limbo_method = game_mode_class.find_method("_MakeLimboEntityDie", vec!["*"])?;
+    
+    // Tham số đầu tiên chính là Class EntityDefeatedEvent bị obfuscate
+    let event_class = limbo_method.arg(0).class();
 
+    let mut game_entity_offsets = Vec::new();
+    let field_iter: *const c_void = null();
+    
+    // 2. Quét toàn bộ field của Class này
+    loop {
+        let field = il2cpp_class_get_fields(event_class, &field_iter);
+        if field.0.is_null() { break; }
+
+        let f_type = il2cpp_field_get_type(field);
+        
+        // 3. Tìm các field chứa kiểu dữ liệu "GameEntity"
+        if f_type.name() == "RPG.GameCore.GameEntity" {
+            game_entity_offsets.push(il2cpp_field_get_offset(field) as usize);
+        }
+    }
+
+    // 4. Nếu tìm đủ 2 field, field có offset nhỏ hơn (ví dụ 0x10) thường là Killer, lớn hơn (0x18) là Victim
+    if game_entity_offsets.len() >= 2 {
+        game_entity_offsets.sort(); // Đảm bảo thứ tự tăng dần
+        Ok(EntityDefeatedOffsets {
+            killer_entity: game_entity_offsets[0],
+            defeated_entity: game_entity_offsets[1],
+        })
+    } else {
+        Err(anyhow!("Failed to find alternate RPG.GameCore.EntityType field offset."))
+    }
+}
+/*
 unsafe fn get_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
     ENTITY_DEFEATED_OFFSETS
         .get()
         .copied()
         .ok_or_else(|| anyhow!("Entity defeated offsets are not initialized"))
+}
+*/
+unsafe fn get_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
+    if let Some(offsets) = ENTITY_DEFEATED_OFFSETS.get() {
+        return Ok(*offsets);
+    }
+
+    let offsets = unsafe { resolve_entity_defeated_offsets()? };
+    let _ = ENTITY_DEFEATED_OFFSETS.set(offsets);
+    ENTITY_DEFEATED_OFFSETS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow!("Failed to cache entity defeated offsets"))
 }
 
 #[named]
@@ -1280,12 +1363,21 @@ pub fn on_initialize_enemy(
         let row_data = instance._MonsterRowData()?;
         let row = row_data._Row()?;
         let monster_id = unsafe { instance.get_monster_id()? };
-        crate::ui::helpers::cache_monster_buffer(monster_id);
+
+		crate::ui::helpers::cache_monster_buffer(monster_id, &row_data);
         let mut base_stats = BattleStats {
             properties: HashMap::new(),
         };
+		let max_stance = match unsafe {turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::MaxStance)} {
+			Ok(val) => fixpoint_to_raw(&val),
+			Err(_) => 0.0,
+		};
         base_stats.set_value(RPG_GameCore_AbilityProperty::Level.to_string(), unsafe { row_data.get_Level()? } as f64);
         base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
+
+		base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentStance.to_string(), max_stance);
+		base_stats.set_value(RPG_GameCore_AbilityProperty::MaxStance.to_string(), max_stance);
+
         base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
 
         let name_id = row.MonsterName()?;
@@ -1399,9 +1491,9 @@ pub fn subscribe() -> Result<()> {
             get_combo_field_offsets(class)?;
         }
 
-        let defeated_offsets = resolve_defeated_entity_offset()?;
-        let _ = ENTITY_DEFEATED_OFFSETS.set(defeated_offsets);
-        get_entity_defeated_offsets()?;
+        //let = resolve_defeated_entity_offset()?;
+        //let _ = ENTITY_DEFEATED_OFFSETS.set(defeated_offsets);
+        //get_entity_defeated_offsets()?;
 
         subscribe_function!(
             ON_USE_SKILL_Detour,

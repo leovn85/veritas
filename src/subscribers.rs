@@ -91,3 +91,4 @@ macro_rules! safe_call {
 }
 
 pub mod battle;
+pub mod relics;

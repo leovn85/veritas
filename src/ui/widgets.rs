@@ -69,177 +69,125 @@ impl App {
     }
 
     pub fn show_character_legend(&mut self, ui: &mut Ui) {
-        let battle_context = &BattleContext::get_instance();
+		let battle_context = &BattleContext::get_instance();
+		
+		let max_dmg = battle_context.real_time_damages.iter().copied().fold(0.0, f64::max);
 
-        // // I need to make separate DPAV calcs in the battle context
-        // for (i, avatar) in battle_context.avatar_lineup.iter().enumerate() {
-        //     ui.horizontal(|ui| {
-        //         let style = ui.style_mut();
-        //         style.override_text_style = Some(self.config.legend_text_style.clone());
-        //         let (res, painter) = ui.allocate_painter(Vec2::splat(12.), Sense::empty());
-        //         let rect = res.rect;
-        //         let radius = rect.width() / 2.0 - 1.0;
-        //         painter.circle_filled(rect.center(), radius, helpers::get_character_color(i));
+		let mut sorted_indices: Vec<usize> = (0..battle_context.avatar_lineup.len()).collect();
+		sorted_indices.sort_by(|&a, &b| {
+			battle_context.real_time_damages[b].partial_cmp(&battle_context.real_time_damages[a]).unwrap_or(std::cmp::Ordering::Equal)
+		});
 
-        //         let dmg = battle_context.real_time_damages[i];
+		ui.vertical(|ui| {
+			for i in sorted_indices {
+				let avatar = &battle_context.avatar_lineup[i];
+				let dmg = battle_context.real_time_damages[i];
+				
+				let dpav = if battle_context.action_value > 0.0 {
+					dmg / battle_context.action_value
+				} else {
+					dmg
+				};
 
-        //         let percentage = dmg / battle_context.total_damage * 100.0;
+				ui.horizontal(|ui| {
+					// ---------- PHẦN AVATAR + CHỮ % (CỦA TÁC GIẢ) ----------
+					if let Some(handle) = helpers::load_avatar_image(ui.ctx(), avatar.id, egui::TextureOptions::default()) {
+						let dim = 48.0; // Kích thước avatar
+						let image = egui::Image::new(&handle)
+							.fit_to_exact_size(egui::vec2(dim, dim))
+							.rounding(egui::Rounding::same((dim / 2.0) as u8)); // Bo tròn
 
-        //         let dpav = if battle_context.action_value > 0.0 {
-        //             dmg / battle_context.action_value
-        //         } else {
-        //             dmg
-        //         };
+						// Lấy object image_response để biết tọa độ avatar trên màn hình
+						let image_response = ui.add(image);
 
-        //         ui.label(format!(
-        //             "{}: {:.1}% | {} DMG | {} DPAV",
-        //             avatar.name,
-        //             percentage,
-        //             helpers::format_damage(dmg),
-        //             helpers::format_damage(dpav)
-        //         ));
-        //     });
+						// Tính % của tác giả
+						let percentage = if battle_context.total_damage > 0.0 {
+							dmg / battle_context.total_damage * 100.0
+						} else {
+							0.0
+						};
+						let percentage_text = format!("{percentage:.0}%");
+						// Vẽ chữ % đè lên Avatar (Góc dưới phải)
+						let text_pos = image_response.rect.right_bottom();
+						
+						// Bóng đen (Chỉnh offset thành 1.5, bỏ linear_multiply)
+						ui.painter().text(
+							text_pos + egui::vec2(1.0, 1.0),
+							egui::Align2::RIGHT_BOTTOM,
+							&percentage_text,
+							egui::FontId::proportional(dim / 4.0),
+							egui::Color32::BLACK, 
+						);
+        // let mut table_builder = egui_extras::TableBuilder::new(ui)
+            // .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
+
+        // let headers = [t!("Avatar"), t!("DMG"), t!("DPAV")];
+
+        // for _ in &headers {
+            // table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
         // }
 
-        let mut table_builder = egui_extras::TableBuilder::new(ui)
-            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
-
-        let headers = [t!("Avatar"), t!("DMG"), t!("DPAV")];
-
-        for _ in &headers {
-            table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
-        }
-
-        table_builder
-            .header(20.0, |mut header| {
-                for label in &headers {
-                    header.col(|ui| {
-                        ui.heading(label.as_ref());
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(52., battle_context.avatar_lineup.len() + 1, |mut row| {
-                    if battle_context.avatar_lineup.len() == 0 {
-                        return;
-                    }
+        // table_builder
+            // .header(20.0, |mut header| {
+                // for label in &headers {
+                    // header.col(|ui| {
+                        // ui.heading(label.as_ref());
+                    // });
+                // }
+            // })
+            // .body(|body| {
+                // body.rows(52., battle_context.avatar_lineup.len() + 1, |mut row| {
+                    // if battle_context.avatar_lineup.len() == 0 {
+                        // return;
+                    // }
                     
-                    let i = row.index();
-                    let dmg = if i >= battle_context.avatar_lineup.len() {
-                        battle_context.total_damage
-                    } else {
-                        battle_context.real_time_damages[i]
-                    };
+                    // let i = row.index();
+                    // let dmg = if i >= battle_context.avatar_lineup.len() {
+                        // battle_context.total_damage
+                    // } else {
+                        // battle_context.real_time_damages[i]
+                    // };
 
-                    row.col(|ui| {
-                        ui.with_layout(
-                            Layout::centered_and_justified(egui::Direction::LeftToRight),
-                            |ui| {
-                                if i == battle_context.avatar_lineup.len() {
-                                    ui.label(t!("Total"));
-                                } else {
-                                    // Load avatar image with caching, display name if loading fails
-                                    if let Some(handle) = helpers::load_avatar_image(
-                                        ui.ctx(),
-                                        battle_context.avatar_lineup[i].id,
-                                        egui::TextureOptions::default(),
-                                    ) {
-                                        let percentage = if battle_context.total_damage > 0.0 {
-                                            dmg / battle_context.total_damage * 100.0
-                                        } else {
-                                            0.0
-                                        };
+						// Chữ trắng (Bỏ linear_multiply)
+						ui.painter().text(
+							text_pos,
+							egui::Align2::RIGHT_BOTTOM,
+							&percentage_text,
+							egui::FontId::proportional(dim / 4.0),
+							egui::Color32::WHITE,
+						);
+					} else {
+						ui.allocate_space(egui::vec2(40.0, 40.0));
+					}
 
-                                        let dim = 48.0;
-                                        let sized_image = egui::load::SizedTexture::new(
-                                            handle.id(),
-                                            egui::vec2(dim, dim),
-                                        );
-                                        let image_response =
-                                            ui.add(egui::Image::from_texture(sized_image));
+					// ---------- PHẦN SÁT THƯƠNG + THANH BAR (CỦA CHÚNG TA) ----------
+					ui.vertical(|ui| {
+						ui.spacing_mut().item_spacing.y = 2.0; 
+						
+						// Lấy màu text follow theme
+						let text_color = ui.visuals().text_color();
 
-                                        let text_pos = image_response.rect.right_bottom()
-                                            - egui::vec2(0.0, 0.0);
-                                        let percentage_text = format!("{percentage:.0}%");
+						ui.label(egui::RichText::new(format!(
+							"{} : {}", 
+							helpers::format_damage(dmg), 
+							helpers::format_damage(dpav)
+						)).strong().size(15.0).color(text_color));
 
-                                        // Text Shadow
-                                        ui.painter().text(
-                                            text_pos + egui::vec2(-1., 1.),
-                                            Align2::RIGHT_BOTTOM,
-                                            &percentage_text,
-                                            FontId::proportional(dim / 4.0),
-                                            Color32::BLACK,
-                                        );
+						let fraction = if max_dmg > 0.0 { (dmg / max_dmg) as f32 } else { 0.0 };
+						let color = helpers::get_character_color(i).linear_multiply(self.config.widget_opacity);
+						
+						let bar = egui::ProgressBar::new(fraction)
+							.fill(color)
+							.desired_height(14.0)
+							.show_percentage(); 
 
-                                        ui.painter().text(
-                                            text_pos,
-                                            Align2::RIGHT_BOTTOM,
-                                            &percentage_text,
-                                            FontId::proportional(dim / 4.0),
-                                            Color32::WHITE,
-                                        );
-                                    } else {
-                                        ui.label(format!("{}", battle_context.avatar_lineup[i].name));
-                                    }
-                                }
-                            },
-                        );
-                    });
-
-                    row.col(|ui: &mut Ui| {
-                        ui.with_layout(
-                            Layout::centered_and_justified(egui::Direction::LeftToRight),
-                            |ui| {
-                                ui.label(format! {"{}", helpers::format_damage(dmg)});
-                            },
-                        );
-                    });
-
-                    row.col(|ui: &mut Ui| {
-                        ui.with_layout(
-                            Layout::centered_and_justified(egui::Direction::LeftToRight),
-                            |ui| {
-                                let dpav = if battle_context.action_value > 0.0 {
-                                    dmg / battle_context.action_value
-                                } else {
-                                    dmg
-                                };
-
-                                ui.label(format! {"{}", helpers::format_damage(dpav)});
-                            },
-                        );
-                    });
-                });
-            });
-
-        // .body(|mut body| {
-        //     body.row(30.0, |mut row| {
-        //         row.col(|ui| {
-        //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
-        //                 for avatar in avatars {
-        //                     let handle = helpers::load_image(
-        //                         ui.ctx(),
-        //                         avatar,
-        //                         egui::TextureOptions::default(),
-        //                     );
-        //                     let sized_image = egui::load::SizedTexture::new(
-        //                         handle.id(),
-        //                         // egui::vec2(handle.size()[0] as f32, handle.size()[1] as f32),
-        //                         egui::vec2(64.0, 64.0),
-        //                     );
-        //                     ui.add(egui::Image::from_texture(sized_image));
-        //                 }
-        //         });
-
-        //         row.col(|ui: &mut Ui| {
-        //             let avatars = vec!["1218.png", "1304.png", "1308.png", "1406.png"];
-        //                 for avatar in avatars {
-        //                     ui.label("700");
-        //                 }
-        //         });
-        //     });
-        // });
-    }
+						ui.add(bar);
+					});
+				});
+				ui.add_space(4.0); 
+			}
+		});
+	}
 
     pub fn show_damage_bar_widget(&mut self, ui: &mut Ui) {
         let available = ui.available_size();
@@ -578,7 +526,7 @@ impl App {
         let current_action_value =
             battle_context.action_value - battle_context.last_wave_action_value;
 
-        egui::CollapsingHeader::new(format!("{}: {:.2}", t!("AV"), current_action_value))
+        egui::CollapsingHeader::new(format!("{}: {:.2}/{:.2}", t!("AV"), current_action_value, battle_context.action_value))
             .id_salt("action_value_header")
             .show(ui, |ui| {
                 ui.label(format!(
@@ -626,117 +574,200 @@ impl App {
     }
 
     pub fn show_enemy_stats_widget(&mut self, ui: &mut Ui) {
-        let battle_context = BattleContext::get_instance();
-        let enemy_lineup = battle_context.enemy_lineup.clone();
+		let battle_context = BattleContext::get_instance();
+		let enemy_lineup = battle_context.enemy_lineup.clone();
+		ui.vertical(|ui| {
+			for enemy in &enemy_lineup {
+				if let Some(i) = battle_context
+					.battle_enemies
+					.iter()
+					.enumerate()
+					.find(|(_, x)| x.entity == *enemy)
+					.map(|(i, _)| i)
+				{
+					ui.horizontal(|ui| {
+						let enemy_id = battle_context.enemies[i].id; // id của quái vật
 
-        let mut table_builder = egui_extras::TableBuilder::new(ui)
-            .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
+						// Render ảnh quái
+						if let Some(handle) = helpers::load_monster_image(
+							ui.ctx(),
+							enemy_id,
+							egui::TextureOptions::default(),
+						) {
+							let dim = 48.0;
+							let sized_image = egui::load::SizedTexture::new(
+								handle.id(),
+								egui::vec2(dim, dim),
+							);
+							let image_response =
+								ui.add(egui::Image::from_texture(sized_image));
 
-        let headers = ["Enemy", "HP"];
-        for _ in &headers {
-            table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
-        }
+							let text_pos = image_response.rect.right_bottom()
+								- egui::vec2(0.0, 0.0);
+							let percentage = if battle_context.battle_enemies[i].properties.max_hp() > 0.0 {
+								(battle_context.battle_enemies[i].properties.current_hp()
+									/ battle_context.battle_enemies[i].properties.max_hp())
+									* 100.0
+							} else {
+								0.0
+							};
+							let percentage_text = format!("{percentage:.0}%");
 
-        table_builder
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.heading(headers[0]);
-                });
+							// Text Shadow
+							ui.painter().text(
+								text_pos + egui::vec2(-1., 1.),
+								Align2::RIGHT_BOTTOM,
+								&percentage_text,
+								FontId::proportional(dim / 4.0),
+								Color32::BLACK,
+							);
 
-                header.col(|ui| {
-                    if let Some(handle) = helpers::load_property_icon_image(
-                        ui.ctx(),
-                        &RPG_GameCore_AvatarPropertyType::BaseHP.to_string(),
-                        egui::TextureOptions::default(),
-                    ) {
-                        let dim = ui
-                            .style()
-                            .text_styles
-                            .get(&TextStyle::Heading)
-                            .map(|font_id| font_id.size)
-                            .unwrap_or(14.0);
-                        let sized_image = egui::load::SizedTexture::new(handle.id(), egui::vec2(dim, dim));
-                        ui.add(egui::Image::from_texture(sized_image));
-                    }
-                });
-            })
-            .body(|body| {
-                body.rows(52.0, enemy_lineup.len(), |mut row| {
-                    let row_idx = row.index();
-                    let enemy = &enemy_lineup[row_idx];
+							ui.painter().text(
+								text_pos,
+								Align2::RIGHT_BOTTOM,
+								&percentage_text,
+								FontId::proportional(dim / 4.0),
+								Color32::WHITE,
+							);
+						} else {
+							ui.allocate_space(egui::vec2(32.0, 32.0));
+						}
 
-                    if let Some(i) = battle_context
-                        .battle_enemies
-                        .iter()
-                        .enumerate()
-                        .find(|(_, x)| x.entity == *enemy)
-                        .map(|(i, _)| i)
-                    {
-                        row.col(|ui| {
-                            ui.with_layout(
-                                Layout::centered_and_justified(egui::Direction::LeftToRight),
-                                |ui| {
-                                    if let Some(handle) = helpers::load_monster_image(
-                                        ui.ctx(),
-                                        battle_context.enemies[i].id,
-                                        egui::TextureOptions::default(),
-                                    ) {
-                                        let dim = 48.0;
-                                        let sized_image = egui::load::SizedTexture::new(
-                                            handle.id(),
-                                            egui::vec2(dim, dim),
-                                        );
-                                        let image_response =
-                                            ui.add(egui::Image::from_texture(sized_image));
+						// Text Info
+						let hp = battle_context.battle_enemies[i].properties.current_hp();
+						let current_stance = battle_context.battle_enemies[i].properties.current_stance();;
+						let max_stance = battle_context.battle_enemies[i].properties.max_stance();
+						let enemy_name = &battle_context.enemies[i].name;
+						
+						ui.vertical(|ui| {
+							let text_color = ui.visuals().text_color(); // Lấy màu chữ mặc định của Theme
+							ui.label(
+								egui::RichText::new(enemy_name)
+									.strong()
+									.color(text_color.linear_multiply(self.config.widget_opacity))
+							);
+							ui.label(egui::RichText::new(format!("{} {}", helpers::format_damage(hp), t!("HP"))).color(egui::Color32::RED.linear_multiply(self.config.widget_opacity)))
+								.on_hover_text(format!("{:.2} HP", hp));
 
-                                        let text_pos = image_response.rect.right_bottom()
-                                            - egui::vec2(0.0, 0.0);
-                                        let percentage = if battle_context.battle_enemies[i].properties.max_hp() > 0.0 {
-                                            (battle_context.battle_enemies[i].properties.current_hp()
-                                                / battle_context.battle_enemies[i].properties.max_hp())
-                                                * 100.0
-                                        } else {
-                                            0.0
-                                        };
-                                        let percentage_text = format!("{percentage:.0}%");
+							ui.label(
+								egui::RichText::new(format!("Toughness: {:.0} / {:.0}", current_stance, max_stance))
+									.color(text_color.linear_multiply(self.config.widget_opacity))
+							);
+						});
+					});
+					ui.add_space(4.0);
+				}
+			}
+		});
+	}
+        // let mut table_builder = egui_extras::TableBuilder::new(ui)
+            // .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
 
-                                        // Text Shadow
-                                        ui.painter().text(
-                                            text_pos + egui::vec2(-1., 1.),
-                                            Align2::RIGHT_BOTTOM,
-                                            &percentage_text,
-                                            FontId::proportional(dim / 4.0),
-                                            Color32::BLACK,
-                                        );
+        // let headers = ["Enemy", "HP"];
+        // for _ in &headers {
+            // table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
+        // }
 
-                                        ui.painter().text(
-                                            text_pos,
-                                            Align2::RIGHT_BOTTOM,
-                                            &percentage_text,
-                                            FontId::proportional(dim / 4.0),
-                                            Color32::WHITE,
-                                        );
+        // table_builder
+            // .header(20.0, |mut header| {
+                // header.col(|ui| {
+                    // ui.heading(headers[0]);
+                // });
 
-                                    }
-                                },
-                            );
-                        });
+                // header.col(|ui| {
+                    // if let Some(handle) = helpers::load_property_icon_image(
+                        // ui.ctx(),
+                        // &RPG_GameCore_AvatarPropertyType::BaseHP.to_string(),
+                        // egui::TextureOptions::default(),
+                    // ) {
+                        // let dim = ui
+                            // .style()
+                            // .text_styles
+                            // .get(&TextStyle::Heading)
+                            // .map(|font_id| font_id.size)
+                            // .unwrap_or(14.0);
+                        // let sized_image = egui::load::SizedTexture::new(handle.id(), egui::vec2(dim, dim));
+                        // ui.add(egui::Image::from_texture(sized_image));
+                    // }
+                // });
+            // })
+            // .body(|body| {
+                // body.rows(52.0, enemy_lineup.len(), |mut row| {
+                    // let row_idx = row.index();
+                    // let enemy = &enemy_lineup[row_idx];
 
-                        row.col(|ui| {
-                            ui.with_layout(
-                                Layout::centered_and_justified(egui::Direction::LeftToRight),
-                                |ui| {
-                                    ui.label(format!(
-                                        "{:.0}",
-                                        battle_context.battle_enemies[i].properties.current_hp(),
-                                    ));
-                                },
-                            );
-                        });
-                    }
-                });
-            });
-    }
+                    // if let Some(i) = battle_context
+                        // .battle_enemies
+                        // .iter()
+                        // .enumerate()
+                        // .find(|(_, x)| x.entity == *enemy)
+                        // .map(|(i, _)| i)
+                    // {
+                        // row.col(|ui| {
+                            // ui.with_layout(
+                                // Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                // |ui| {
+                                    // if let Some(handle) = helpers::load_monster_image(
+                                        // ui.ctx(),
+                                        // battle_context.enemies[i].id,
+                                        // egui::TextureOptions::default(),
+                                    // ) {
+                                        // let dim = 48.0;
+                                        // let sized_image = egui::load::SizedTexture::new(
+                                            // handle.id(),
+                                            // egui::vec2(dim, dim),
+                                        // );
+                                        // let image_response =
+                                            // ui.add(egui::Image::from_texture(sized_image));
+
+                                        // let text_pos = image_response.rect.right_bottom()
+                                            // - egui::vec2(0.0, 0.0);
+                                        // let percentage = if battle_context.battle_enemies[i].properties.max_hp() > 0.0 {
+                                            // (battle_context.battle_enemies[i].properties.current_hp()
+                                                // / battle_context.battle_enemies[i].properties.max_hp())
+                                                // * 100.0
+                                        // } else {
+                                            // 0.0
+                                        // };
+                                        // let percentage_text = format!("{percentage:.0}%");
+
+                                        //Text Shadow
+                                        // ui.painter().text(
+                                            // text_pos + egui::vec2(-1., 1.),
+                                            // Align2::RIGHT_BOTTOM,
+                                            // &percentage_text,
+                                            // FontId::proportional(dim / 4.0),
+                                            // Color32::BLACK,
+                                        // );
+
+                                        // ui.painter().text(
+                                            // text_pos,
+                                            // Align2::RIGHT_BOTTOM,
+                                            // &percentage_text,
+                                            // FontId::proportional(dim / 4.0),
+                                            // Color32::WHITE,
+                                        // );
+
+                                    // }
+                                // },
+                            // );
+                        // });
+
+                        // row.col(|ui| {
+                            // ui.with_layout(
+                                // Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                // |ui| {
+                                    // ui.label(format!(
+                                        // "{:.0}",
+                                        // battle_context.battle_enemies[i].properties.current_hp(),
+                                    // ));
+                                // },
+                            // );
+                        // });
+                    // }
+                // });
+            // });
+    // }
 }
 
 fn create_bar_data(

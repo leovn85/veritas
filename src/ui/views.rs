@@ -123,7 +123,34 @@ impl App {
                                         egui_phosphor::bold::DOWNLOAD,
                                     )),
                                 );
-
+								
+								// -------- DUMP dump_characters_to_json dump_relic_sets dump_relic_config--------
+                                if ui
+                                    .button(RichText::new(format!(
+                                        "{} Get Relics",
+                                        egui_phosphor::bold::DATABASE, // Icon Database
+                                    )))
+                                    .clicked()
+                                {
+                                    self.notifs.success("Dumping Game Data... Check game folder!");
+                                    
+                                    crate::RUNTIME.spawn(async move {
+										// Dùng spawn_blocking để đảm bảo chạy trên 1 OS Thread riêng biệt, không phá hỏng Tokio Worker
+										let _ = tokio::task::spawn_blocking(move || {
+											unsafe {
+												// Attach thread vào Il2Cpp domain ở đây là an toàn tuyệt đối
+												let domain = il2cpp_runtime::api::il2cpp_domain_get();
+												il2cpp_runtime::api::il2cpp_thread_attach(domain);
+											}
+											if let Err(e) = crate::relic_utils::dump_and_convert_data() {
+												log::error!("Data Dump Failed: {:#?}", e);
+											} else {
+												log::info!("Dump and Convert successful!");
+											}
+										}).await;
+									});
+                                }
+								
                                 if ui
                                     .button(RichText::new(format!(
                                         "{} {}",
@@ -718,13 +745,13 @@ impl App {
     pub fn show_character_legend_window(&mut self, ctx: &egui::Context) {
         egui::containers::Window::new(t!("Character Legend"))
             .id("character_legend_window".into())
-            .title_bar(false)
+            .title_bar(true)
             .frame(get_window_frame(ctx, self.config.widget_opacity))
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
             .show(ctx, |ui| {
-                ui.style_mut().interaction.selectable_labels = false;
+                ui.style_mut().interaction.selectable_labels = true;
                 self.show_character_legend(ui);
             });
     }
@@ -768,13 +795,13 @@ impl App {
     pub fn show_enemy_stats_window(&mut self, ctx: &egui::Context) {
         egui::containers::Window::new(t!("Enemy Stats"))
             .id("enemy_stats_window".into())
-            .title_bar(false)
+            //.title_bar(false)
             .frame(get_window_frame(ctx, self.config.widget_opacity))
             .resizable(true)
             .min_width(200.0)
             .min_height(150.0)
             .show(ctx, |ui| {
-                ui.style_mut().interaction.selectable_labels = false;
+                //ui.style_mut().interaction.selectable_labels = false;
                 self.show_enemy_stats_widget(ui);
             });
     }

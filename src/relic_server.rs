@@ -1,0 +1,603 @@
+use il2cpp_runtime::{Il2CppObject, get_cached_class};
+use il2cpp_runtime::types::{Il2CppArray, System_RuntimeType, System_Type};
+use tokio::net::TcpListener;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
+use tokio_tungstenite::{accept_async, tungstenite::Message};
+use futures_util::{StreamExt, SinkExt};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
+use std::collections::BTreeSet;
+use std::sync::{OnceLock, RwLock};
+use std::ffi::c_void;
+
+use crate::RUNTIME;
+use crate::kreide::types::{RPG_Client_GlobalVars, RPG_Client_RelicItemData};
+use crate::models::misc::{ReliquaryLightCone, ReliquaryRelic};
+use crate::relic_utils::{get_light_cones_snapshot, get_relics_snapshot};
+
+use std::io::Cursor;
+use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+use windows::Win32::System::Threading::GetCurrentProcess;
+
+const WS_SERVER_ADDR: &str = "127.0.0.1:945";
+const LIVE_IMPORT_SOURCE: &str = "reliquary_archiver";
+const LIVE_IMPORT_BUILD: &str = "v0.8.0";
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct CharacterLoadout {
+    #[serde(deserialize_with = "deserialize_u32_from_any")]
+    pub avatar_id: u32,
+    pub name: String,
+    #[serde(default, deserialize_with = "deserialize_relic_uids")]
+    pub relic_uids: Vec<u32>,
+}
+
+struct NetworkManagerMethods {
+    change_relics: usize,
+    change_lightcone: usize,
+}
+
+static NM_METHODS: OnceLock<NetworkManagerMethods> = OnceLock::new();
+
+unsafe fn resolve_nm_methods() -> Result<NetworkManagerMethods> {
+    let class = get_cached_class("RPG.Client.NetworkManager")?;
+    let process_handle = GetCurrentProcess();
+
+    let mut relics_method_ptr = None;
+    let mut lc_method_ptr = None;
+
+    // Pattern bạn lấy từ IDA (Đã chuyển ?? thành ? để tương thích với patternscan crate)
+    let relics_pattern = "41 56 56 57 55 53 48 83 EC 20 4C 89 C7 89 D5 49 89 CE 80 3D ? ? ? ? ? 0F 84 0D";
+    let lc_pattern = "56 57 53 48 83 EC 20 44 89 C7 89 D3 48 89 CE 80 3D ? ? ? ? ? 74 39 80 3D ? ? ? ? ? 75 4A 48 8B 0D ? ? ? ? E8 ? ? ? ? 48 85 C0 74 60 89 58 18 89 78 1C 48 89 F1 66 BA 46";
+
+    // Duyệt qua tất cả các Method trong class NetworkManager
+    for method in class.methods() {
+        if method.args_cnt() == 2 {
+            let arg0 = method.arg(0).name();
+            let arg1 = method.arg(1).name();
+
+            // Cả 2 hàm ta cần tìm đều có param đầu tiên là System.UInt32
+            if arg0 == "System.UInt32" {
+                let target_fn = method.va();
+                if target_fn.is_null() { continue; }
+
+                // Đọc 100 byte đầu của hàm trong RAM
+                let mut buffer = vec![0u8; 100];
+                let mut bytes_read = 0usize;
+                ReadProcessMemory(
+                    process_handle,
+                    target_fn,
+                    buffer.as_mut_ptr() as _,
+                    buffer.len(),
+                    Some(&mut bytes_read),
+                );
+
+                // Nếu param 2 là Array Relic -> Kiểm tra Pattern của hàm Change Relic
+                if arg1 == "RPG.Client.RelicItemData[]" {
+                    if let Ok(locs) = patternscan::scan(Cursor::new(&buffer), relics_pattern) {
+                        if !locs.is_empty() {
+                            log::info!("Resolved change_avatar_relics offset: {:#x}", target_fn as usize);
+                            relics_method_ptr = Some(target_fn as usize);
+                        }
+                    }
+                } 
+                // Nếu param 2 là UInt32 -> Kiểm tra Pattern của hàm Change Lightcone
+                else if arg1 == "System.UInt32" {
+                    if let Ok(locs) = patternscan::scan(Cursor::new(&buffer), lc_pattern) {
+                        if !locs.is_empty() {
+                            log::info!("Resolved change_avatar_lightcone offset: {:#x}", target_fn as usize);
+                            lc_method_ptr = Some(target_fn as usize);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(NetworkManagerMethods {
+        change_relics: relics_method_ptr.ok_or_else(|| anyhow::anyhow!("Failed to find change_avatar_relics!"))?,
+        change_lightcone: lc_method_ptr.ok_or_else(|| anyhow::anyhow!("Failed to find change_avatar_lightcone!"))?,
+    })
+}
+
+fn get_nm_methods() -> Result<&'static NetworkManagerMethods> {
+    if let Some(methods) = NM_METHODS.get() {
+        return Ok(methods);
+    }
+    let methods = unsafe { resolve_nm_methods()? };
+    let _ = NM_METHODS.set(methods);
+    Ok(NM_METHODS.get().unwrap())
+}
+
+static LOADOUTS: OnceLock<RwLock<Vec<CharacterLoadout>>> = OnceLock::new();
+static LIVE_IMPORT_SENDER: OnceLock<broadcast::Sender<LiveImportEvent>> = OnceLock::new();
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+#[allow(non_snake_case)]
+enum IncomingMessage {
+    SetLoadout { SetLoadout: CharacterLoadout },
+    SetLoadouts { SetLoadouts: Vec<CharacterLoadout> },
+    Tagged {
+        #[serde(rename = "type")]
+        msg_type: String,
+        loadouts: Option<Vec<CharacterLoadout>>,
+        loadout: Option<CharacterLoadout>,
+        data: Option<Value>,
+    },
+}
+
+fn parse_u32_from_value(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(num) => num.as_u64().and_then(|v| u32::try_from(v).ok()),
+        Value::String(raw) => raw.trim().parse::<u32>().ok(),
+        _ => None,
+    }
+}
+
+fn deserialize_u32_from_any<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    parse_u32_from_value(&value).ok_or_else(|| {
+        serde::de::Error::custom("expected a positive integer (number or numeric string)")
+    })
+}
+
+fn deserialize_relic_uids<'de, D>(deserializer: D) -> Result<Vec<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values = Vec::<Value>::deserialize(deserializer)?;
+    Ok(values
+        .into_iter()
+        .filter_map(|value| parse_u32_from_value(&value))
+        .collect())
+}
+
+fn parse_loadout_value(value: &Value) -> Option<CharacterLoadout> {
+    serde_json::from_value::<CharacterLoadout>(value.clone()).ok()
+}
+
+fn parse_loadouts_value(value: &Value) -> Option<Vec<CharacterLoadout>> {
+    serde_json::from_value::<Vec<CharacterLoadout>>(value.clone()).ok()
+}
+
+fn resolve_single_loadout(loadout: Option<CharacterLoadout>, data: Option<&Value>) -> Option<CharacterLoadout> {
+    if loadout.is_some() {
+        return loadout;
+    }
+
+    let Some(data) = data else {
+        return None;
+    };
+
+    parse_loadout_value(data)
+        .or_else(|| data.get("loadout").and_then(parse_loadout_value))
+        .or_else(|| data.get("SetLoadout").and_then(parse_loadout_value))
+}
+
+fn resolve_many_loadouts(loadouts: Option<Vec<CharacterLoadout>>, data: Option<&Value>) -> Option<Vec<CharacterLoadout>> {
+    if loadouts.is_some() {
+        return loadouts;
+    }
+
+    let Some(data) = data else {
+        return None;
+    };
+
+    parse_loadouts_value(data)
+        .or_else(|| data.get("loadouts").and_then(parse_loadouts_value))
+        .or_else(|| data.get("SetLoadouts").and_then(parse_loadouts_value))
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum OutgoingMessage {
+    #[serde(rename = "loadouts_updated")]
+    LoadoutsUpdated { count: usize },
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(tag = "event", content = "data")]
+enum LiveImportEvent {
+    InitialScan(LiveExport),
+    UpdateRelics(Vec<ReliquaryRelic>),
+    UpdateLightCones(Vec<ReliquaryLightCone>),
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct LiveExport {
+    source: &'static str,
+    build: &'static str,
+    version: u32,
+    metadata: LiveMetadata,
+    gacha: LiveGachaFunds,
+    materials: Vec<Value>,
+    light_cones: Vec<ReliquaryLightCone>,
+    relics: Vec<ReliquaryRelic>,
+    characters: Vec<Value>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct LiveMetadata {
+    uid: Option<u32>,
+    trailblazer: Option<&'static str>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+struct LiveGachaFunds {
+    stellar_jade: u32,
+    oneric_shards: u32,
+}
+
+pub fn start_server() {
+    RUNTIME.block_on(async {
+        tokio::spawn(async {
+            if let Err(e) = start_ws_server().await {
+                log::error!("WebSocket server error: {e}");
+            }
+        });
+
+        futures_util::future::pending::<()>().await;
+    });
+}
+
+pub async fn start_ws_server() -> Result<()> {
+    let listener = TcpListener::bind(WS_SERVER_ADDR).await.unwrap_or_else(|e| {
+        log::error!("{e}");
+        panic!("{e}");
+    });
+    log::info!("WebSocket server listening on {WS_SERVER_ADDR}");
+
+    while let Ok((stream, addr)) = listener.accept().await {
+        log::info!("New connection from: {addr}");
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(stream).await {
+                log::error!("Connection error: {e}");
+            }
+        });
+    }
+
+    Ok(())
+}
+
+async fn handle_connection(stream: tokio::net::TcpStream) -> Result<()> {
+    let ws_stream = accept_async(stream).await?;
+    let (mut write, mut read) = ws_stream.split();
+    let mut live_rx = get_live_import_sender().subscribe();
+
+    let initial_scan = build_initial_scan_event();
+    let initial_json = serde_json::to_string(&initial_scan)?;
+    write.send(Message::Text(initial_json)).await?;
+
+    loop {
+        tokio::select! {
+            msg = read.next() => {
+                let Some(msg) = msg else {
+                    break;
+                };
+                let msg = msg?;
+
+                if msg.is_text() || msg.is_binary() {
+                    let text = msg.to_text()?;
+                    log::debug!("Received: {text}");
+
+                    let response = match serde_json::from_str::<IncomingMessage>(text) {
+                        Ok(IncomingMessage::SetLoadout { SetLoadout: loadout }) => {
+                            handle_apply_loadout(loadout)
+                        }
+                        Ok(IncomingMessage::SetLoadouts { SetLoadouts: loadouts }) => {
+                            handle_apply_loadouts(loadouts)
+                        }
+                        Ok(IncomingMessage::Tagged { msg_type, loadouts, loadout, data }) => {
+                            match msg_type.as_str() {
+                                "set_loadouts" => {
+                                    if let Some(items) = resolve_many_loadouts(loadouts, data.as_ref()) {
+                                        handle_apply_loadouts(items)
+                                    } else {
+                                        OutgoingMessage::Error { message: "Missing loadouts".to_string() }
+                                    }
+                                }
+                                "set_loadout" => {
+                                    if let Some(item) = resolve_single_loadout(loadout, data.as_ref()) {
+                                        handle_apply_loadout(item)
+                                    } else {
+                                        OutgoingMessage::Error { message: "Missing loadout".to_string() }
+                                    }
+                                }
+                                _ => OutgoingMessage::Error { message: format!("Unsupported message type: {msg_type}") },
+                            }
+                        }
+                        Err(e) => OutgoingMessage::Error { message: format!("Invalid message: {e}") },
+                    };
+
+                    let response_json = serde_json::to_string(&response)?;
+                    write.send(Message::Text(response_json)).await?;
+                }
+            }
+            event = live_rx.recv() => {
+                match event {
+                    Ok(event) => {
+                        let json = serde_json::to_string(&event)?;
+                        write.send(Message::Text(json)).await?;
+                    }
+                    Err(RecvError::Lagged(_)) => {
+                        continue;
+                    }
+                    Err(RecvError::Closed) => {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_apply_loadout(loadout: CharacterLoadout) -> OutgoingMessage {
+    set_loadouts(vec![loadout.clone()]);
+    match apply_loadout(loadout.avatar_id, &loadout.relic_uids) {
+        Ok(equipped_count) => OutgoingMessage::LoadoutsUpdated { count: equipped_count },
+        Err(e) => {
+            log::error!("Failed to apply loadout: {e}");
+            OutgoingMessage::Error { message: format!("{e}") }
+        }
+    }
+}
+
+fn handle_apply_loadouts(loadouts: Vec<CharacterLoadout>) -> OutgoingMessage {
+    set_loadouts(loadouts.clone());
+    let mut total = 0;
+    let mut errors = Vec::new();
+    for loadout in loadouts {
+        match apply_loadout(loadout.avatar_id, &loadout.relic_uids) {
+            Ok(count) => total += count,
+            Err(e) => {
+                log::error!("Failed to apply loadout '{}': {e}", loadout.name);
+                errors.push(format!("{}: {e}", loadout.name));
+            }
+        }
+    }
+    if errors.is_empty() {
+        OutgoingMessage::LoadoutsUpdated { count: total }
+    } else {
+        OutgoingMessage::Error { message: errors.join("; ") }
+    }
+}
+
+fn set_loadouts(loadouts: Vec<CharacterLoadout>) {
+    log::info!("Received {} loadout configurations", loadouts.len());
+    if let Some(lock) = LOADOUTS.get() {
+        let mut existing = lock.write().unwrap();
+        for loadout in loadouts {
+            existing.retain(|l| !(l.avatar_id == loadout.avatar_id && l.name == loadout.name));
+            existing.push(loadout);
+        }
+    } else {
+        let _ = LOADOUTS.set(RwLock::new(loadouts));
+    }
+}
+
+fn apply_loadout(avatar_id: u32, relic_uids: &Vec<u32>) -> Result<usize> {
+    log::info!("[Orexis] Applying loadout for avatar {avatar_id} with {} relic UIDs", relic_uids.len());
+    for (i, uid) in relic_uids.iter().enumerate() {
+        log::info!("requested [{i}] uid={uid}");
+    }
+
+    let type_name = RPG_Client_RelicItemData::ffi_name();
+    let runtime_type = System_RuntimeType::from_name(type_name)?;
+    let ty = runtime_type.get_il2cpp_type();
+
+    let module_manager = RPG_Client_GlobalVars::s_ModuleManager()?;
+    let inventory_module = module_manager
+        .InventoryModule()?;
+
+    let mut relics_to_equip: Vec<RPG_Client_RelicItemData> = Vec::new();
+    for uid in relic_uids {
+        let relic_data = unsafe { inventory_module
+            .get_relic_data_by_uid(*uid)
+		.with_context(|| format!("Failed to get relic data for uid {uid}"))? };
+        if relic_data.0.is_null() {
+            log::warn!("uid={uid} returned null RelicItemData, skipping");
+            continue;
+        }
+
+        match unsafe { relic_data.get_BelongAvatarID() } {
+            Ok(current_avatar) => {
+                if current_avatar == avatar_id {
+                    log::info!("uid={uid} already equipped on avatar {avatar_id}, skipping");
+                    continue;
+                }
+                if current_avatar != 0 {
+                    log::info!("uid={uid} currently on avatar {current_avatar}, will move to {avatar_id}");
+                } else {
+                    log::info!("uid={uid} not equipped on anyone, will equip on {avatar_id}");
+                }
+            }
+            Err(e) => {
+                log::warn!("uid={uid} couldn't read equipped avatar: {e}, including anyway");
+            }
+        }
+
+        relics_to_equip.push(relic_data);
+    }
+
+    if relics_to_equip.is_empty() {
+        log::info!("All relics already equipped on avatar {avatar_id}, nothing to do");
+        return Ok(0);
+    }
+
+    log::info!("Equipping {} relics (filtered from {} requested)", relics_to_equip.len(), relic_uids.len());
+    let equipped_count = relics_to_equip.len();
+
+    let type_handle = unsafe { System_Type::get_type_from_handle(ty)
+	.context("Failed to resolve System.Type handle")? };
+    let mut array = unsafe { Il2CppArray::create_instance(
+        type_handle,
+        equipped_count as i32,
+    )
+    .context("Failed to create Il2CppArray")? };
+
+    for (i, relic_data) in relics_to_equip.into_iter().enumerate() {
+        *(array.get_mut(i)) = relic_data;
+    }
+
+    log::info!("Il2CppArray created: len={}", array.len());
+
+    for i in 0..array.len() {
+        let item: &RPG_Client_RelicItemData = array.get(i);
+        let null_str = if item.0.is_null() { "NULL" } else { "valid" };
+        log::info!("array[{i}] = {null_str} (ptr=0x{:x})", item.0 as usize);
+    }
+
+    // let network_manager = RPG_Client_GlobalVars::s_NetworkManager()
+        // .context("Failed to resolve NetworkManager")?;
+    // network_manager
+        // .change_avatar_relics(avatar_id, array)
+        // .with_context(|| format!("Failed to change avatar relics for id {avatar_id}"))?;
+
+    // log::info!("[Orexis] Loadout applied successfully for avatar {avatar_id}");
+    // Ok(equipped_count)
+	let network_manager = RPG_Client_GlobalVars::s_NetworkManager()
+        .context("Failed to resolve NetworkManager")?;
+
+    // Lấy con trỏ hàm đã quét từ RAM (Được cache lại nên cực nhanh)
+    let methods = get_nm_methods()?;
+    
+    // Ép kiểu Method Pointer thành C Function Pointer
+    let change_relics_func: extern "C" fn(*mut c_void, u32, *mut c_void) = unsafe { std::mem::transmute(methods.change_relics as *const c_void) };
+    
+    // Thực thi thay vì gọi network_manager.change_avatar_relics()
+    change_relics_func(network_manager.as_ptr() as *mut c_void, avatar_id, array.as_ptr() as *mut c_void);
+
+    log::info!("[Orexis] Loadout applied successfully for avatar {avatar_id}");
+    Ok(equipped_count)
+}
+
+#[allow(dead_code)]
+fn apply_lightcone(id: u32, lightcone: u32) -> Result<()> {
+    // log::info!("Applying lightcone for avatar id {id}");
+
+    // let network_manager = RPG_Client_GlobalVars::s_NetworkManager()
+        // .context("Failed to resolve NetworkManager")?;
+    // network_manager
+        // .change_avatar_lightcone(id, lightcone)
+        // .with_context(|| format!("Failed to change avatar lightcone for id {id}"))?;
+
+    // log::info!("Lightcone applied successfully for avatar id {id}");
+    // Ok(())
+	log::info!("Applying lightcone for avatar id {id}");
+
+    let network_manager = RPG_Client_GlobalVars::s_NetworkManager()
+        .context("Failed to resolve NetworkManager")?;
+
+    // Lấy con trỏ hàm đã quét từ RAM
+    let methods = get_nm_methods()?;
+    
+    // Ép kiểu Method Pointer thành C Function Pointer
+    let change_lc_func: extern "C" fn(*mut c_void, u32, u32) = unsafe { std::mem::transmute(methods.change_lightcone as *const c_void) };
+    
+    // Thực thi
+    change_lc_func(network_manager.as_ptr() as *mut c_void, id, lightcone);
+
+    log::info!("Lightcone applied successfully for avatar id {id}");
+    Ok(())
+}
+
+pub fn send_live_relic_update(relics: Vec<ReliquaryRelic>) {
+    if relics.is_empty() {
+        return;
+    }
+
+    let _ = get_live_import_sender().send(LiveImportEvent::UpdateRelics(relics));
+}
+
+pub fn send_live_light_cone_update(light_cones: Vec<ReliquaryLightCone>) {
+    if light_cones.is_empty() {
+        return;
+    }
+
+    let _ = get_live_import_sender().send(LiveImportEvent::UpdateLightCones(light_cones));
+}
+
+fn get_live_import_sender() -> &'static broadcast::Sender<LiveImportEvent> {
+    LIVE_IMPORT_SENDER.get_or_init(|| {
+        let (sender, _) = broadcast::channel(128);
+        sender
+    })
+}
+
+fn build_initial_scan_event() -> LiveImportEvent {
+    let relics: Vec<ReliquaryRelic> = get_relics_snapshot()
+        .into_iter()
+        .map(|relic| ReliquaryRelic::from(&relic))
+        .collect();
+
+    let light_cones: Vec<ReliquaryLightCone> = get_light_cones_snapshot()
+        .into_iter()
+        .map(|lc| ReliquaryLightCone::from(&lc))
+        .collect();
+
+    let characters = build_characters_from_equipment(&relics, &light_cones);
+
+    LiveImportEvent::InitialScan(LiveExport {
+        source: LIVE_IMPORT_SOURCE,
+        build: LIVE_IMPORT_BUILD,
+        version: 4,
+        metadata: LiveMetadata {
+            uid: None,
+            trailblazer: None,
+        },
+        gacha: LiveGachaFunds::default(),
+        materials: Vec::new(),
+        light_cones,
+        relics,
+        characters,
+    })
+}
+
+fn build_characters_from_equipment(
+    relics: &[ReliquaryRelic],
+    light_cones: &[ReliquaryLightCone],
+) -> Vec<Value> {
+    let mut ids = BTreeSet::<String>::new();
+
+    for relic in relics {
+        if !relic.location.is_empty() {
+            ids.insert(relic.location.clone());
+        }
+    }
+
+    for light_cone in light_cones {
+        if !light_cone.location.is_empty() {
+            ids.insert(light_cone.location.clone());
+        }
+    }
+
+    if let Some(loadouts) = LOADOUTS.get() {
+        for loadout in loadouts.read().unwrap().iter() {
+            ids.insert(loadout.avatar_id.to_string());
+        }
+    }
+
+    ids.into_iter()
+        .map(|id| {
+            serde_json::json!({
+                "id": id,
+                "name": "Unknown",
+                "path": "Unknown",
+                "level": 80,
+                "ascension": 6,
+                "eidolon": 0,
+                "ability_version": 0
+            })
+        })
+        .collect()
+}

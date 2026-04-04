@@ -40,14 +40,17 @@ axum = { version = "0.8.4" }
 axum-server = "0.7.2"
 socketioxide = "0.17.2"
 tokio = { version = "1.46.1", features = ["full"] }
+tokio-tungstenite = "0.24"
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors"] }
+
 
 # Misc
 retour = { version = "0.3", features = ["static-detour"] }
 ctor = "0.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
+serde_with = "3"
 anyhow = "1.0.98"
 function_name = "0.3.0"
 rust-i18n = "3.1.5"
@@ -69,6 +72,11 @@ strum = { version = "0.28", features = ["derive"] }
 parse-changelog = { version = "0.6.12", default-features = false }
 il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "a592c94" , features = ["log"]}
 image = "0.25.10"
+futures-util = "0.3"
+lazy_static = "1.4"
+parking_lot = "0.12"
+win32_notif = "0.10.5"
+
 
 [dev-dependencies]
 eframe = { version = "0.32.0", features = ["serde", "persistence"] }
@@ -94,3 +102,6 @@ features = [
 
 [build-dependencies]
 winres = "0.1.12"
+
+[patch."https://github.com/hessiser/il2cpp-rust.git"]
+il2cpp-runtime = { path = "il2cpp-rust/il2cpp-runtime" }
