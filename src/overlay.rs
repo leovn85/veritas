@@ -16,7 +16,7 @@ use windows::{
                 D3D_FEATURE_LEVEL_11_0,
             },
             Direct3D11::{
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
+                /*D3D11_CREATE_DEVICE_BGRA_SUPPORT, */D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
                 D3D11CreateDeviceAndSwapChain, ID3D11Device, ID3D11DeviceContext,
             },
             Dxgi::{
@@ -25,11 +25,11 @@ use windows::{
                     DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
                 },
                 CreateDXGIFactory, DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH,
-                DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
+                DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT, /*IDXGIAdapter,*/
                 IDXGIFactory, IDXGISwapChain,
             },
         },
-        System::LibraryLoader::{GetProcAddress, LoadLibraryW},
+        //System::LibraryLoader::{GetProcAddress, LoadLibraryW},
         UI::WindowsAndMessaging::{
             CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
             RegisterClassExW, UnregisterClassW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
@@ -40,9 +40,9 @@ use windows::{
 use windows::{
     Win32::{
         Graphics::Direct3D::{D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_11_1},
-        UI::WindowsAndMessaging::CW_USEDEFAULT,
+        //UI::WindowsAndMessaging::CW_USEDEFAULT,
     },
-    core::{s, w},
+    //core::{s, w},
 };
 
 use crate::ui::app::App;
@@ -136,22 +136,20 @@ pub fn get_vtable() -> Result<Box<[usize; 205]>> {
 
         if !created {
             let mut adapters = Vec::new();
-            unsafe {
-                if let Ok(factory) = CreateDXGIFactory::<IDXGIFactory>() {
-                    let mut adapter_index = 0;
-                    loop {
-                        match factory.EnumAdapters(adapter_index) {
-                            Ok(_adapter) => {
-                                adapters.push(_adapter);
-                                adapter_index += 1;
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                } else {
-                    log::error!("Failed to create DXGI Factory, cannot enumerate adapters");
-                }
-            }
+			if let Ok(factory) = CreateDXGIFactory::<IDXGIFactory>() {
+				let mut adapter_index = 0;
+				loop {
+					match factory.EnumAdapters(adapter_index) {
+						Ok(_adapter) => {
+							adapters.push(_adapter);
+							adapter_index += 1;
+						}
+						Err(_) => break,
+					}
+				}
+			} else {
+				log::error!("Failed to create DXGI Factory, cannot enumerate adapters");
+			}
 
             for (i, adapter) in adapters.iter().enumerate() {
                 let mut feature_levels = [

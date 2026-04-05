@@ -16,7 +16,7 @@ use crate::models::misc::{BattleSummary, CharacterSummary};
 use anyhow::{Context, Result};
 
 use crate::{
-    kreide::types::{RPG_GameCore_AbilityProperty, RPG_GameCore_AttackType},
+    kreide::types::{RPG_GameCore_AttackType},
     models::{events::*, misc::*, packets::Packet},
     server,
 };

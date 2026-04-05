@@ -1,14 +1,13 @@
-use anyhow::Result;
+//use anyhow::Result;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use chrono::Local;
-use std::fs::File;
-use std::io::Write;
 use serde_json::json;
 
 use crate::models::misc::{LightCone, Relic, ReliquaryLightCone, ReliquaryRelic, FribbelsArchive, FribbelsMetadata};
-use crate::kreide::helpers::dump_fribbels_characters;
+use crate::kreide::helpers::{dump_fribbels_characters, extract_rows_from_dict_ram, get_textmap_content, sanitize_entity_name};
+use crate::kreide::types::{RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicConfigRow, RPG_GameCore_RelicBaseTypeExcelTable};
 
 pub fn get_relics() -> &'static RwLock<HashMap<String, Relic>> {
     static RELICS: OnceLock<RwLock<HashMap<String, Relic>>> = OnceLock::new();
@@ -26,15 +25,7 @@ pub fn calc_initial_rolls(level: u32, total_rolls: u32) -> u32 {
 }
 
 pub fn solve_low_mid_high(step: u32, count: u32) -> Vec<(u32, u32, u32)> {
-    if step < 0 || count < 0 {
-        return Vec::new();
-    }
-
-    // 0*low + 1*mid + 2*high = step
-    // low + mid + high = count
-    // mid = step - 2*high
-    // low = count - step + high
-    let high_min = (step - count).max(0);
+    let high_min = step.saturating_sub(count); 
     let high_max = step / 2;
 
     if high_min > high_max {
@@ -43,11 +34,16 @@ pub fn solve_low_mid_high(step: u32, count: u32) -> Vec<(u32, u32, u32)> {
 
     (high_min..=high_max)
         .map(|high| {
-            let mid = step - 2 * high;
-            let low = count - step + high;
+            // Toán học: vì high <= step / 2 => 2 * high <= step => mid luôn >= 0 (An toàn)
+            let mid = step - 2 * high; 
+            
+            // Toán học: Tính (count + high) trước rồi trừ step để tránh crash.
+            // Vì high >= step - count => high + count >= step => low luôn >= 0 (An toàn)
+            let low = (count + high) - step; 
+            
             (low, mid, high)
         })
-        .filter(|(low, mid, high)| *low >= 0 && *mid >= 0 && *high >= 0)
+        // Đã xóa hàm .filter() vì kết quả low, mid, high trả về chắc chắn là u32 (luôn >= 0)
         .collect()
 }
 
@@ -57,7 +53,7 @@ pub fn pick_low_mid_high(step: u32, count: u32) -> (u32, u32, u32) {
         .copied()
         .unwrap_or((0, 0, 0))
 }
-
+/* 
 pub fn write_relics_to_json(path: &str) -> Result<()> {
     let relics_map = get_relics().read();
     let relics: Vec<ReliquaryRelic> = relics_map
@@ -75,12 +71,12 @@ pub fn write_relics_to_json(path: &str) -> Result<()> {
     log::info!("Wrote {} relics to {}", relics.len(), path);
     Ok(())
 }
-
+ */
 pub fn get_relics_snapshot() -> Vec<Relic> {
     let relics_map = get_relics().read();
     relics_map.values().cloned().collect()
 }
-
+/* 
 pub fn write_light_cones_to_json(path: &str) -> Result<()> {
     let light_cones_map = get_light_cones().read();
     let light_cones: Vec<ReliquaryLightCone> = light_cones_map
@@ -98,7 +94,7 @@ pub fn write_light_cones_to_json(path: &str) -> Result<()> {
     log::info!("Wrote {} light cones to {}", light_cones.len(), path);
     Ok(())
 }
-
+ */
 #[allow(dead_code)]
 pub fn get_light_cones_snapshot() -> Vec<LightCone> {
     let light_cones_map = get_light_cones().read();
@@ -113,11 +109,11 @@ pub struct RelicMappingInfo {
 /// Đọc trực tiếp từ RAM để tạo bảng Map: (SetID, Rarity, SlotName) -> (RelicID, RelicType)
 pub unsafe fn build_relic_id_mapping() -> anyhow::Result<HashMap<(u32, u32, String), RelicMappingInfo>> {
     let mut map = HashMap::new();
-    let dict_ptr = crate::kreide::types::RPG_GameCore_RelicConfigExcelTable::get_dataDict()?;
-    let rows = crate::kreide::helpers::extract_rows_from_dict_ram(dict_ptr).unwrap_or_default();
+    let dict_ptr = unsafe { RPG_GameCore_RelicConfigExcelTable::get_dataDict()? };
+    let rows = unsafe { extract_rows_from_dict_ram(dict_ptr).unwrap_or_default() };
 
     for row_ptr in rows {
-        let row = crate::kreide::types::RPG_GameCore_RelicConfigRow(row_ptr as _);
+        let row = RPG_GameCore_RelicConfigRow(row_ptr as _);
         
         let id = (*row.ID()?).0;
         let set_id = (*row.SetID()?).0;
@@ -125,15 +121,15 @@ pub unsafe fn build_relic_id_mapping() -> anyhow::Result<HashMap<(u32, u32, Stri
         let type_enum_val = *row.Type()? as i32;
         
         // Lấy tên Slot đã được Localize (VD: "Head", "Hands", hoặc "Nón", "Găng")
-        let safe_type = microseh::try_seh(|| crate::kreide::types::RPG_GameCore_RelicBaseTypeExcelTable::GetData(*row.Type()?));
+        let safe_type = microseh::try_seh(|| unsafe { RPG_GameCore_RelicBaseTypeExcelTable::GetData(*row.Type()?) });
         let mut slot_name = String::new();
         if let Ok(Ok(type_row)) = safe_type {
             if !type_row.0.is_null() {
                 let safe_text_id = microseh::try_seh(|| type_row.BaseTypeText());
                 if let Ok(Ok(text_id)) = safe_text_id {
-                    let safe_text = microseh::try_seh(|| crate::kreide::helpers::get_textmap_content(&*text_id));
+                    let safe_text = microseh::try_seh(|| get_textmap_content(&*text_id));
                     if let Ok(Ok(name)) = safe_text {
-                        slot_name = crate::kreide::helpers::sanitize_entity_name(name);
+                        slot_name = sanitize_entity_name(name);
                     }
                 }
             }
@@ -164,7 +160,7 @@ pub fn dump_and_convert_data() -> anyhow::Result<()> {
 
     // 2. Gọi hàm lấy Characters, UID, Name
     let (characters, player_uid, tb_meta) = unsafe { 
-        crate::kreide::helpers::dump_fribbels_characters().unwrap_or_else(|e| {
+        dump_fribbels_characters().unwrap_or_else(|e| {
             log::error!("Failed to dump characters: {}", e);
             (Vec::new(), 0, "Unknown (Stelle)".to_string())
         }) 

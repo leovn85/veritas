@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
-use std::sync::Once;
 
 use anyhow::Result;
 use anyhow::anyhow;
@@ -103,6 +102,8 @@ pub struct AppState {
     pub show_updater_window: bool,
     pub custom_export_path: Option<String>,
     pub auto_create_date_folders: bool,
+	#[serde(skip)]
+    pub selected_character_for_stats: Option<u32>,
 }
 
 pub struct App {
@@ -184,6 +185,10 @@ impl Overlay for App {
 
             if self.state.show_enemy_stats {
                 self.show_enemy_stats_window(ctx);
+            }
+			
+			if self.state.selected_character_for_stats.is_some() {
+                self.show_character_stats_window(ctx);
             }
         }
 
@@ -431,6 +436,7 @@ impl Default for AppState {
             show_updater_window: false,
             custom_export_path: None,
             auto_create_date_folders: true,
+			selected_character_for_stats: None,
         }
     }
 }

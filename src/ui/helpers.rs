@@ -2,9 +2,8 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use egui::{Color32, Stroke};
 use image::DynamicImage;
-use anyhow::Result;
 
-use crate::kreide::types::RPG_GameCore_AvatarPropertyType;
+//use crate::kreide::types::RPG_GameCore_AvatarPropertyType;
 
 /// Global cache: avatar_id -> PNG buffer
 /// Populated in on_set_lineup, cleared on every call
@@ -89,7 +88,7 @@ pub fn get_window_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
         .corner_radius(10.0)
 }
 
-pub fn get_transparent_window_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
+pub fn get_transparent_window_frame(_ctx: &egui::Context, _opacity: f32) -> egui::Frame {
     egui::Frame::new().inner_margin(8.0).corner_radius(10.0)
 }
 
@@ -124,7 +123,7 @@ pub fn populate_avatar_buffers(avatar_ids: &Vec<u32>) {
 // }
 
 /// Cache a property icon PNG buffer if it is not already cached
-pub fn cache_property_buffer(property_name: RPG_GameCore_AvatarPropertyType) {
+/* pub fn cache_property_buffer(property_name: RPG_GameCore_AvatarPropertyType) {
     let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
     if cache.contains_key(&property_name.to_string()) {
         return;
@@ -133,7 +132,7 @@ pub fn cache_property_buffer(property_name: RPG_GameCore_AvatarPropertyType) {
     if let Ok(buffer) = crate::kreide::helpers::get_property_icon_png_bytes(&property_name.to_string()) {
         cache.insert(property_name.to_string(), buffer);
     }
-}
+} */
 
 pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::TextureOptions) -> Option<egui::TextureHandle> {
     const IMAGE_CACHE_ID: &str = "ui.helpers.avatar_image_cache";
@@ -308,4 +307,24 @@ pub fn load_property_icon_image(
         data.insert_temp(cache_id, cache);
     });
     Some(handle)
+}
+
+pub fn preload_all_property_icons() {
+    let props = [
+        "Attack", "Defence", "Speed", "CriticalChance", "CriticalDamage",
+        "BreakDamageAddedRatio", "HealRatio", "MaxSP", "SPRatio",
+        "StatusProbability", "StatusResistance", "ElationDamageAddedRatio",
+        "PhysicalAddedRatio", "FireAddedRatio", "IceAddedRatio",
+        "ThunderAddedRatio", "WindAddedRatio", "QuantumAddedRatio", "ImaginaryAddedRatio"
+    ];
+
+    let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
+    for prop in props {
+        if !cache.contains_key(prop) {
+            // Hàm này chọc vào Unity, TẠI ĐÂY LÀ AN TOÀN vì sẽ gọi qua hook
+            if let Ok(buffer) = crate::kreide::helpers::get_property_icon_png_bytes(prop) {
+                cache.insert(prop.to_string(), buffer);
+            }
+        }
+    }
 }

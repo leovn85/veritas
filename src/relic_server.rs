@@ -1,29 +1,29 @@
-use il2cpp_runtime::{Il2CppObject, get_cached_class};
-use il2cpp_runtime::types::{Il2CppArray, System_RuntimeType, System_Type};
-use tokio::net::TcpListener;
+//use il2cpp_runtime::{Il2CppObject, get_cached_class};
+/*use il2cpp_runtime::types::{Il2CppArray, System_RuntimeType, System_Type};*/
+/*use tokio::net::TcpListener;*/
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::error::RecvError;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
-use futures_util::{StreamExt, SinkExt};
-use anyhow::{Context, Result};
+/*use tokio::sync::broadcast::error::RecvError;*/
+/*use tokio_tungstenite::{accept_async, tungstenite::Message};*/
+/*use futures_util::{StreamExt, SinkExt};*/
+use anyhow::{/*Context, */Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
-use std::sync::{OnceLock, RwLock};
-use std::ffi::c_void;
+//use std::collections::BTreeSet;
+use std::sync::{OnceLock/*, RwLock*/};
+/*use std::ffi::c_void;*/
 
-use crate::RUNTIME;
-use crate::kreide::types::{RPG_Client_GlobalVars, RPG_Client_RelicItemData};
+/*use crate::RUNTIME;*/
+/*use crate::kreide::types::{RPG_Client_GlobalVars, RPG_Client_RelicItemData};*/
 use crate::models::misc::{ReliquaryLightCone, ReliquaryRelic};
-use crate::relic_utils::{get_light_cones_snapshot, get_relics_snapshot};
+//use crate::relic_utils::{get_light_cones_snapshot, get_relics_snapshot};
 
-use std::io::Cursor;
-use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
-use windows::Win32::System::Threading::GetCurrentProcess;
+//use std::io::Cursor;
+//use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+//use windows::Win32::System::Threading::GetCurrentProcess;
 
-const WS_SERVER_ADDR: &str = "127.0.0.1:945";
-const LIVE_IMPORT_SOURCE: &str = "reliquary_archiver";
-const LIVE_IMPORT_BUILD: &str = "v0.8.0";
+//const WS_SERVER_ADDR: &str = "127.0.0.1:945";
+//const LIVE_IMPORT_SOURCE: &str = "reliquary_archiver";
+//const LIVE_IMPORT_BUILD: &str = "v0.8.0";
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CharacterLoadout {
@@ -33,7 +33,7 @@ pub struct CharacterLoadout {
     #[serde(default, deserialize_with = "deserialize_relic_uids")]
     pub relic_uids: Vec<u32>,
 }
-
+/* 
 struct NetworkManagerMethods {
     change_relics: usize,
     change_lightcone: usize,
@@ -43,7 +43,7 @@ static NM_METHODS: OnceLock<NetworkManagerMethods> = OnceLock::new();
 
 unsafe fn resolve_nm_methods() -> Result<NetworkManagerMethods> {
     let class = get_cached_class("RPG.Client.NetworkManager")?;
-    let process_handle = GetCurrentProcess();
+    let process_handle = unsafe { GetCurrentProcess() };
 
     let mut relics_method_ptr = None;
     let mut lc_method_ptr = None;
@@ -66,13 +66,13 @@ unsafe fn resolve_nm_methods() -> Result<NetworkManagerMethods> {
                 // Đọc 100 byte đầu của hàm trong RAM
                 let mut buffer = vec![0u8; 100];
                 let mut bytes_read = 0usize;
-                ReadProcessMemory(
+                unsafe { ReadProcessMemory(
                     process_handle,
                     target_fn,
                     buffer.as_mut_ptr() as _,
                     buffer.len(),
                     Some(&mut bytes_read),
-                );
+                ) };
 
                 // Nếu param 2 là Array Relic -> Kiểm tra Pattern của hàm Change Relic
                 if arg1 == "RPG.Client.RelicItemData[]" {
@@ -110,10 +110,10 @@ fn get_nm_methods() -> Result<&'static NetworkManagerMethods> {
     let _ = NM_METHODS.set(methods);
     Ok(NM_METHODS.get().unwrap())
 }
-
-static LOADOUTS: OnceLock<RwLock<Vec<CharacterLoadout>>> = OnceLock::new();
+ */
+//static LOADOUTS: OnceLock<RwLock<Vec<CharacterLoadout>>> = OnceLock::new();
 static LIVE_IMPORT_SENDER: OnceLock<broadcast::Sender<LiveImportEvent>> = OnceLock::new();
-
+/* 
 #[derive(Deserialize)]
 #[serde(untagged)]
 #[allow(non_snake_case)]
@@ -128,7 +128,7 @@ enum IncomingMessage {
         data: Option<Value>,
     },
 }
-
+ */
 fn parse_u32_from_value(value: &Value) -> Option<u32> {
     match value {
         Value::Number(num) => num.as_u64().and_then(|v| u32::try_from(v).ok()),
@@ -157,7 +157,7 @@ where
         .filter_map(|value| parse_u32_from_value(&value))
         .collect())
 }
-
+/* 
 fn parse_loadout_value(value: &Value) -> Option<CharacterLoadout> {
     serde_json::from_value::<CharacterLoadout>(value.clone()).ok()
 }
@@ -202,15 +202,15 @@ enum OutgoingMessage {
     #[serde(rename = "error")]
     Error { message: String },
 }
-
+ */
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "event", content = "data")]
 enum LiveImportEvent {
-    InitialScan(LiveExport),
+    //InitialScan(LiveExport),
     UpdateRelics(Vec<ReliquaryRelic>),
     UpdateLightCones(Vec<ReliquaryLightCone>),
 }
-
+/* 
 #[derive(Serialize, Clone, Debug)]
 struct LiveExport {
     source: &'static str,
@@ -234,7 +234,7 @@ struct LiveMetadata {
 struct LiveGachaFunds {
     stellar_jade: u32,
     oneric_shards: u32,
-}
+} 
 
 pub fn start_server() {
     RUNTIME.block_on(async {
@@ -510,7 +510,7 @@ fn apply_lightcone(id: u32, lightcone: u32) -> Result<()> {
     log::info!("Lightcone applied successfully for avatar id {id}");
     Ok(())
 }
-
+ */
 pub fn send_live_relic_update(relics: Vec<ReliquaryRelic>) {
     if relics.is_empty() {
         return;
@@ -534,7 +534,7 @@ fn get_live_import_sender() -> &'static broadcast::Sender<LiveImportEvent> {
     })
 }
 
-fn build_initial_scan_event() -> LiveImportEvent {
+/* fn build_initial_scan_event() -> LiveImportEvent {
     let relics: Vec<ReliquaryRelic> = get_relics_snapshot()
         .into_iter()
         .map(|relic| ReliquaryRelic::from(&relic))
@@ -601,3 +601,4 @@ fn build_characters_from_equipment(
         })
         .collect()
 }
+ */

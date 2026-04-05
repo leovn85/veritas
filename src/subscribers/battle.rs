@@ -750,8 +750,9 @@ fn on_set_lineup(
         // Populate the global buffer cache
         crate::ui::helpers::populate_avatar_buffers(&avatars.iter().map(|a| a.id).collect::<Vec<u32>>());
         crate::ui::helpers::clear_monster_buffers();
-        let property_kind = RPG_GameCore_AvatarPropertyType::BaseHP;
-        crate::ui::helpers::cache_property_buffer(property_kind);
+        //let property_kind = RPG_GameCore_AvatarPropertyType::BaseHP;
+        //crate::ui::helpers::cache_property_buffer(property_kind);
+		crate::ui::helpers::preload_all_property_icons();
 
         let event = if !errors.is_empty() {
             let errors = errors
@@ -878,7 +879,6 @@ pub fn on_update_cycle(instance: RPG_GameCore_TurnBasedGameMode) -> u32 {
 #[named]
 fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityComponent) {
     log::debug!(function_name!());
-    use std::string::ToString;
     safe_call!(unsafe {
         // let property_kind = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
         // let property = RPG_GameCore_AbilityProperty__Boxed(System_Enum::parse(

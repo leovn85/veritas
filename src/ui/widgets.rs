@@ -1,11 +1,10 @@
-use crate::{kreide::types::RPG_GameCore_AvatarPropertyType, ui::app::{DamageBreakdownChart, DamageBreakdownScope, GraphUnit}};
-use egui::{Align2, Color32, FontId, Layout, Stroke, TextStyle, Ui};
-use egui_extras::Column;
+use crate::{ui::app::{DamageBreakdownChart, DamageBreakdownScope, GraphUnit}};
+use egui::{Align2, Color32, FontId, Stroke, Ui};
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::{
     battle::{display_damage_type, BattleContext, DamageTypeBreakdown},
-    kreide::types::RPG_GameCore_AttackType,
+    kreide::types::{RPG_GameCore_AttackType, RPG_GameCore_AttackDamageType, RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyType},
     models::misc::Avatar,
 };
 
@@ -13,6 +12,7 @@ use super::{app::App, helpers};
 
 pub struct PieSegment {
     pub points: Vec<[f64; 2]>,
+	#[allow(dead_code)]
     pub value: f64,
 }
 
@@ -95,10 +95,22 @@ impl App {
 						let dim = 48.0; // Kích thước avatar
 						let image = egui::Image::new(&handle)
 							.fit_to_exact_size(egui::vec2(dim, dim))
-							.rounding(egui::Rounding::same((dim / 2.0) as u8)); // Bo tròn
+							.corner_radius(egui::CornerRadius::same((dim / 2.0) as u8)); // Bo tròn
 
 						// Lấy object image_response để biết tọa độ avatar trên màn hình
-						let image_response = ui.add(image);
+						//let image_response = ui.add(image);
+						let image_response = ui.add(image.sense(egui::Sense::click()));
+						
+						if image_response.clone().clicked() {
+							// Toggle logic: nếu click vào nhân vật đang được chọn thì đóng lại,
+							// nếu không thì chọn nhân vật mới.
+							if self.state.selected_character_for_stats == Some(avatar.id) {
+								self.state.selected_character_for_stats = None;
+							} else {
+								self.state.selected_character_for_stats = Some(avatar.id);
+							}
+						}
+						image_response.clone().on_hover_text(t!("Click to view detailed stats"));
 
 						// Tính % của tác giả
 						let percentage = if battle_context.total_damage > 0.0 {
@@ -108,16 +120,22 @@ impl App {
 						};
 						let percentage_text = format!("{percentage:.0}%");
 						// Vẽ chữ % đè lên Avatar (Góc dưới phải)
-						let text_pos = image_response.rect.right_bottom();
+						let text_pos = image_response.clone().rect.right_bottom();
 						
-						// Bóng đen (Chỉnh offset thành 1.5, bỏ linear_multiply)
-						ui.painter().text(
-							text_pos + egui::vec2(1.0, 1.0),
-							egui::Align2::RIGHT_BOTTOM,
-							&percentage_text,
-							egui::FontId::proportional(dim / 4.0),
-							egui::Color32::BLACK, 
-						);
+						let font = FontId::proportional(dim / 4.0); 
+						let offsets = [
+                            egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
+                            egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
+                        ];
+						for offset in offsets {
+							ui.painter().text(
+								text_pos + offset,
+								egui::Align2::RIGHT_BOTTOM,
+								&percentage_text,
+								font.clone(),
+								egui::Color32::BLACK, 
+							);
+						}
         // let mut table_builder = egui_extras::TableBuilder::new(ui)
             // .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
 
@@ -153,7 +171,7 @@ impl App {
 							text_pos,
 							egui::Align2::RIGHT_BOTTOM,
 							&percentage_text,
-							egui::FontId::proportional(dim / 4.0),
+							font,
 							egui::Color32::WHITE,
 						);
 					} else {
@@ -602,8 +620,8 @@ impl App {
 							let image_response =
 								ui.add(egui::Image::from_texture(sized_image));
 
-							let text_pos = image_response.rect.right_bottom()
-								- egui::vec2(0.0, 0.0);
+							let text_pos = image_response.rect.right_bottom();
+								//- egui::vec2(0.0, 0.0);
 							let percentage = if battle_context.battle_enemies[i].properties.max_hp() > 0.0 {
 								(battle_context.battle_enemies[i].properties.current_hp()
 									/ battle_context.battle_enemies[i].properties.max_hp())
@@ -612,21 +630,27 @@ impl App {
 								0.0
 							};
 							let percentage_text = format!("{percentage:.0}%");
-
+							let font = FontId::proportional(dim / 4.0);
+							let offsets = [
+                                egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
+                                egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
+                            ];
 							// Text Shadow
-							ui.painter().text(
-								text_pos + egui::vec2(-1., 1.),
-								Align2::RIGHT_BOTTOM,
-								&percentage_text,
-								FontId::proportional(dim / 4.0),
-								Color32::BLACK,
-							);
+							for offset in offsets {
+								ui.painter().text(
+									text_pos + offset,
+									Align2::RIGHT_BOTTOM,
+									&percentage_text,
+									font.clone(),
+									Color32::BLACK,
+								);
+							}
 
 							ui.painter().text(
 								text_pos,
 								Align2::RIGHT_BOTTOM,
 								&percentage_text,
-								FontId::proportional(dim / 4.0),
+								font,
 								Color32::WHITE,
 							);
 						} else {
@@ -635,7 +659,7 @@ impl App {
 
 						// Text Info
 						let hp = battle_context.battle_enemies[i].properties.current_hp();
-						let current_stance = battle_context.battle_enemies[i].properties.current_stance();;
+						let current_stance = battle_context.battle_enemies[i].properties.current_stance();
 						let max_stance = battle_context.battle_enemies[i].properties.max_stance();
 						let enemy_name = &battle_context.enemies[i].name;
 						
@@ -768,6 +792,167 @@ impl App {
                 // });
             // });
     // }
+	pub fn show_character_stats_widget(&mut self, ui: &mut Ui) {
+        // Lấy avatar_id ra một cách an toàn
+        let avatar_id = match self.state.selected_character_for_stats {
+            Some(id) => id,
+            None => {
+                ui.label(t!("No character selected."));
+                return;
+            }
+        };
+
+        let battle_context = BattleContext::get_instance();
+
+        // Tìm kiếm thông tin nhân vật từ BattleContext
+        let char_data = battle_context.avatar_lineup.iter()
+            .position(|a| a.id == avatar_id)
+            .map(|index| {
+                (
+                    &battle_context.avatar_lineup[index],
+                    &battle_context.battle_avatars[index].properties
+                )
+            });
+
+        if char_data.is_none() {
+            // Dữ liệu không còn khớp, yêu cầu đóng cửa sổ ở lần update tiếp theo
+            self.state.selected_character_for_stats = None;
+            ui.label(t!("Character data not found in the current battle."));
+            return;
+        }
+
+        let (avatar, stats) = char_data.unwrap();
+
+        // Lấy thông tin tĩnh từ AvatarRow một cách an toàn
+        let character_damage_type = unsafe {
+            RPG_GameCore_AvatarExcelTable::GetData(avatar.id)
+                .and_then(|row| row.DamageType())
+                .map(|boxed| *boxed)
+                .ok()
+        };
+
+        let get_stat = |prop: RPG_GameCore_AvatarPropertyType| -> f64 {
+            stats.get_value(&prop.to_string()).unwrap_or(0.0)
+        };
+
+        // 1. Helper tính Final Stat gộp gọn lại
+        let calc_final = |base, ratio, delta| -> f64 {
+            get_stat(base) * (1.0 + get_stat(ratio)) + get_stat(delta)
+        };
+
+        let final_atk = calc_final(RPG_GameCore_AvatarPropertyType::BaseAttack, RPG_GameCore_AvatarPropertyType::AttackAddedRatio, RPG_GameCore_AvatarPropertyType::AttackDelta);
+        let final_def = calc_final(RPG_GameCore_AvatarPropertyType::BaseDefence, RPG_GameCore_AvatarPropertyType::DefenceAddedRatio, RPG_GameCore_AvatarPropertyType::DefenceDelta);
+		//let final_atk = get_stat(RPG_GameCore_AvatarPropertyType::Attack);
+		//let final_def = get_stat(RPG_GameCore_AvatarPropertyType::Defence);
+        let final_spd = get_stat(RPG_GameCore_AvatarPropertyType::Speed);
+
+        egui::Grid::new("unified_character_stats_grid")
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                
+                // --- HELPER 1: Hàm vẽ Header ---
+                let draw_header = |ui: &mut Ui, title: String| {
+                    ui.label(egui::RichText::new(title).strong().size(14.0));
+                    ui.label(""); // Cột phải để trống cho Header
+                    ui.end_row();
+                };
+
+                // --- HELPER 2: Hàm vẽ 1 dòng (có Icon, có Base + Bonus) ---
+                let draw_base_stat_row = |ui: &mut Ui, icon_key: &str, label: String, final_val: f64| {
+                    // Cột 1: Icon + Tên chỉ số
+                    ui.horizontal(|ui| {
+                        if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
+                            let dim = 14.0;
+                            ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+                        } else {
+                            ui.allocate_space(egui::vec2(14.0, 14.0)); // Giữ chỗ nếu ko load đc icon
+                        }
+                        ui.label(label);
+                    });
+
+                    // Cột 2: Value (Căn lề phải)
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        //let bonus_val = final_val - base_val;
+                        if final_val.abs() > 0.01 {
+                            //let sign = if final_val > 0.0 { "+" } else { "" };
+                            //let color = if final_val > 0.0 { Color32::from_rgb(137, 222, 129) } else { Color32::from_rgb(255, 80, 80) };
+                            ui.label(egui::RichText::new(format!("{:.0}", final_val)).strong());
+                        }
+                        //ui.label(format!("{:.0}", base_val));
+                    });
+                    ui.end_row();
+                };
+
+                // --- HELPER 3: Hàm vẽ 1 dòng (Advanced/DMG, có Icon, giá trị %) ---
+                let draw_advanced_stat_row = |ui: &mut Ui, icon_key: &str, label: String, val: f64, is_percent: bool, highlight: bool| {
+                    ui.horizontal(|ui| {
+                        if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
+                            let dim = 14.0;
+                            ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+                        } else {
+                            ui.allocate_space(egui::vec2(14.0, 14.0));
+                        }
+                        ui.label(label);
+                    });
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let text = if is_percent {
+                            format!("{:.1}%", val * 100.0)
+                        } else {
+                            format!("{:.0}", val)
+                        };
+                        
+                        let mut rich_text = egui::RichText::new(text).strong();
+                        if highlight {
+                            rich_text = rich_text.color(ui.visuals().hyperlink_color);
+                        }
+                        ui.label(rich_text);
+                    });
+                    ui.end_row();
+                };
+
+                // ==========================================
+                // VẼ GIAO DIỆN TỪ ĐÂY
+                // ==========================================
+
+                // 1. BASE STATS
+                draw_header(ui, t!("Base Stats").to_string());
+                draw_base_stat_row(ui, "Attack", t!("ATK").to_string(), final_atk);
+                draw_base_stat_row(ui, "Defence", t!("DEF").to_string(), final_def);
+                draw_base_stat_row(ui, "Speed", t!("SPD").to_string(), final_spd);
+
+                // 2. ADVANCED STATS
+                draw_header(ui, t!("Advanced Stats").to_string());
+                draw_advanced_stat_row(ui, "CriticalChance", t!("CRIT Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::CriticalChance), true, false);
+                draw_advanced_stat_row(ui, "CriticalDamage", t!("CRIT DMG").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::CriticalDamage), true, false);
+                draw_advanced_stat_row(ui, "BreakDamageAddedRatio", t!("Break Effect").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::BreakDamageAddedRatio), true, false);
+                draw_advanced_stat_row(ui, "HealRatio", t!("Outgoing Healing Boost").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::HealRatio), true, false);
+                draw_advanced_stat_row(ui, "MaxSP", t!("Max Energy").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::MaxSP), false, false);
+                draw_advanced_stat_row(ui, "SPRatio", t!("Energy Regeneration Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::SPRatio), true, false);
+                draw_advanced_stat_row(ui, "StatusProbability", t!("Effect Hit Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::StatusProbability), true, false);
+                draw_advanced_stat_row(ui, "StatusResistance", t!("Effect RES").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::StatusResistance), true, false);
+                draw_advanced_stat_row(ui, "ElationDamageAddedRatio", t!("Elation").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::ElationDamageAddedRatio), true, false);
+
+                // 3. DMG TYPE
+                draw_header(ui, t!("DMG Type").to_string());
+                let dmg_types = [
+                    (t!("Physical DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Physical, RPG_GameCore_AvatarPropertyType::PhysicalAddedRatio, "PhysicalAddedRatio"),
+                    (t!("Fire DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Fire, RPG_GameCore_AvatarPropertyType::FireAddedRatio, "FireAddedRatio"),
+                    (t!("Ice DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Ice, RPG_GameCore_AvatarPropertyType::IceAddedRatio, "IceAddedRatio"),
+                    (t!("Lightning DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Thunder, RPG_GameCore_AvatarPropertyType::ThunderAddedRatio, "ThunderAddedRatio"),
+                    (t!("Wind DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Wind, RPG_GameCore_AvatarPropertyType::WindAddedRatio, "WindAddedRatio"),
+                    (t!("Quantum DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Quantum, RPG_GameCore_AvatarPropertyType::QuantumAddedRatio, "QuantumAddedRatio"),
+                    (t!("Imaginary DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Imaginary, RPG_GameCore_AvatarPropertyType::ImaginaryAddedRatio, "ImaginaryAddedRatio"),
+                ];
+
+                if let Some(char_dmg_type) = character_damage_type {
+                    if let Some((label, _, prop, icon_key)) = dmg_types.iter().find(|(_, dmg_type, _, _)| *dmg_type == char_dmg_type) {
+                        draw_advanced_stat_row(ui, icon_key, label.to_string(), get_stat(*prop), true, true);
+                    }
+                }
+            });
+    }
 }
 
 fn create_bar_data(

@@ -3,6 +3,7 @@ use egui::{CentralPanel, CollapsingHeader, Color32, Frame, Label, Memory, RichTe
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use anyhow::anyhow;
 
+use crate::battle::BattleContext;
 use crate::LOCALES;
 use crate::export::BattleDataExporter;
 use crate::ui::themes;
@@ -137,11 +138,9 @@ impl App {
                                     crate::RUNTIME.spawn(async move {
 										// Dùng spawn_blocking để đảm bảo chạy trên 1 OS Thread riêng biệt, không phá hỏng Tokio Worker
 										let _ = tokio::task::spawn_blocking(move || {
-											unsafe {
-												// Attach thread vào Il2Cpp domain ở đây là an toàn tuyệt đối
-												let domain = il2cpp_runtime::api::il2cpp_domain_get();
-												il2cpp_runtime::api::il2cpp_thread_attach(domain);
-											}
+											// Attach thread vào Il2Cpp domain ở đây là an toàn tuyệt đối
+											let domain = il2cpp_runtime::api::il2cpp_domain_get();
+											il2cpp_runtime::api::il2cpp_thread_attach(domain);
 											if let Err(e) = crate::relic_utils::dump_and_convert_data() {
 												log::error!("Data Dump Failed: {:#?}", e);
 											} else {
@@ -804,5 +803,42 @@ impl App {
                 //ui.style_mut().interaction.selectable_labels = false;
                 self.show_enemy_stats_widget(ui);
             });
+    }
+	
+	pub fn show_character_stats_window(&mut self, ctx: &egui::Context) {
+        let mut is_open = self.state.selected_character_for_stats.is_some();
+        if !is_open {
+            return;
+        }
+
+        // Lấy tên nhân vật cho tiêu đề cửa sổ
+        let window_title = {
+            let battle_context = BattleContext::get_instance();
+            if let Some(id) = self.state.selected_character_for_stats {
+                battle_context.avatar_lineup.iter()
+                    .find(|a| a.id == id)
+                    .map_or_else(
+                        || t!("Character Stats").to_string(), 
+                        |avatar| format!("{} {}", egui_phosphor::bold::USER_LIST, avatar.name)
+                    )
+            } else {
+                t!("Character Stats").to_string()
+            }
+        };
+
+        Window::new(window_title)
+            .id(egui::Id::new("character_stats_window"))
+            .open(&mut is_open)
+            .collapsible(true) // Cho phép thu gọn
+            .resizable(true)
+            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .show(ctx, |ui| {
+                self.show_character_stats_widget(ui);
+            });
+
+        // Nếu người dùng đóng cửa sổ hoặc dữ liệu không hợp lệ, cập nhật state
+        if !is_open {
+            self.state.selected_character_for_stats = None;
+        }
     }
 }

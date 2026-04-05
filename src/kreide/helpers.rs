@@ -5,9 +5,9 @@ use crate::{
     kreide::types::{
         RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
         RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
-        RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, RPG_GameCore_MonsterTemplateExcelTable, 
+        RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, 
         RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
-        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicDataInfoExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable, RPG_GameCore_RelicDataInfoRow, RPG_Client_PlayerModule, RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarSkillTreeRow
+        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow
     },
     models::misc::{Avatar, Skill, FribbelsCharacter, FribbelsSkills, FribbelsTraces, FribbelsMemosprite},
 };
@@ -511,14 +511,14 @@ pub fn dump_avatar_png_bytes(avatar_id: u32, png_bytes: &[u8]) -> Result<()> {
 // }
 
 pub unsafe fn dump_characters_to_json() -> anyhow::Result<()> {
-    //let mut characters = std::collections::HashMap::new();
+    //let mut characters = HashMap::new();
 	let mut characters = BTreeMap::new();
 
-    let dict_ptr = super::types::RPG_GameCore_AvatarExcelTable::get_dataDict()?;
-    let rows = extract_rows_from_dict_ram(dict_ptr).unwrap_or_default();
+    let dict_ptr = unsafe { RPG_GameCore_AvatarExcelTable::get_dataDict()? };
+    let rows = unsafe { extract_rows_from_dict_ram(dict_ptr).unwrap_or_default() };
 
     for row_ptr in rows {
-        let avatar_row = super::types::RPG_GameCore_AvatarRow(row_ptr as _);
+        let avatar_row = RPG_GameCore_AvatarRow(row_ptr as _);
         let avatar_id = u32::from(*avatar_row.AvatarID()?);
         
         if let Ok(name_id) = avatar_row.AvatarName() {
@@ -581,13 +581,13 @@ pub unsafe fn dump_characters_to_json() -> anyhow::Result<()> {
 }
 
 pub unsafe fn dump_relic_sets() -> anyhow::Result<()> {
-    //let mut relic_sets = std::collections::HashMap::new();
+    //let mut relic_sets = HashMap::new();
 	let mut relic_sets = BTreeMap::new();
     // Chỉ quét các set ID hợp lệ hiện tại
     let set_ids = (101..=200).chain(301..=400);
 
     for id in set_ids {
-        if let Ok(row) = super::types::RPG_GameCore_RelicSetConfigExcelTable::GetData(id) {
+        if let Ok(row) = unsafe { RPG_GameCore_RelicSetConfigExcelTable::GetData(id) } {
             if !row.0.is_null() {
                 if let Ok(name_id) = row.SetName() {
                     if (*name_id).hash != 0 {
@@ -606,21 +606,21 @@ pub unsafe fn dump_relic_sets() -> anyhow::Result<()> {
 }
 
 pub unsafe fn dump_relic_config() -> anyhow::Result<()> {
-    //let mut relic_configs = std::collections::HashMap::new();
+    //let mut relic_configs = HashMap::new();
 	let mut relic_configs = BTreeMap::new();
 	
     log::debug!("Getting dataDict...");
-    let dict_ptr = super::types::RPG_GameCore_RelicConfigExcelTable::get_dataDict()?;
+    let dict_ptr = unsafe { RPG_GameCore_RelicConfigExcelTable::get_dataDict()? };
     
     log::debug!("Extracting rows from RAM...");
-    let rows = extract_rows_from_dict_ram(dict_ptr).unwrap_or_default();
+    let rows = unsafe { extract_rows_from_dict_ram(dict_ptr).unwrap_or_default() };
     log::debug!("Found {} rows to process.", rows.len());
 	
 	let rows_len = rows.len();
     for (index, row_ptr) in rows.into_iter().enumerate() {
         log::debug!("--- Processing Row {}/{} (Ptr: {:p}) ---", index + 1, rows_len, row_ptr);
         
-        let row = super::types::RPG_GameCore_RelicConfigRow(row_ptr as _);
+        let row = RPG_GameCore_RelicConfigRow(row_ptr as _);
 
         // Lấy ID đầu tiên để biết đang xử lý Relic nào
         log::debug!("Reading ID...");
@@ -640,8 +640,8 @@ pub unsafe fn dump_relic_config() -> anyhow::Result<()> {
         log::debug!("=> Type Enum Val: {}", type_enum_val as i32);
 
         log::debug!("Converting Type Enum to String...");
-		let type_enum_obj = RPG_GameCore_RelicBaseTypeExcelTable::GetData(type_enum_val)?;
-		let type_str = RPG_Client_TextmapStatic::get_text(&*type_enum_obj.BaseTypeText()?, std::ptr::null())?.to_string();
+		let type_enum_obj = unsafe { RPG_GameCore_RelicBaseTypeExcelTable::GetData(type_enum_val)? };
+		let type_str = unsafe { RPG_Client_TextmapStatic::get_text(&*type_enum_obj.BaseTypeText()?, std::ptr::null())?.to_string() };
         //let type_enum_obj = System_Int32__Boxed(System_Enum::to_object_from_int(type_handle, type_enum_val as i32)?);
         //let type_str = System_Enum::get_name(type_handle, type_enum_obj.0)?.to_string();
         log::debug!("=> Type String: {}", type_str);
@@ -660,7 +660,7 @@ pub unsafe fn dump_relic_config() -> anyhow::Result<()> {
 
         // 1. LẤY TÊN BỘ DI VẬT (Set Name) - Bọc thép
         let mut set_name_str = format!("Set {}", set_id); // Fallback
-        let safe_set = microseh::try_seh(|| super::types::RPG_GameCore_RelicSetConfigExcelTable::GetData(set_id));
+        let safe_set = microseh::try_seh(|| unsafe { RPG_GameCore_RelicSetConfigExcelTable::GetData(set_id) });
         
         if let Ok(Ok(set_row)) = safe_set {
             if !set_row.0.is_null() {
@@ -676,9 +676,9 @@ pub unsafe fn dump_relic_config() -> anyhow::Result<()> {
 
         // 2. LẤY TÊN VỊ TRÍ (Slot Name) - Bọc thép
         let mut slot_name_str = type_str.clone(); // Fallback (e.g., "HEAD", "OBJECT")
-        //let relic_type_enum = std::mem::transmute::<i32, super::types::RPG_GameCore_RelicSetType>(type_enum_val);
+        //let relic_type_enum = std::mem::transmute::<i32, RPG_GameCore_RelicSetType>(type_enum_val);
         
-        let safe_type = microseh::try_seh(|| super::types::RPG_GameCore_RelicBaseTypeExcelTable::GetData(type_enum_val));
+        let safe_type = microseh::try_seh(|| unsafe { RPG_GameCore_RelicBaseTypeExcelTable::GetData(type_enum_val) });
         
         if let Ok(Ok(type_row)) = safe_type {
             if !type_row.0.is_null() {
@@ -720,14 +720,14 @@ pub unsafe fn extract_keys_from_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
     }
 
     // Lấy Class từ pointer của Object
-    let class_ptr = *(dict_ptr as *const *const std::ffi::c_void);
+    let class_ptr = unsafe { *(dict_ptr as *const *const std::ffi::c_void) };
     let dict_class = il2cpp_runtime::Il2CppClass(class_ptr);
 
     let mut count_offset = 0;
     let mut entries_offset = 0;
 
     // Tìm offset của field `_count` và `_entries` tự động để chống lệch Version
-    let mut field_iter: *const std::ffi::c_void = std::ptr::null();
+    let field_iter: *const std::ffi::c_void = std::ptr::null();
     loop {
         //use il2cpp_runtime::api::{il2cpp_class_get_fields, il2cpp_field_get_offset};
         let field = il2cpp_class_get_fields(dict_class, &field_iter);
@@ -746,27 +746,27 @@ pub unsafe fn extract_keys_from_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
     }
 
     // Đọc số lượng cấp phát
-    let count = *(dict_ptr.add(count_offset) as *const i32);
+    let count = unsafe { *(dict_ptr.add(count_offset) as *const i32) };
     if count <= 0 { return Ok(Vec::new()); }
 
     // Đọc con trỏ mảng _entries
-    let entries_array_ptr = *(dict_ptr.add(entries_offset) as *const *const u8);
+    let entries_array_ptr = unsafe { *(dict_ptr.add(entries_offset) as *const *const u8) };
     if entries_array_ptr.is_null() { return Ok(Vec::new()); }
 
     let mut ids = Vec::new();
     
     // Header của Il2cppArray dài 0x20 bytes, bỏ qua phần này để vào vùng data
-    let array_data_start = entries_array_ptr.add(0x20);
+    let array_data_start = unsafe { entries_array_ptr.add(0x20) };
 
     for i in 0..count {
         // Mỗi Entry dài 0x18 (24 bytes) trên bản 64-bit
-        let entry_ptr = array_data_start.add((i as usize) * 0x18);
+        let entry_ptr = unsafe { array_data_start.add((i as usize) * 0x18) };
         
         // Đọc hashCode ở offset 0x00. Nếu >= 0 nghĩa là phần tử này chưa bị xóa.
-        let hash_code = *(entry_ptr.add(0x00) as *const i32);
+        let hash_code = unsafe { *(entry_ptr.add(0x00) as *const i32) };
         if hash_code >= 0 {
             // Đọc Key ở offset 0x08. (Cấu trúc: int hash, int next, uint key)
-            let key = *(entry_ptr.add(0x08) as *const u32);
+            let key = unsafe { *(entry_ptr.add(0x08) as *const u32) };
             ids.push(key);
         }
     }
@@ -779,13 +779,13 @@ pub unsafe fn extract_rows_from_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
         return Ok(Vec::new());
     }
 
-    let class_ptr = *(dict_ptr as *const *const std::ffi::c_void);
+    let class_ptr = unsafe { *(dict_ptr as *const *const std::ffi::c_void) };
     let dict_class = il2cpp_runtime::Il2CppClass(class_ptr);
 
     let mut count_offset = 0;
     let mut entries_offset = 0;
 
-    let mut field_iter: *const std::ffi::c_void = std::ptr::null();
+    let field_iter: *const std::ffi::c_void = std::ptr::null();
     loop {
         let field = il2cpp_runtime::api::il2cpp_class_get_fields(dict_class, &field_iter);
         if field.0.is_null() { break; }
@@ -802,23 +802,23 @@ pub unsafe fn extract_rows_from_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
         return Err(anyhow::anyhow!("Không tìm thấy cấu trúc _count hoặc _entries"));
     }
 
-    let count = *(dict_ptr.add(count_offset) as *const i32);
+    let count = unsafe { *(dict_ptr.add(count_offset) as *const i32) };
     if count <= 0 { return Ok(Vec::new()); }
 
-    let entries_array_ptr = *(dict_ptr.add(entries_offset) as *const *const u8);
+    let entries_array_ptr = unsafe { *(dict_ptr.add(entries_offset) as *const *const u8) };
     if entries_array_ptr.is_null() { return Ok(Vec::new()); }
 
     let mut rows = Vec::new();
-    let array_data_start = entries_array_ptr.add(0x20);
+    let array_data_start = unsafe { entries_array_ptr.add(0x20) };
 
     for i in 0..count {
-        let entry_ptr = array_data_start.add((i as usize) * 0x18);
-        let hash_code = *(entry_ptr.add(0x00) as *const i32);
+        let entry_ptr = unsafe { array_data_start.add((i as usize) * 0x18) };
+        let hash_code = unsafe { *(entry_ptr.add(0x00) as *const i32) };
         
         // Nếu hashCode >= 0, entry này có chứa dữ liệu hợp lệ
         if hash_code >= 0 {
             // Đọc TValue ở offset 0x10 (Con trỏ trỏ đến AvatarRow / RelicConfigRow)
-            let row_ptr = *(entry_ptr.add(0x10) as *const *mut std::ffi::c_void);
+            let row_ptr = unsafe { *(entry_ptr.add(0x10) as *const *mut std::ffi::c_void) };
             if !row_ptr.is_null() {
                 rows.push(row_ptr);
             }
@@ -838,258 +838,259 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
     let mut trailblazer_gender = "Stelle".to_string();
 
     // Lấy offset một lần duy nhất ở ngoài vòng lặp để tối ưu hiệu suất
-    let anchor_offset = get_field_offset("RPG.Client.AvatarSkillTreeData", "_PointIDOfAnchorType");
-    let levels_offset = get_field_offset("RPG.Client.AvatarSkillTreeData", "SkillTreeLevels");
-
-    let safe_dump = microseh::try_seh(|| {
-        let module_manager = RPG_Client_GlobalVars::s_ModuleManager()?;
-        
-        // ==========================================
-        // 1. LẤY UID & TÊN TỪ PLAYER MODULE
-        // ==========================================
-        //log::info!("[Character Dump] Accessing Player Module...");
-        let safe_player_data = microseh::try_seh(|| {
-            let player_module = module_manager.PlayerModule()?;
-            if !player_module.0.is_null() {
-                let player_data = player_module.get_PlayerData()?;
-                if !player_data.0.is_null() {
-                    // Lấy UID
-                    if let Ok(uid) = player_data.get_UserID() {
-                        player_uid = uid;
-                        //log::info!("[Character Dump] Successfully retrieved UserID: {}", player_uid);
-                    } else {
-                        log::debug!("[Character Dump] Failed to read UserID from PlayerData.");
-                    }
-                    
-                    // Lấy Tên
-                    if let Ok(name_str) = player_data.get_NickName() {
-                        let clean_name = sanitize_entity_name(name_str.to_string());
-                        if !clean_name.is_empty() {
-                            account_name = clean_name;
-                            //log::info!("[Character Dump] Successfully retrieved NickName: {}", account_name);
-                        }
-                    } else {
-                        log::debug!("[Character Dump] Failed to read NickName from PlayerData.");
-                    }
-                } else {
-                    log::debug!("[Character Dump] PlayerData instance is NULL.");
-                }
-            } else {
-                log::debug!("[Character Dump] PlayerModule instance is NULL.");
-            }
-            Ok::<(), anyhow::Error>(())
-        });
-
-        if let Err(e) = safe_player_data {
-            log::debug!("[Character Dump] SEH Exception caught while reading PlayerData: {:#?}", e);
-        }
-
-        // ==========================================
-        // 2. LẤY DANH SÁCH NHÂN VẬT TỪ DICTIONARY
-        // ==========================================
-        //log::info!("[Character Dump] Accessing Avatar Module...");
-        let avatar_module = module_manager.AvatarModule()?;
-        let mut all_row_ptrs = Vec::new();
-        
-        if let Ok(all_avatars) = avatar_module.get_AllAvatars() {
-            if !all_avatars.as_ptr().is_null() {
-                if let Ok(rows) = extract_rows_from_dict_ram(all_avatars.as_ptr() as _) {
-                    //log::info!("[Character Dump] Extracted {} rows from AllAvatars.", rows.len());
-                    all_row_ptrs.extend(rows);
-                }
-            }
-        }
-        
-        if let Ok(multi_path_avatars) = avatar_module.get_AllMultiPathAvatars() {
-            if !multi_path_avatars.as_ptr().is_null() {
-                if let Ok(rows) = extract_rows_from_dict_ram(multi_path_avatars.as_ptr() as _) {
-                    //log::info!("[Character Dump] Extracted {} rows from AllMultiPathAvatars.", rows.len());
-                    all_row_ptrs.extend(rows);
-                }
-            }
-        }
-
-        if all_row_ptrs.is_empty() {
-            log::debug!("[Character Dump] No avatars found. Aborting character dump.");
-            return Ok(()); 
-        }
-        
-        //log::info!("[Character Dump] Processing {} raw avatar entries...", all_row_ptrs.len());
-
-        // ==========================================
-        // 3. DUYỆT VÀ XỬ LÝ TỪNG NHÂN VẬT
-        // ==========================================
-        for (i, row_ptr) in all_row_ptrs.iter().enumerate() {
-            let avatar_data = super::types::RPG_Client_AvatarData(*row_ptr as _);
-            
-            let base_id = match avatar_data.get_RealID() {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
-
-            // Detect Stelle hay Caelus cực kỳ an toàn
-            if base_id >= 8000 && base_id < 9000 {
-                let gender = if base_id % 2 == 0 { "Stelle" } else { "Caelus" };
-                trailblazer_gender = gender.to_string();
-                //log::info!("[Character Dump] Detected Trailblazer (ID: {}). Identified gender: {}", base_id, trailblazer_gender);
-            }
-
-            let avatar_row = super::types::RPG_GameCore_AvatarExcelTable::GetData(base_id)?;
-            if avatar_row.0.is_null() { continue; }
-
-            let path_enum_val = *avatar_row.AvatarBaseType()?;
-            let level = avatar_data.get_Level().unwrap_or(1);
-            let promotion = avatar_data.get_Promotion().unwrap_or(0);
-            let rank = avatar_data.get_Rank().unwrap_or(0);
-            let enhanced_id = avatar_data.get_EnhancedID().unwrap_or(0);
-            let ability_version = if enhanced_id > 0 && enhanced_id != base_id && base_id < 8000 { 1 } else { 0 };
-
-            let path_str = match path_enum_val {
-                super::types::RPG_GameCore_AvatarBaseType::Warrior => "Destruction",
-                super::types::RPG_GameCore_AvatarBaseType::Rogue => "Hunt",
-                super::types::RPG_GameCore_AvatarBaseType::Mage => "Erudition",
-                super::types::RPG_GameCore_AvatarBaseType::Shaman => "Harmony",
-                super::types::RPG_GameCore_AvatarBaseType::Warlock => "Nihility",
-                super::types::RPG_GameCore_AvatarBaseType::Knight => "Preservation",
-                super::types::RPG_GameCore_AvatarBaseType::Priest => "Abundance",
-                super::types::RPG_GameCore_AvatarBaseType::Memory => "Remembrance",
-                super::types::RPG_GameCore_AvatarBaseType::Elation => "Elation",
-                _ => "Unknown",
-            };
-            
-            let mut name = format!("Avatar_{}", base_id);
-            let name_safe_fetch = microseh::try_seh(|| {
-                avatar_data.AvatarName().map(|s| s.to_string())
-            });
-
-            if let Ok(Ok(name_str)) = name_safe_fetch {
-                let clean = sanitize_entity_name(name_str);
-                if !clean.is_empty() {
-                    name = clean;
-                }
-            } else if base_id >= 8000 {
-                name = format!("{} MC", path_str); 
-            }
+    //let anchor_offset = get_field_offset("RPG.Client.AvatarSkillTreeData", "_PointIDOfAnchorType");
+    let levels_offset = unsafe { get_field_offset("RPG.Client.AvatarSkillTreeData", "SkillTreeLevels") };
+	unsafe {
+		let safe_dump = microseh::try_seh(|| {
+			let module_manager = RPG_Client_GlobalVars::s_ModuleManager()?;
 			
-            // --- SKILL TREE (ĐỌC TRỰC TIẾP TỪ RAM ĐỂ TRÁNH SPAM LOG) ---
-            let mut skills = FribbelsSkills { basic: 1, skill: 1, ult: 1, talent: 1, elation: None};
-            let mut traces = FribbelsTraces {
-                ability_1: false, ability_2: false, ability_3: false,
-                stat_1: false, stat_2: false, stat_3: false, stat_4: false, stat_5: false,
-                stat_6: false, stat_7: false, stat_8: false, stat_9: false, stat_10: false, special: false,
-            };
-			let mut memosprite = None;
-            //log::debug!("[SkillTree Debug] [{}] ----------------------------------------", base_id);
-            //log::debug!("[SkillTree Debug] [{}] Attempting to read SkillTreeData...", base_id);
-
-            if let Ok(skill_tree_data) = avatar_data.SkillTreeData() {
-                if skill_tree_data.0.is_null() {
-                    log::debug!("[SkillTree Debug] [{}] SkillTreeData pointer is NULL.", base_id);
-                } else if levels_offset == 0 {
-                    log::error!("[SkillTree Debug] [{}] levels_offset is invalid (0x0)!", base_id);
-                } else {
-                    let base_ptr = skill_tree_data.0 as *const u8;
-                    let level_ptr = *(base_ptr.add(levels_offset) as *const *mut std::ffi::c_void);
-
-                    //log::debug!("[SkillTree Debug] [{}] Read Pointer -> level_ptr: {:p}", base_id, level_ptr);
-
-                    if !level_ptr.is_null() {
-                        // 1. Lấy Dictionary chứa Level của các Node (PointID -> Level)
-                        let level_dict = extract_primitive_dict_ram(level_ptr).unwrap_or_default();
-                        //log::debug!("[SkillTree Debug] [{}] Extracted Dict -> level_dict size: {}", base_id, level_dict.len());
-                        
-                        let mut anchor_to_level: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
-
-                        // 2. Duyệt qua từng PointID mà nhân vật đang có
-                        for (&point_id, &level) in &level_dict {
-                            // Hỏi Excel Table xem PointID này là kỹ năng gì (Truyền Level = 1 để lấy base info)
-                            if let Ok(row) = super::types::RPG_GameCore_AvatarSkillTreeExcelTable::GetData(point_id, 1) {
-                                if !row.0.is_null() {
-                                    if let Ok(anchor_box) = row.AnchorType() {
-                                        let anchor_type = *anchor_box as u32;
-                                        
-                                        // Lưu vào map: AnchorType -> Level (Lấy level cao nhất nếu có trùng lặp)
-                                        let current_max = anchor_to_level.get(&anchor_type).copied().unwrap_or(0);
-                                        anchor_to_level.insert(anchor_type, std::cmp::max(current_max, level));
-                                        
-                                        //log::debug!("[SkillTree Debug] [{}] Mapped PointID: {} -> AnchorType: {}, Level: {}", base_id, point_id, anchor_type, level);
-                                    } else {
-                                        log::debug!("[SkillTree Debug] [{}] Failed to read AnchorType for PointID: {}", base_id, point_id);
-                                    }
-                                } else {
-                                    log::debug!("[SkillTree Debug] [{}] ExcelTable returned NULL row for PointID: {}", base_id, point_id);
-                                }
-                            } else {
-                                log::debug!("[SkillTree Debug] [{}] Failed to call GetData for PointID: {}", base_id, point_id);
-                            }
-                        }
-
-                        // 3. Gán dữ liệu vào struct Fribbels
-                        let get_lv = |anchor_type: u32| -> u32 { 
-                            anchor_to_level.get(&anchor_type).copied().unwrap_or(0) 
-                        };
-
-                        skills.basic = std::cmp::max(1, get_lv(1));
-						skills.skill = std::cmp::max(1, get_lv(2));
-						skills.ult = std::cmp::max(1, get_lv(3));
-						skills.talent = std::cmp::max(1, get_lv(4));
-
-						// Gán Elation nếu có
-						let elation_lv = get_lv(22);
-						skills.elation = if elation_lv > 0 { Some(elation_lv) } else { None };
-
-						// Gán Memosprite (Pet)
-						memosprite = FribbelsMemosprite {
-							skill: get_lv(19),
-							talent: get_lv(20),
-						}.if_present();
-
-						traces.ability_1 = get_lv(6) > 0; 
-						traces.ability_2 = get_lv(7) > 0; 
-						traces.ability_3 = get_lv(8) > 0;
-
-						traces.stat_1 = get_lv(9) > 0; 
-						traces.stat_2 = get_lv(10) > 0; 
-						traces.stat_3 = get_lv(11) > 0;
-						traces.stat_4 = get_lv(12) > 0; 
-						traces.stat_5 = get_lv(13) > 0; 
-						traces.stat_6 = get_lv(14) > 0;
-						traces.stat_7 = get_lv(15) > 0; 
-						traces.stat_8 = get_lv(16) > 0; 
-						traces.stat_9 = get_lv(17) > 0;
-						traces.stat_10 = get_lv(18) > 0;
-
-						traces.special = get_lv(21) > 0;
-
-                        //log::info!("[SkillTree Debug] [{}] Final Skills: B:{}, S:{}, U:{}, T:{}", base_id, skills.basic, skills.skill, skills.ult, skills.talent);
-                    } else {
-                        log::debug!("[SkillTree Debug] [{}] level_ptr is NULL.", base_id);
-                    }
-                }
-            } else {
-                log::debug!("[SkillTree Debug] [{}] Failed to call avatar_data.SkillTreeData()", base_id);
-            }
-
-			characters_map.insert(base_id, FribbelsCharacter {
-				id: base_id.to_string(),
-				name,
-				path: path_str.to_string(),
-				level,
-				ascension: promotion,
-				eidolon: rank,
-				skills,
-				traces,
-				memosprite,
-				ability_version,
+			// ==========================================
+			// 1. LẤY UID & TÊN TỪ PLAYER MODULE
+			// ==========================================
+			//log::info!("[Character Dump] Accessing Player Module...");
+			let safe_player_data = microseh::try_seh(|| {
+				let player_module = module_manager.PlayerModule()?;
+				if !player_module.0.is_null() {
+					let player_data = player_module.get_PlayerData()?;
+					if !player_data.0.is_null() {
+						// Lấy UID
+						if let Ok(uid) = player_data.get_UserID() {
+							player_uid = uid;
+							//log::info!("[Character Dump] Successfully retrieved UserID: {}", player_uid);
+						} else {
+							log::debug!("[Character Dump] Failed to read UserID from PlayerData.");
+						}
+						
+						// Lấy Tên
+						if let Ok(name_str) = player_data.get_NickName() {
+							let clean_name = sanitize_entity_name(name_str.to_string());
+							if !clean_name.is_empty() {
+								account_name = clean_name;
+								//log::info!("[Character Dump] Successfully retrieved NickName: {}", account_name);
+							}
+						} else {
+							log::debug!("[Character Dump] Failed to read NickName from PlayerData.");
+						}
+					} else {
+						log::debug!("[Character Dump] PlayerData instance is NULL.");
+					}
+				} else {
+					log::debug!("[Character Dump] PlayerModule instance is NULL.");
+				}
+				Ok::<(), anyhow::Error>(())
 			});
-        }
-        Ok::<(), anyhow::Error>(())
-    });
-    
-    if let Err(e) = safe_dump {
-        log::error!("[Character Dump] CRITICAL SEH EXCEPTION in main dump loop: {:#?}", e);
-    }
 
+			if let Err(e) = safe_player_data {
+				log::debug!("[Character Dump] SEH Exception caught while reading PlayerData: {:#?}", e);
+			}
+
+			// ==========================================
+			// 2. LẤY DANH SÁCH NHÂN VẬT TỪ DICTIONARY
+			// ==========================================
+			//log::info!("[Character Dump] Accessing Avatar Module...");
+			let avatar_module = module_manager.AvatarModule()?;
+			let mut all_row_ptrs = Vec::new();
+			
+			if let Ok(all_avatars) = avatar_module.get_AllAvatars() {
+				if !all_avatars.as_ptr().is_null() {
+					if let Ok(rows) = extract_rows_from_dict_ram(all_avatars.as_ptr() as _) {
+						//log::info!("[Character Dump] Extracted {} rows from AllAvatars.", rows.len());
+						all_row_ptrs.extend(rows);
+					}
+				}
+			}
+			
+			if let Ok(multi_path_avatars) = avatar_module.get_AllMultiPathAvatars() {
+				if !multi_path_avatars.as_ptr().is_null() {
+					if let Ok(rows) = extract_rows_from_dict_ram(multi_path_avatars.as_ptr() as _) {
+						//log::info!("[Character Dump] Extracted {} rows from AllMultiPathAvatars.", rows.len());
+						all_row_ptrs.extend(rows);
+					}
+				}
+			}
+
+			if all_row_ptrs.is_empty() {
+				log::debug!("[Character Dump] No avatars found. Aborting character dump.");
+				return Ok(()); 
+			}
+			
+			//log::info!("[Character Dump] Processing {} raw avatar entries...", all_row_ptrs.len());
+
+			// ==========================================
+			// 3. DUYỆT VÀ XỬ LÝ TỪNG NHÂN VẬT
+			// ==========================================
+			for (_i, row_ptr) in all_row_ptrs.iter().enumerate() {
+				let avatar_data = RPG_Client_AvatarData(*row_ptr as _);
+				
+				let base_id = match avatar_data.get_RealID() {
+					Ok(id) => id,
+					Err(_) => continue,
+				};
+
+				// Detect Stelle hay Caelus cực kỳ an toàn
+				if base_id >= 8000 && base_id < 9000 {
+					let gender = if base_id % 2 == 0 { "Stelle" } else { "Caelus" };
+					trailblazer_gender = gender.to_string();
+					//log::info!("[Character Dump] Detected Trailblazer (ID: {}). Identified gender: {}", base_id, trailblazer_gender);
+				}
+
+				let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(base_id)?;
+				if avatar_row.0.is_null() { continue; }
+
+				let path_enum_val = *avatar_row.AvatarBaseType()?;
+				let level = avatar_data.get_Level().unwrap_or(1);
+				let promotion = avatar_data.get_Promotion().unwrap_or(0);
+				let rank = avatar_data.get_Rank().unwrap_or(0);
+				let enhanced_id = avatar_data.get_EnhancedID().unwrap_or(0);
+				let ability_version = if enhanced_id > 0 && enhanced_id != base_id && base_id < 8000 { 1 } else { 0 };
+
+				let path_str = match path_enum_val {
+					RPG_GameCore_AvatarBaseType::Warrior => "Destruction",
+					RPG_GameCore_AvatarBaseType::Rogue => "Hunt",
+					RPG_GameCore_AvatarBaseType::Mage => "Erudition",
+					RPG_GameCore_AvatarBaseType::Shaman => "Harmony",
+					RPG_GameCore_AvatarBaseType::Warlock => "Nihility",
+					RPG_GameCore_AvatarBaseType::Knight => "Preservation",
+					RPG_GameCore_AvatarBaseType::Priest => "Abundance",
+					RPG_GameCore_AvatarBaseType::Memory => "Remembrance",
+					RPG_GameCore_AvatarBaseType::Elation => "Elation",
+					_ => "Unknown",
+				};
+				
+				let mut name = format!("Avatar_{}", base_id);
+				let name_safe_fetch = microseh::try_seh(|| {
+					avatar_data.AvatarName().map(|s| s.to_string())
+				});
+
+				if let Ok(Ok(name_str)) = name_safe_fetch {
+					let clean = sanitize_entity_name(name_str);
+					if !clean.is_empty() {
+						name = clean;
+					}
+				} else if base_id >= 8000 {
+					name = format!("{} MC", path_str); 
+				}
+				
+				// --- SKILL TREE (ĐỌC TRỰC TIẾP TỪ RAM ĐỂ TRÁNH SPAM LOG) ---
+				let mut skills = FribbelsSkills { basic: 1, skill: 1, ult: 1, talent: 1, elation: None};
+				let mut traces = FribbelsTraces {
+					ability_1: false, ability_2: false, ability_3: false,
+					stat_1: false, stat_2: false, stat_3: false, stat_4: false, stat_5: false,
+					stat_6: false, stat_7: false, stat_8: false, stat_9: false, stat_10: false, special: false,
+				};
+				let mut memosprite = None;
+				//log::debug!("[SkillTree Debug] [{}] ----------------------------------------", base_id);
+				//log::debug!("[SkillTree Debug] [{}] Attempting to read SkillTreeData...", base_id);
+
+				if let Ok(skill_tree_data) = avatar_data.SkillTreeData() {
+					if skill_tree_data.0.is_null() {
+						log::debug!("[SkillTree Debug] [{}] SkillTreeData pointer is NULL.", base_id);
+					} else if levels_offset == 0 {
+						log::error!("[SkillTree Debug] [{}] levels_offset is invalid (0x0)!", base_id);
+					} else {
+						let base_ptr = skill_tree_data.0 as *const u8;
+						let level_ptr = *(base_ptr.add(levels_offset) as *const *mut std::ffi::c_void);
+
+						//log::debug!("[SkillTree Debug] [{}] Read Pointer -> level_ptr: {:p}", base_id, level_ptr);
+
+						if !level_ptr.is_null() {
+							// 1. Lấy Dictionary chứa Level của các Node (PointID -> Level)
+							let level_dict = extract_primitive_dict_ram(level_ptr).unwrap_or_default();
+							//log::debug!("[SkillTree Debug] [{}] Extracted Dict -> level_dict size: {}", base_id, level_dict.len());
+							
+							let mut anchor_to_level: HashMap<u32, u32> = HashMap::new();
+
+							// 2. Duyệt qua từng PointID mà nhân vật đang có
+							for (&point_id, &level) in &level_dict {
+								// Hỏi Excel Table xem PointID này là kỹ năng gì (Truyền Level = 1 để lấy base info)
+								if let Ok(row) = RPG_GameCore_AvatarSkillTreeExcelTable::GetData(point_id, 1) {
+									if !row.0.is_null() {
+										if let Ok(anchor_box) = row.AnchorType() {
+											let anchor_type = *anchor_box as u32;
+											
+											// Lưu vào map: AnchorType -> Level (Lấy level cao nhất nếu có trùng lặp)
+											let current_max = anchor_to_level.get(&anchor_type).copied().unwrap_or(0);
+											anchor_to_level.insert(anchor_type, std::cmp::max(current_max, level));
+											
+											//log::debug!("[SkillTree Debug] [{}] Mapped PointID: {} -> AnchorType: {}, Level: {}", base_id, point_id, anchor_type, level);
+										} else {
+											log::debug!("[SkillTree Debug] [{}] Failed to read AnchorType for PointID: {}", base_id, point_id);
+										}
+									} else {
+										log::debug!("[SkillTree Debug] [{}] ExcelTable returned NULL row for PointID: {}", base_id, point_id);
+									}
+								} else {
+									log::debug!("[SkillTree Debug] [{}] Failed to call GetData for PointID: {}", base_id, point_id);
+								}
+							}
+
+							// 3. Gán dữ liệu vào struct Fribbels
+							let get_lv = |anchor_type: u32| -> u32 { 
+								anchor_to_level.get(&anchor_type).copied().unwrap_or(0) 
+							};
+
+							skills.basic = std::cmp::max(1, get_lv(1));
+							skills.skill = std::cmp::max(1, get_lv(2));
+							skills.ult = std::cmp::max(1, get_lv(3));
+							skills.talent = std::cmp::max(1, get_lv(4));
+
+							// Gán Elation nếu có
+							let elation_lv = get_lv(22);
+							skills.elation = if elation_lv > 0 { Some(elation_lv) } else { None };
+
+							// Gán Memosprite (Pet)
+							memosprite = FribbelsMemosprite {
+								skill: get_lv(19),
+								talent: get_lv(20),
+							}.if_present();
+
+							traces.ability_1 = get_lv(6) > 0; 
+							traces.ability_2 = get_lv(7) > 0; 
+							traces.ability_3 = get_lv(8) > 0;
+
+							traces.stat_1 = get_lv(9) > 0; 
+							traces.stat_2 = get_lv(10) > 0; 
+							traces.stat_3 = get_lv(11) > 0;
+							traces.stat_4 = get_lv(12) > 0; 
+							traces.stat_5 = get_lv(13) > 0; 
+							traces.stat_6 = get_lv(14) > 0;
+							traces.stat_7 = get_lv(15) > 0; 
+							traces.stat_8 = get_lv(16) > 0; 
+							traces.stat_9 = get_lv(17) > 0;
+							traces.stat_10 = get_lv(18) > 0;
+
+							traces.special = get_lv(21) > 0;
+
+							//log::info!("[SkillTree Debug] [{}] Final Skills: B:{}, S:{}, U:{}, T:{}", base_id, skills.basic, skills.skill, skills.ult, skills.talent);
+						} else {
+							log::debug!("[SkillTree Debug] [{}] level_ptr is NULL.", base_id);
+						}
+					}
+				} else {
+					log::debug!("[SkillTree Debug] [{}] Failed to call avatar_data.SkillTreeData()", base_id);
+				}
+
+				characters_map.insert(base_id, FribbelsCharacter {
+					id: base_id.to_string(),
+					name,
+					path: path_str.to_string(),
+					level,
+					ascension: promotion,
+					eidolon: rank,
+					skills,
+					traces,
+					memosprite,
+					ability_version,
+				});
+			}
+			
+			Ok::<(), anyhow::Error>(())
+		});
+		
+		if let Err(e) = safe_dump {
+			log::error!("[Character Dump] CRITICAL SEH EXCEPTION in main dump loop: {:#?}", e);
+		}
+	}
     //log::info!("[Character Dump] Successfully processed {} unique characters.", characters_map.len());
     
     let trailblazer_meta = format!("{} ({})", account_name, trailblazer_gender);
@@ -1098,22 +1099,22 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
     Ok((characters_map.into_values().collect::<Vec<_>>(), player_uid, trailblazer_meta))
 }
 
-pub unsafe fn extract_primitive_dict_ram(dict_ptr: *mut std::ffi::c_void) -> anyhow::Result<std::collections::HashMap<u32, u32>> {
+pub unsafe fn extract_primitive_dict_ram(dict_ptr: *mut std::ffi::c_void) -> anyhow::Result<HashMap<u32, u32>> {
     //log::info!("[DictReader] Starting to read primitive dictionary at ptr: {:p}", dict_ptr);
 
     if dict_ptr.is_null() {
         //log::warn!("[DictReader] Dictionary pointer is null. Aborting.");
-        return Ok(std::collections::HashMap::new());
+        return Ok(HashMap::new());
     }
 
-    let class_ptr = *(dict_ptr as *const *const std::ffi::c_void);
+    let class_ptr = unsafe { *(dict_ptr as *const *const std::ffi::c_void) };
     let dict_class = il2cpp_runtime::Il2CppClass(class_ptr);
     //log::info!("[DictReader] Dictionary class name: {}", dict_class.name());
 
     let mut count_offset = 0;
     let mut entries_offset = 0;
 
-    let mut field_iter: *const std::ffi::c_void = std::ptr::null();
+    let field_iter: *const std::ffi::c_void = std::ptr::null();
     loop {
         let field = il2cpp_runtime::api::il2cpp_class_get_fields(dict_class, &field_iter);
         if field.0.is_null() { break; }
@@ -1132,30 +1133,30 @@ pub unsafe fn extract_primitive_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
     }
     //log::info!("[DictReader] Found offsets: _count -> {:#x}, _entries -> {:#x}", count_offset, entries_offset);
 
-    let count = *(dict_ptr.add(count_offset) as *const i32);
+    let count = unsafe { *(dict_ptr.add(count_offset) as *const i32) };
     //log::info!("[DictReader] Dictionary count: {}", count);
-    if count <= 0 { return Ok(std::collections::HashMap::new()); }
+    if count <= 0 { return Ok(HashMap::new()); }
 
-    let entries_array_ptr = *(dict_ptr.add(entries_offset) as *const *const u8);
+    let entries_array_ptr = unsafe { *(dict_ptr.add(entries_offset) as *const *const u8) };
     //log::info!("[DictReader] Entries array pointer: {:p}", entries_array_ptr);
     if entries_array_ptr.is_null() { 
         //log::warn!("[DictReader] Entries array pointer is null. Aborting.");
-        return Ok(std::collections::HashMap::new()); 
+        return Ok(HashMap::new()); 
     }
 
-    let mut map = std::collections::HashMap::new();
-    let array_data_start = entries_array_ptr.add(0x20);
+    let mut map = HashMap::new();
+    let array_data_start = unsafe { entries_array_ptr.add(0x20) };
     //log::info!("[DictReader] Array data starts at: {:p}", array_data_start);
 
     for i in 0..count {
         // Entry size cho <int, uint> hoặc <uint, uint> là 0x10 (16 bytes)
         // Cấu trúc: hashCode (4 bytes) | next (4 bytes) | key (4 bytes) | value (4 bytes)
-        let entry_ptr = array_data_start.add((i as usize) * 0x10);
-        let hash_code = *(entry_ptr.add(0x00) as *const i32);
+        let entry_ptr = unsafe { array_data_start.add((i as usize) * 0x10) };
+        let hash_code = unsafe { *(entry_ptr.add(0x00) as *const i32) };
         
         if hash_code >= 0 {
-            let key = *(entry_ptr.add(0x08) as *const u32);
-            let value = *(entry_ptr.add(0x0C) as *const u32);
+            let key = unsafe { *(entry_ptr.add(0x08) as *const u32) };
+            let value = unsafe { *(entry_ptr.add(0x0C) as *const u32) };
             map.insert(key, value);
             // Log mỗi 10 entry để tránh spam log
             if i % 10 == 0 {
@@ -1170,11 +1171,11 @@ pub unsafe fn extract_primitive_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
 
 unsafe fn get_field_offset(class_name: &str, field_name: &str) -> usize {
     if let Ok(class) = il2cpp_runtime::get_cached_class(class_name) {
-        let mut field_iter: *const std::ffi::c_void = std::ptr::null();
+        let field_iter: *const std::ffi::c_void = std::ptr::null();
         loop {
             let field = il2cpp_runtime::api::il2cpp_class_get_fields(class, &field_iter);
             if field.0.is_null() { break; }
-            let name = il2cpp_runtime::utils::cstr_to_str(il2cpp_runtime::api::il2cpp_field_get_name(field));
+            let name = unsafe { il2cpp_runtime::utils::cstr_to_str(il2cpp_runtime::api::il2cpp_field_get_name(field)) };
             if name == field_name {
                 return il2cpp_runtime::api::il2cpp_field_get_offset(field) as usize;
             }

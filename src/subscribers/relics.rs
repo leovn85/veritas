@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use il2cpp_runtime::{Il2CppObject, types::List, get_cached_class, api::{il2cpp_class_get_fields, il2cpp_field_get_type, il2cpp_field_get_offset}};
 use il2cpp_runtime::prelude::*;
 use std::ffi::c_void;
@@ -56,17 +56,17 @@ unsafe fn get_relic_affix_offsets() -> Result<RelicAffixOffsets> {
 	if let Some(offsets) = RELIC_AFFIX_OFFSETS.get() {
 		return Ok(*offsets);
 	}
-	let offsets = resolve_relic_affix_offsets()?;
+	let offsets = unsafe { resolve_relic_affix_offsets()? };
 	let _ = RELIC_AFFIX_OFFSETS.set(offsets);
 	Ok(offsets)
 }
 
 //use crate::subscribers::subscribe_function;
 use crate::kreide::types::{
-	HANGJNJOFEC, RPG_Client_EquipmentItemData, RPG_Client_InventoryModule, RPG_Client_RelicItemData, RPG_Client_TextmapStatic, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_FixPoint, RPG_GameCore_GamePlayStatic, RPG_GameCore_RelicBaseTypeExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicSubAffixConfigExcelTable
+	RPG_Client_EquipmentItemData, RPG_Client_InventoryModule, RPG_Client_RelicItemData, RPG_Client_TextmapStatic, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_FixPoint, RPG_GameCore_GamePlayStatic, RPG_GameCore_RelicBaseTypeExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicSubAffixConfigExcelTable
 };
 use crate::models::misc::{LightCone, Relic, RelicMainStat, RelicRolls, RelicSubstat, ReliquaryLightCone, ReliquaryRelic};
-use crate::relic_utils::{calc_initial_rolls, get_light_cones, get_relics, pick_low_mid_high, write_light_cones_to_json, write_relics_to_json};
+use crate::relic_utils::{calc_initial_rolls, get_light_cones, get_relics, pick_low_mid_high/*, write_light_cones_to_json, write_relics_to_json*/};
 
 retour::static_detour! {
 	static _UpdateRelics_Detour: unsafe extern "C" fn(RPG_Client_InventoryModule, List, bool);
@@ -249,25 +249,42 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
 
 		let parse_affix_array = |array: Il2CppArray| -> Result<Option<Vec<crate::models::misc::Substat>>> {
 			if array.as_ptr().is_null() || array.len() == 0 {
-				return Ok(None); // An toàn: Không bị crash nếu array bị NULL
+				return Ok(None);
 			}
 			
 			let mut subs = Vec::new();
-			let offsets = unsafe { get_relic_affix_offsets()? };
+			let offsets = get_relic_affix_offsets()?;
 
 			for i in 0..array.len() {
 				let affix_obj: &SystemObjectDummy = array.get(i);
 				let ptr = affix_obj.as_ptr() as *const u8;
 				
-				let count = unsafe { *(ptr.add(offsets.count) as *const u32) };
-				let step = unsafe { *(ptr.add(offsets.step) as *const u32) };
-				let affix_id = unsafe { *(ptr.add(offsets.property_id) as *const u32) };
+				let count = *(ptr.add(offsets.count) as *const u32);
+				let step = *(ptr.add(offsets.step) as *const u32);
+				let affix_id = *(ptr.add(offsets.property_id) as *const u32);
+
+                // 1. KIỂM TRA AFFIX_ID: Bỏ qua các slot trống (ID = 0)
+                if affix_id == 0 {
+                    continue;
+                }
 
 				let sub_property = this._GetPropertyTypeBySubAffixID(affix_id)?;
 				let sub_row_data = RPG_GameCore_AvatarPropertyExcelTable::GetData(sub_property)?;
+
+                // 2. KIỂM TRA NULL POINTER: Bắt buộc phải có để tránh lỗi FFI
+                if sub_row_data.0.is_null() {
+                    continue;
+                }
+
 				let property_name = RPG_Client_TextmapStatic::get_text(&*sub_row_data.PropertyName()?, std::ptr::null())?.to_string();
 
 				let relic_sub_affix_config = RPG_GameCore_RelicSubAffixConfigExcelTable::GetData((*relic_row.SubAffixGroup()?).0, affix_id)?;
+                
+                // Cũng nên check thêm an toàn cho relic_sub_affix_config
+                if relic_sub_affix_config.0.is_null() {
+                    continue;
+                }
+
 				let mut value: f64 = RPG_GameCore_GamePlayStatic::CalcRelicSubAffixValue(*relic_sub_affix_config.BaseValue()?, *relic_sub_affix_config.StepValue()?, count, step)?.into();
 				
 				let mut key = property_name;

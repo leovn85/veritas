@@ -34,7 +34,7 @@ pub fn __log_error(_args: std::fmt::Arguments<'_>) {
 }
 
 use crate::errors::Il2CppError;
-use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
+use std::{collections::HashMap, sync::OnceLock};
 
 static API_TABLE_OFFSET: OnceLock<usize> = OnceLock::new();
 

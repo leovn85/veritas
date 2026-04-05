@@ -177,11 +177,14 @@ impl RPG_Client_AvatarData {
 	#[il2cpp_getter_property(property = "AdventurePlayerID")]
     pub fn get_AdventurePlayerID(&self) -> u32 {}
 	
+	#[il2cpp_getter_property(property = "DamageType")]
+    pub fn get_DamageType(&self) -> u32 {}
+	
 	// #[il2cpp_getter_property(property = "ProfessionType")]
     // pub fn get_ProfessionType(&self) -> RPG_GameCore_AvatarBaseType__Boxed {}
 	
-	#[il2cpp_method(name = "get_ProfessionType", args = [])]
-    pub fn get_ProfessionType(&self) -> RPG_GameCore_AvatarBaseType__Boxed {}
+	//#[il2cpp_method(name = "get_ProfessionType", args = [])]
+    //pub fn get_ProfessionType(&self) -> RPG_GameCore_AvatarBaseType__Boxed {}
 
     #[il2cpp_getter_property(property = "EnhancedID")]
     pub fn get_EnhancedID(&self) -> u32 {}
@@ -238,6 +241,21 @@ pub struct RPG_GameCore_AvatarPropertyExcelTable;
 impl RPG_GameCore_AvatarPropertyExcelTable {
     #[il2cpp_method(name = "GetData", args = ["RPG.GameCore.AvatarPropertyType"])]
     pub fn GetData(property_type: RPG_GameCore_AvatarPropertyType) -> RPG_GameCore_AvatarPropertyRow {}
+}
+
+#[il2cpp_enum_type(i32)]
+pub enum RPG_GameCore_AttackDamageType {
+	// Fields
+	Unknow = 0, 
+	Physical = 1,
+	Fire = 2,
+	Ice = 4,
+	Thunder = 8,
+	Wind = 16,
+	Quantum = 32,
+	Imaginary = 64,
+	Heal = 128,
+	AllType = 255,
 }
 
 #[il2cpp_enum_type(i32)]
@@ -1025,6 +1043,9 @@ impl RPG_GameCore_AvatarRow {
 	
 	#[il2cpp_field(name = "AvatarBaseType")]
 	pub fn AvatarBaseType(&self) -> RPG_GameCore_AvatarBaseType__Boxed {}
+	
+	#[il2cpp_field(name = "DamageType")]
+	pub fn DamageType(&self) -> RPG_GameCore_AttackDamageType__Boxed {}
 }
 
 #[il2cpp_ref_type("RPG.GameCore.MonsterTemplateExcelTable")]
