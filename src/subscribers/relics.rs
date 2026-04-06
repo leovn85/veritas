@@ -43,9 +43,9 @@ unsafe fn resolve_relic_affix_offsets() -> Result<RelicAffixOffsets> {
 	if uint_offsets.len() >= 3 {
 		uint_offsets.sort(); 
 		Ok(RelicAffixOffsets {
-			property_id: uint_offsets[0],
+			count: uint_offsets[0],
 			step: uint_offsets[1],
-			count: uint_offsets[2],
+			property_id: uint_offsets[2],
 		})
 	} else {
 		Err(anyhow!("Failed to dynamically resolve RelicAffix fields!"))
@@ -246,10 +246,10 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
 				raw_step: step,	  // TRUYỀN VÀO ĐÂY
 			});
 		} */
-
+		
 		let parse_affix_array = |array: Il2CppArray| -> Result<Option<Vec<crate::models::misc::Substat>>> {
 			if array.as_ptr().is_null() || array.len() == 0 {
-				return Ok(None);
+				return Ok(None); // An toàn: Không bị crash nếu array bị NULL
 			}
 			
 			let mut subs = Vec::new();
@@ -262,30 +262,35 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
 				let count = *(ptr.add(offsets.count) as *const u32);
 				let step = *(ptr.add(offsets.step) as *const u32);
 				let affix_id = *(ptr.add(offsets.property_id) as *const u32);
-
-                // 1. KIỂM TRA AFFIX_ID: Bỏ qua các slot trống (ID = 0)
-                if affix_id == 0 {
+				
+				if affix_id == 0 {
                     continue;
                 }
+
+				// println!("Count     | Offset: {:<4} | Value: {}", offsets.count, count);
+				// println!("Step      | Offset: {:<4} | Value: {}", offsets.step, step);
+				// println!("Affix ID  | Offset: {:<4} | Value: {}", offsets.property_id, affix_id);
 
 				let sub_property = this._GetPropertyTypeBySubAffixID(affix_id)?;
 				let sub_row_data = RPG_GameCore_AvatarPropertyExcelTable::GetData(sub_property)?;
-
-                // 2. KIỂM TRA NULL POINTER: Bắt buộc phải có để tránh lỗi FFI
-                if sub_row_data.0.is_null() {
+				
+				if sub_row_data.0.is_null() {
                     continue;
                 }
-
+				
 				let property_name = RPG_Client_TextmapStatic::get_text(&*sub_row_data.PropertyName()?, std::ptr::null())?.to_string();
+				
+				//println!("property_name | Value: {}", property_name);
 
 				let relic_sub_affix_config = RPG_GameCore_RelicSubAffixConfigExcelTable::GetData((*relic_row.SubAffixGroup()?).0, affix_id)?;
-                
-                // Cũng nên check thêm an toàn cho relic_sub_affix_config
-                if relic_sub_affix_config.0.is_null() {
+				
+				if relic_sub_affix_config.0.is_null() {
                     continue;
                 }
-
+				
 				let mut value: f64 = RPG_GameCore_GamePlayStatic::CalcRelicSubAffixValue(*relic_sub_affix_config.BaseValue()?, *relic_sub_affix_config.StepValue()?, count, step)?.into();
+				
+				//println!("value from CalcRelicSubAffixValue | Value: {}", value);
 				
 				let mut key = property_name;
 				if value < 1.0 { key.push('_'); value *= 100.0; } // Ví dụ: "CRIT Rate" -> "CRIT Rate_"

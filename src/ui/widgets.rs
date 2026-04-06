@@ -4,7 +4,7 @@ use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::{
     battle::{display_damage_type, BattleContext, DamageTypeBreakdown},
-    kreide::types::{RPG_GameCore_AttackType, RPG_GameCore_AttackDamageType, RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyType},
+    kreide::types::{RPG_GameCore_AttackType, RPG_GameCore_AttackDamageType, RPG_GameCore_AvatarExcelTable, RPG_GameCore_AbilityProperty},
     models::misc::Avatar,
 };
 
@@ -122,7 +122,7 @@ impl App {
 						// Vẽ chữ % đè lên Avatar (Góc dưới phải)
 						let text_pos = image_response.clone().rect.right_bottom();
 						
-						let font = FontId::proportional(dim / 4.0); 
+						let font = FontId::proportional(dim / 3.5); 
 						let offsets = [
                             egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
                             egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
@@ -630,7 +630,7 @@ impl App {
 								0.0
 							};
 							let percentage_text = format!("{percentage:.0}%");
-							let font = FontId::proportional(dim / 4.0);
+							let font = FontId::proportional(dim / 3.5);
 							let offsets = [
                                 egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
                                 egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
@@ -830,21 +830,18 @@ impl App {
                 .map(|boxed| *boxed)
                 .ok()
         };
-
-        let get_stat = |prop: RPG_GameCore_AvatarPropertyType| -> f64 {
+		
+		
+        let get_stat = |prop: RPG_GameCore_AbilityProperty| -> f64 {
             stats.get_value(&prop.to_string()).unwrap_or(0.0)
         };
-
-        // 1. Helper tính Final Stat gộp gọn lại
-        let calc_final = |base, ratio, delta| -> f64 {
-            get_stat(base) * (1.0 + get_stat(ratio)) + get_stat(delta)
-        };
-
-        let final_atk = calc_final(RPG_GameCore_AvatarPropertyType::BaseAttack, RPG_GameCore_AvatarPropertyType::AttackAddedRatio, RPG_GameCore_AvatarPropertyType::AttackDelta);
-        let final_def = calc_final(RPG_GameCore_AvatarPropertyType::BaseDefence, RPG_GameCore_AvatarPropertyType::DefenceAddedRatio, RPG_GameCore_AvatarPropertyType::DefenceDelta);
-		//let final_atk = get_stat(RPG_GameCore_AvatarPropertyType::Attack);
-		//let final_def = get_stat(RPG_GameCore_AvatarPropertyType::Defence);
-        let final_spd = get_stat(RPG_GameCore_AvatarPropertyType::Speed);
+		
+        let final_atk = get_stat(RPG_GameCore_AbilityProperty::Attack);
+        
+        let final_def = get_stat(RPG_GameCore_AbilityProperty::Defence);
+		//let final_atk = get_stat(RPG_GameCore_AbilityProperty::Attack);
+		//let final_def = get_stat(RPG_GameCore_AbilityProperty::Defence);
+        let final_spd = get_stat(RPG_GameCore_AbilityProperty::Speed);
 
         egui::Grid::new("unified_character_stats_grid")
             .num_columns(2)
@@ -924,31 +921,34 @@ impl App {
 
                 // 2. ADVANCED STATS
                 draw_header(ui, t!("Advanced Stats").to_string());
-                draw_advanced_stat_row(ui, "CriticalChance", t!("CRIT Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::CriticalChance), true, false);
-                draw_advanced_stat_row(ui, "CriticalDamage", t!("CRIT DMG").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::CriticalDamage), true, false);
-                draw_advanced_stat_row(ui, "BreakDamageAddedRatio", t!("Break Effect").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::BreakDamageAddedRatio), true, false);
-                draw_advanced_stat_row(ui, "HealRatio", t!("Outgoing Healing Boost").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::HealRatio), true, false);
-                draw_advanced_stat_row(ui, "MaxSP", t!("Max Energy").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::MaxSP), false, false);
-                draw_advanced_stat_row(ui, "SPRatio", t!("Energy Regeneration Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::SPRatio), true, false);
-                draw_advanced_stat_row(ui, "StatusProbability", t!("Effect Hit Rate").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::StatusProbability), true, false);
-                draw_advanced_stat_row(ui, "StatusResistance", t!("Effect RES").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::StatusResistance), true, false);
-                draw_advanced_stat_row(ui, "ElationDamageAddedRatio", t!("Elation").to_string(), get_stat(RPG_GameCore_AvatarPropertyType::ElationDamageAddedRatio), true, false);
+                draw_advanced_stat_row(ui, "CriticalChance", t!("CRIT Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalChance), true, false);
+                draw_advanced_stat_row(ui, "CriticalDamage", t!("CRIT DMG").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalDamage), true, false);
+                draw_advanced_stat_row(ui, "BreakDamageAddedRatio", t!("Break Effect").to_string(), get_stat(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio), true, false);
+                draw_advanced_stat_row(ui, "HealRatio", t!("Outgoing Healing Boost").to_string(), get_stat(RPG_GameCore_AbilityProperty::HealRatio), true, false);
+                draw_advanced_stat_row(ui, "MaxSP", t!("Max Energy").to_string(), get_stat(RPG_GameCore_AbilityProperty::MaxSP), false, false);
+                draw_advanced_stat_row(ui, "SPRatio", t!("Energy Regeneration Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::SPRatio), true, false);
+                draw_advanced_stat_row(ui, "StatusProbability", t!("Effect Hit Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusProbability), true, false);
+                draw_advanced_stat_row(ui, "StatusResistance", t!("Effect RES").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusResistance), true, false);
+                draw_advanced_stat_row(ui, "ElationDamageAddedRatio", t!("Elation").to_string(), get_stat(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio), true, false);
 
                 // 3. DMG TYPE
                 draw_header(ui, t!("DMG Type").to_string());
                 let dmg_types = [
-                    (t!("Physical DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Physical, RPG_GameCore_AvatarPropertyType::PhysicalAddedRatio, "PhysicalAddedRatio"),
-                    (t!("Fire DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Fire, RPG_GameCore_AvatarPropertyType::FireAddedRatio, "FireAddedRatio"),
-                    (t!("Ice DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Ice, RPG_GameCore_AvatarPropertyType::IceAddedRatio, "IceAddedRatio"),
-                    (t!("Lightning DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Thunder, RPG_GameCore_AvatarPropertyType::ThunderAddedRatio, "ThunderAddedRatio"),
-                    (t!("Wind DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Wind, RPG_GameCore_AvatarPropertyType::WindAddedRatio, "WindAddedRatio"),
-                    (t!("Quantum DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Quantum, RPG_GameCore_AvatarPropertyType::QuantumAddedRatio, "QuantumAddedRatio"),
-                    (t!("Imaginary DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Imaginary, RPG_GameCore_AvatarPropertyType::ImaginaryAddedRatio, "ImaginaryAddedRatio"),
+                    (t!("Physical DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Physical, RPG_GameCore_AbilityProperty::PhysicalAddedRatio, "PhysicalAddedRatio"),
+                    (t!("Fire DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Fire, RPG_GameCore_AbilityProperty::FireAddedRatio, "FireAddedRatio"),
+                    (t!("Ice DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Ice, RPG_GameCore_AbilityProperty::IceAddedRatio, "IceAddedRatio"),
+                    (t!("Lightning DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Thunder, RPG_GameCore_AbilityProperty::ThunderAddedRatio, "ThunderAddedRatio"),
+                    (t!("Wind DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Wind, RPG_GameCore_AbilityProperty::WindAddedRatio, "WindAddedRatio"),
+                    (t!("Quantum DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Quantum, RPG_GameCore_AbilityProperty::QuantumAddedRatio, "QuantumAddedRatio"),
+                    (t!("Imaginary DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Imaginary, RPG_GameCore_AbilityProperty::ImaginaryAddedRatio, "ImaginaryAddedRatio"),
                 ];
 
                 if let Some(char_dmg_type) = character_damage_type {
                     if let Some((label, _, prop, icon_key)) = dmg_types.iter().find(|(_, dmg_type, _, _)| *dmg_type == char_dmg_type) {
-                        draw_advanced_stat_row(ui, icon_key, label.to_string(), get_stat(*prop), true, true);
+						let base_elemental_dmg = get_stat(*prop);
+						let generic_bonus = get_stat(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio);
+						let final_dmg_value = base_elemental_dmg + generic_bonus;
+                        draw_advanced_stat_row(ui, icon_key, label.to_string(), final_dmg_value, true, true);
                     }
                 }
             });

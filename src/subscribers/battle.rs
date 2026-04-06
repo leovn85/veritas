@@ -986,30 +986,44 @@ pub fn on_stat_change(
         // let property_kind =
             // System_Enum::get_name(get_type_handle("RPG.GameCore.AbilityProperty")?, boxed.0)?;
 		
+		// let attk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) {
+			// Ok(val) => fixpoint_to_raw(&val),
+			// Err(_) => 0.0,
+		// };
+		
+		//println!("  {:<25}: {:.4}", "ATK from on_stat_change", attk);
+		
 		let property_kind = get_property_name_cached(property)?;
         let property_value = fixpoint_to_raw(&new_stat);
         let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
 
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
-                let e = match helpers::get_avatar_from_entity(entity) {
-                    Ok(avatar) => Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-                        entity: Entity {
-                            uid: avatar.id,
-                            team: Team::Player,
-                        },
-                        property: Property {
-                            kind: property_kind.to_string(),
-                            value: property_value,
-                        },
-                    })),
-                    Err(e) => {
-                        log::error!("Avatar Event Error: {}", e);
+                if let Ok(avatar) = helpers::get_avatar_from_entity(entity) {
+                    // 1. Gửi thuộc tính gốc vừa bị thay đổi
+                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                        entity: Entity { uid: avatar.id, team: Team::Player },
+                        property: Property { kind: property_kind.to_string(), value: property_value },
+                    })));
+                    // 2. ÉP ENGINE TÍNH FINAL ATK, DEF, SPD VÀ LƯU LUÔN VÀO HASHMAP
+                    let final_atk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+                    let final_def = match instance.get_property(RPG_GameCore_AbilityProperty::Defence) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+                    //let final_spd = fixpoint_to_raw(&instance.get_property(RPG_GameCore_AbilityProperty::Speed).unwrap_or_default());
+					let final_all_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
 
-                        Err(anyhow!("{} Avatar Event Error: {}", function_name!(), e))
-                    }
-                };
-                BattleContext::handle_event(e);
+                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                        entity: Entity { uid: avatar.id, team: Team::Player },
+                        property: Property { kind: "Attack".to_string(), value: final_atk },
+                    })));
+                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                        entity: Entity { uid: avatar.id, team: Team::Player },
+                        property: Property { kind: "Defence".to_string(), value: final_def },
+                    })));
+                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                        entity: Entity { uid: avatar.id, team: Team::Player },
+                        property: Property { kind: "AllDamageTypeAddedRatio".to_string(), value: final_all_dmg },
+                    })));
+				}
             }
             RPG_GameCore_EntityType::Monster => {
                 BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
