@@ -362,6 +362,54 @@ unsafe fn render_texture_to_png_bytes(tex: UnityEngine_Texture2D) -> Result<Vec<
     }
 }
 
+unsafe fn render_texture_to_raw_bytes(tex: UnityEngine_Texture2D) -> Result<(usize, usize, Vec<u8>)> {
+    unsafe {
+        let (default_format, rw_format) = get_render_texture_formats()?;
+        let width = tex.as_base().get_width()? as usize;
+        let height = tex.as_base().get_height()? as usize;
+
+        let render_tex = UnityEngine_RenderTexture::GetTemporary(
+            width as i32, height as i32, 0, default_format, rw_format,
+        )?;
+        UnityEngine_Graphics::Blit(tex, render_tex)?;
+        let prev = UnityEngine_RenderTexture::GetActive()?;
+        UnityEngine_RenderTexture::set_active(render_tex)?;
+
+        use il2cpp_runtime::api::il2cpp_object_new;
+        let readable_tex = UnityEngine_Texture2D(il2cpp_object_new(get_cached_class(
+            UnityEngine_Texture2D::ffi_name(),
+        )?));
+
+        readable_tex.new(width as i32, height as i32)?;
+        readable_tex.read_pixels(
+            UnityEngine_Rect {
+                x: 0., y: 0.,
+                width: width as f32, height: height as f32,
+            },
+            0, 0,
+        )?;
+        readable_tex.apply()?;
+        UnityEngine_RenderTexture::set_active(prev)?;
+        UnityEngine_RenderTexture::ReleaseTemporary(render_tex)?;
+
+        // THAY ĐỔI CỐT LÕI: Lấy trực tiếp mảng Color32 thay vì EncodeToPNG
+        let array = readable_tex.get_pixels32()?;
+        
+        // Đọc trực tiếp từ bộ nhớ RAM của Unity (Offset 0x20 là nơi bắt đầu data của Il2CppArray)
+        let data_ptr = (array.as_ptr() as *const u8).add(0x20);
+        let raw_slice = std::slice::from_raw_parts(data_ptr, width * height * 4);
+
+        // Unity dùng Bottom-Up, Egui dùng Top-Down -> Lật mảng theo chiều dọc
+        let mut flipped_rgba = Vec::with_capacity(width * height * 4);
+        for y in (0..height).rev() {
+            let row_start = y * width * 4;
+            flipped_rgba.extend_from_slice(&raw_slice[row_start..row_start + width * 4]);
+        }
+
+        Ok((width, height, flipped_rgba))
+    }
+}
+
 pub fn get_monster_png_bytes(monster_row_data: &RPG_GameCore_MonsterRowData) -> Result<Vec<u8>> {
     unsafe {
         //let monster_row = RPG_GameCore_MonsterTemplateExcelTable::GetData(monster_id)?;		
@@ -383,6 +431,30 @@ pub fn get_monster_png_bytes(monster_row_data: &RPG_GameCore_MonsterRowData) -> 
         let tex = sprite.get_texture()?;
 
         render_texture_to_png_bytes(tex)
+    }
+}
+
+pub fn get_monster_raw_bytes(monster_row_data: &RPG_GameCore_MonsterRowData) -> Result<(usize, usize, Vec<u8>)> {
+    unsafe {
+        //let monster_row = RPG_GameCore_MonsterTemplateExcelTable::GetData(monster_id)?;		
+		let icon_path = monster_row_data.get_RoundIconPath()?; 
+		
+		if icon_path.0.is_null() {
+			return Err(anyhow::anyhow!("Monster IconPath is null"));
+		}
+		
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            //monster_row.RoundIconPath()?,
+			icon_path,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_raw_bytes(tex)
     }
 }
 
@@ -409,6 +481,29 @@ pub fn get_avatar_png_bytes(avatar_id: u32) -> Result<Vec<u8>> {
     }
 }
 
+pub fn get_avatar_raw_bytes(avatar_id: u32) -> Result<(usize, usize, Vec<u8>)> {
+    unsafe {
+        let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(avatar_id)?;
+        log::info!(
+            "Support Avatar: {}, Icon Path: {}",
+            avatar_id,
+            avatar_row.AvatarSideIconPath()?.to_string()
+        );
+
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            avatar_row.AvatarSideIconPath()?,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_raw_bytes(tex)
+    }
+}
+
 pub fn get_property_icon_png_bytes(property_name: &str) -> Result<Vec<u8>> {
     unsafe {
         let property_type = RPG_GameCore_AvatarPropertyType__Boxed(System_Enum::parse(
@@ -430,6 +525,30 @@ pub fn get_property_icon_png_bytes(property_name: &str) -> Result<Vec<u8>> {
         let tex = sprite.get_texture()?;
 
         render_texture_to_png_bytes(tex)
+    }
+}
+
+pub fn get_property_icon_raw_bytes(property_name: &str) -> Result<(usize, usize, Vec<u8>)> {
+    unsafe {
+        let property_type = RPG_GameCore_AvatarPropertyType__Boxed(System_Enum::parse(
+            get_type_handle("RPG.GameCore.AvatarPropertyType")?,
+            Il2CppString::new(property_name)?,
+        )?);
+        
+        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(*property_type)?;
+        let icon_path = row.IconPath()?;
+
+        let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
+        
+        let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
+            icon_path,
+            type_handle,
+            false,
+        )?;
+        let sprite = UnityEngine_Sprite(sprite.0);
+        let tex = sprite.get_texture()?;
+
+        render_texture_to_raw_bytes(tex)
     }
 }
 

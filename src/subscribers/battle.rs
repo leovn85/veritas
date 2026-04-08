@@ -1,4 +1,4 @@
-use crate::battle::BattleContext;
+//use crate::battle::BattleContext;
 use crate::kreide::helpers::*;
 use crate::kreide::types::*;
 use crate::kreide::*;
@@ -354,7 +354,7 @@ fn on_damage(
             _ => {}
         }
         if let Some(event) = event {
-            BattleContext::handle_event(event);
+            crate::battle::send_battle_event(event);
         }
         Ok(())
     });
@@ -503,7 +503,7 @@ fn on_use_skill(
             _ => {}
         }
         if let Some(event) = event {
-            BattleContext::handle_event(event);
+            crate::battle::send_battle_event(event);
         }
         Ok(())
     });
@@ -707,7 +707,7 @@ fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) 
             _ => {}
         }
         if let Some(event) = event {
-            BattleContext::handle_event(event);
+            crate::battle::send_battle_event(event);
         }
         Ok(())
     });
@@ -763,7 +763,7 @@ fn on_set_lineup(
         } else {
             Ok(Event::OnSetBattleLineup(OnSetLineupEvent { avatars }))
         };
-        BattleContext::handle_event(event);
+        crate::battle::send_battle_event(event);
         Ok(())
     });
     ON_SET_LINEUP_Detour.call(instance, a1, a2, a3, a4, a5)
@@ -775,7 +775,7 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
     let res = ON_BATTLE_BEGIN_Detour.call(instance);
 	crate::ui::helpers::clear_monster_buffers();
     safe_call!({
-        BattleContext::handle_event(Ok(Event::OnBattleBegin(OnBattleBeginEvent {
+        crate::battle::send_battle_event(Ok(Event::OnBattleBegin(OnBattleBeginEvent {
             max_waves: u32::try_from(i32::from(
                 &*instance._WaveMonsterMaxCount_k__BackingField()?,
             ))?,
@@ -791,7 +791,7 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
 fn on_battle_end(instance: RPG_GameCore_TurnBasedGameMode) {
     log::debug!(function_name!());
     let res = ON_BATTLE_END_Detour.call(instance);
-    BattleContext::handle_event(Ok(Event::OnBattleEnd));
+    crate::battle::send_battle_event(Ok(Event::OnBattleEnd));
     res
 }
 
@@ -822,7 +822,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
                     }
                 };
 
-                BattleContext::handle_event(e);
+                crate::battle::send_battle_event(e);
             }
             RPG_GameCore_EntityType::Monster => {
                 let e = Ok(Event::OnTurnBegin(OnTurnBeginEvent {
@@ -833,10 +833,10 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
                     }),
                 }));
 
-                BattleContext::handle_event(e);
+                crate::battle::send_battle_event(e);
             }
             _ => {
-                BattleContext::handle_event(Ok(Event::OnTurnBegin(OnTurnBeginEvent {
+                crate::battle::send_battle_event(Ok(Event::OnTurnBegin(OnTurnBeginEvent {
                     action_value: get_elapsed_av(instance)?,
                     turn_owner: None,
                 })));
@@ -852,7 +852,7 @@ fn on_turn_end(instance: RPG_GameCore_TurnBasedAbilityComponent, a1: i32) {
     log::debug!(function_name!());
     // Can match player v enemy turn w/
     // RPG.GameCore.TurnBasedGameMode.GetCurrentTurnTeam
-    BattleContext::handle_event(Ok(Event::OnTurnEnd));
+    crate::battle::send_battle_event(Ok(Event::OnTurnEnd));
     ON_TURN_END_Detour.call(instance, a1)
 }
 
@@ -860,7 +860,7 @@ fn on_turn_end(instance: RPG_GameCore_TurnBasedAbilityComponent, a1: i32) {
 pub fn on_update_wave(instance: RPG_GameCore_TurnBasedGameMode) {
     let res = ON_UPDATE_WAVE_Detour.call(instance);
     safe_call!({
-        BattleContext::handle_event(Ok(Event::OnUpdateWave(OnUpdateWaveEvent {
+        crate::battle::send_battle_event(Ok(Event::OnUpdateWave(OnUpdateWaveEvent {
             wave: u32::try_from(i32::from(&*instance._WaveMonsterCurrentCount()?))?,
         })));
         Ok(())
@@ -872,7 +872,7 @@ pub fn on_update_wave(instance: RPG_GameCore_TurnBasedGameMode) {
 pub fn on_update_cycle(instance: RPG_GameCore_TurnBasedGameMode) -> u32 {
     log::debug!(function_name!());
     let cycle = ON_UPDATE_CYCLE_Detour.call(instance);
-    BattleContext::handle_event(Ok(Event::OnUpdateCycle(OnUpdateCycleEvent { cycle })));
+    crate::battle::send_battle_event(Ok(Event::OnUpdateCycle(OnUpdateCycleEvent { cycle })));
     cycle
 }
 
@@ -917,10 +917,10 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                         Err(anyhow!("{} Avatar Event Error: {}", function_name!(), e))
                     }
                 };
-                BattleContext::handle_event(e);
+                crate::battle::send_battle_event(e);
             }
             RPG_GameCore_EntityType::Monster => {
-                BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
@@ -1001,7 +1001,7 @@ pub fn on_stat_change(
             RPG_GameCore_EntityType::Avatar => {
                 if let Ok(avatar) = helpers::get_avatar_from_entity(entity) {
                     // 1. Gửi thuộc tính gốc vừa bị thay đổi
-                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
                         property: Property { kind: property_kind.to_string(), value: property_value },
                     })));
@@ -1011,22 +1011,22 @@ pub fn on_stat_change(
                     //let final_spd = fixpoint_to_raw(&instance.get_property(RPG_GameCore_AbilityProperty::Speed).unwrap_or_default());
 					let final_all_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
 
-                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
                         property: Property { kind: "Attack".to_string(), value: final_atk },
                     })));
-                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
                         property: Property { kind: "Defence".to_string(), value: final_def },
                     })));
-                    BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
                         property: Property { kind: "AllDamageTypeAddedRatio".to_string(), value: final_all_dmg },
                     })));
 				}
             }
             RPG_GameCore_EntityType::Monster => {
-                BattleContext::handle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+                crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
@@ -1057,7 +1057,7 @@ unsafe fn resolve_damage_offset() -> Result<usize> {
         if is_obfuscated_name(key) {
             if let Ok(method) = class.find_method(
                 "*",
-                vec![
+                &[
                     "RPG.GameCore.TaskContext",
                     "RPG.GameCore.DamageByAttackProperty",
                     "*",
@@ -1232,7 +1232,7 @@ unsafe fn resolve_defeated_entity_offset() -> Result<EntityDefeatedOffsets> {
 unsafe fn resolve_entity_defeated_offsets() -> Result<EntityDefeatedOffsets> {
     // 1. Tìm hàm _MakeLimboEntityDie để moi ra Class Event
     let game_mode_class = get_cached_class("RPG.GameCore.TurnBasedGameMode")?;
-    let limbo_method = game_mode_class.find_method("_MakeLimboEntityDie", vec!["*"])?;
+    let limbo_method = game_mode_class.find_method("_MakeLimboEntityDie", &["*"])?;
     
     // Tham số đầu tiên chính là Class EntityDefeatedEvent bị obfuscate
     let event_class = limbo_method.arg(0).class();
@@ -1323,7 +1323,7 @@ pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: *const c
                         Err(anyhow!("{} Avatar Event Error: {}", function_name!(), e))
                     }
                 };
-                BattleContext::handle_event(e);
+                crate::battle::send_battle_event(e);
             };
         }
         Ok(())
@@ -1354,7 +1354,7 @@ pub fn on_update_team_formation(instance: RPG_GameCore_TeamFormationComponent) {
                 })
                 .collect::<Vec<Entity>>();
 
-            BattleContext::handle_event(Ok(Event::OnUpdateTeamFormation(
+            crate::battle::send_battle_event(Ok(Event::OnUpdateTeamFormation(
                 OnUpdateTeamFormationEvent {
                     entities,
                     team: Team::Enemy,
@@ -1399,7 +1399,7 @@ pub fn on_initialize_enemy(
         let entity = instance._OwnerRef()?;
 
         
-        BattleContext::handle_event(Ok(Event::OnInitializeEnemy(OnInitializeEnemyEvent {
+        crate::battle::send_battle_event(Ok(Event::OnInitializeEnemy(OnInitializeEnemyEvent {
             enemy: Enemy {
                 id: monster_id,
                 uid: (*entity._RuntimeID_k__BackingField().unwrap()).into(),
@@ -1439,7 +1439,7 @@ pub fn subscribe() -> Result<()> {
             if is_obfuscated_name(key) {
                 if let Ok(method) = class.find_method(
                     "*",
-                    vec![
+                    &[
                         "RPG.GameCore.TaskContext",
                         "RPG.GameCore.DamageByAttackProperty",
                         "*",
@@ -1486,7 +1486,7 @@ pub fn subscribe() -> Result<()> {
                 let field_type = il2cpp_field_get_type(field);
                 if let Ok(method) = field_type
                     .class()
-                    .find_method("*", vec!["RPG.GameCore.TurnBasedGameMode"])
+                    .find_method("*", &["RPG.GameCore.TurnBasedGameMode"])
                 {
                     combo_instance_class = Some(field_type.class());
                     on_combo_method = Some(method);
@@ -1514,7 +1514,7 @@ pub fn subscribe() -> Result<()> {
             RPG_GameCore_SkillCharacterComponent::get_class_static()?
                 .find_method(
                     "UseSkill",
-                    vec![
+                    &[
                         "int",
                         "RPG.GameCore.AbilityCursorInfo",
                         "bool",
@@ -1532,7 +1532,7 @@ pub fn subscribe() -> Result<()> {
             RPG_GameCore_BattleInstance::get_class_static()?
                 .find_method(
                     ".ctor",
-                    vec!["*", "RPG.GameCore.BattleLineupData", "int", "uint", "bool"]
+                    &["*", "RPG.GameCore.BattleLineupData", "int", "uint", "bool"]
                 )?
                 .va(),
             on_set_lineup
@@ -1540,42 +1540,42 @@ pub fn subscribe() -> Result<()> {
         subscribe_function!(
             ON_BATTLE_BEGIN_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()?
-                .find_method("_GameModeBegin", vec![])?
+                .find_method("_GameModeBegin", &[])?
                 .va(),
             on_battle_begin
         )?;
         subscribe_function!(
             ON_BATTLE_END_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()?
-                .find_method("_GameModeEnd", vec![])?
+                .find_method("_GameModeEnd", &[])?
                 .va(),
             on_battle_end
         )?;
         subscribe_function!(
             ON_TURN_BEGIN_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()?
-                .find_method("DoTurnPrepareStartWork", vec![])?
+                .find_method("DoTurnPrepareStartWork", &[])?
                 .va(),
             on_turn_begin
         )?;
         subscribe_function!(
             ON_TURN_END_Detour,
             RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
-                .find_method("ProcessOnLevelTurnActionEndEvent", vec!["int"])?
+                .find_method("ProcessOnLevelTurnActionEndEvent", &["int"])?
                 .va(),
             on_turn_end
         )?;
         subscribe_function!(
             ON_UPDATE_WAVE_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()?
-                .find_method("UpdateCurrentWaveCount", vec![])?
+                .find_method("UpdateCurrentWaveCount", &[])?
                 .va(),
             on_update_wave
         )?;
         subscribe_function!(
             ON_UPDATE_CYCLE_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()?
-                .find_method("get_ChallengeTurnLeft", vec![])?
+                .find_method("get_ChallengeTurnLeft", &[])?
                 .va(),
             on_update_cycle
         )?;
@@ -1584,7 +1584,7 @@ pub fn subscribe() -> Result<()> {
             RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
                 .find_method(
                     "DirectChangeHP",
-                    vec![
+                    &[
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.FixPoint",
@@ -1600,7 +1600,7 @@ pub fn subscribe() -> Result<()> {
                 // Not sure if I need keyword out
                 .find_method(
                     "DirectDamageHP",
-                    vec![
+                    &[
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.FixPoint",
                         "RPG.GameCore.AntiLockHPStrength",
@@ -1617,7 +1617,7 @@ pub fn subscribe() -> Result<()> {
             RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
                 .find_method(
                     "ModifyProperty",
-                    vec![
+                    &[
                         "RPG.GameCore.AbilityProperty",
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
@@ -1631,14 +1631,14 @@ pub fn subscribe() -> Result<()> {
             ON_ENTITY_DEFEATED_Detour,
             RPG_GameCore_TurnBasedGameMode::get_class_static()
                 .unwrap()
-                .find_method("_MakeLimboEntityDie", vec!["*"])?
+                .find_method("_MakeLimboEntityDie", &["*"])?
                 .va(),
             on_entity_defeated
         )?;
         subscribe_function!(
             ON_UPDATE_TEAM_FORMATION_Detour,
             RPG_GameCore_TeamFormationComponent::get_class_static()?
-                .find_method("_RefreshTeammateIndex", vec![])?
+                .find_method("_RefreshTeammateIndex", &[])?
                 .va(),
             on_update_team_formation
         )?;
@@ -1647,7 +1647,7 @@ pub fn subscribe() -> Result<()> {
             RPG_GameCore_MonsterDataComponent::get_class_static()?
                 .find_method(
                     "OnAbilityCharacterInitialized",
-                    vec!["RPG.GameCore.TurnBasedAbilityComponent"],
+                    &["RPG.GameCore.TurnBasedAbilityComponent"],
                 )?
                 .va(),
             on_initialize_enemy

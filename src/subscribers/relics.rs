@@ -18,7 +18,7 @@ unsafe fn resolve_relic_affix_offsets() -> Result<RelicAffixOffsets> {
 	let relic_data_class = get_cached_class("RPG.Client.RelicItemData")?;
 
 	// 2. Lấy Method _GetAvatarPropertyTypeByRelicAffix
-	let method = relic_data_class.find_method("_GetAvatarPropertyTypeByRelicAffix", vec!["*"])?;
+	let method = relic_data_class.find_method("_GetAvatarPropertyTypeByRelicAffix", &["*"])?;
 	
 	// Tham số đầu tiên chính là Class RelicAffix bị obfuscate
 	let affix_class = method.arg(0).class();
@@ -364,14 +364,14 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
 pub fn subscribe() -> Result<()> {
 	unsafe {
 		let class_relic = RPG_Client_RelicItemData::get_class_static()?;
-		subscribe_function!(sync_relic_Detour, class_relic.find_method("Sync", vec!["*"])?.va(), sync_relic)?;
+		subscribe_function!(sync_relic_Detour, class_relic.find_method("Sync", &["*"])?.va(), sync_relic)?;
 
 		let class_inventory = RPG_Client_InventoryModule::get_class_static()?;
-		subscribe_function!(_UpdateRelics_Detour, class_inventory.find_method("_UpdateRelics", vec!["*", "bool"])?.va(), update_relics)?;
-		subscribe_function!(_UpdateEquipments_Detour, class_inventory.find_method("_UpdateEquipments", vec!["*", "bool"])?.va(), update_equipments)?;
+		subscribe_function!(_UpdateRelics_Detour, class_inventory.find_method("_UpdateRelics", &["*", "bool"])?.va(), update_relics)?;
+		subscribe_function!(_UpdateEquipments_Detour, class_inventory.find_method("_UpdateEquipments", &["*", "bool"])?.va(), update_equipments)?;
 
 		let class_equip = RPG_Client_EquipmentItemData::get_class_static()?;
-		subscribe_function!(sync_equipment_Detour, class_equip.find_method("Sync", vec!["*"])?.va(), sync_equipment)?;
+		subscribe_function!(sync_equipment_Detour, class_equip.find_method("Sync", &["*"])?.va(), sync_equipment)?;
 	}
 	Ok(())
 }

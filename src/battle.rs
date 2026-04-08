@@ -1,7 +1,8 @@
 use std::{
     collections::BTreeMap,
     str::FromStr,
-    sync::{LazyLock, Mutex, MutexGuard},
+    sync::{LazyLock, Mutex,/* MutexGuard,*/ RwLock, RwLockReadGuard, RwLockWriteGuard},
+	sync::mpsc::{channel, Sender},
 };
 
 //new import for reading json file to get battle mode
@@ -132,8 +133,32 @@ pub enum BattleMode {
     Other,
 }
 
-static BATTLE_CONTEXT: LazyLock<Mutex<BattleContext>> =
-    LazyLock::new(|| Mutex::new(BattleContext::default()));
+// static BATTLE_CONTEXT: LazyLock<Mutex<BattleContext>> =
+    // LazyLock::new(|| Mutex::new(BattleContext::default()));
+// Dùng RwLock để nhiều Widget trên UI có thể đọc (read) cùng lúc mà không block nhau
+static BATTLE_CONTEXT: LazyLock<RwLock<BattleContext>> =
+    LazyLock::new(|| RwLock::new(BattleContext::default()));
+
+// Channel toàn cục
+static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
+    let (tx, rx) = channel();
+    
+    // Tạo MỘT Background Thread duy nhất chuyên làm nhiệm vụ tính toán Logic
+    std::thread::spawn(move || {
+        // Vòng lặp vô tận, rx.recv() sẽ tự ngủ (sleep) khi không có event, KHÔNG ăn CPU
+        while let Ok(event) = rx.recv() {
+            // Có event thì lấy Write Lock để tính toán
+            BattleContext::process_event_internal(event);
+        }
+    });
+    
+    tx
+});
+
+// Hàm để Hook C++ gọi: Đẩy vào channel rồi return ngay lập tức!
+pub fn send_battle_event(event: Result<Event>) {
+    let _ = EVENT_CHANNEL.send(event); 
+}
 
 static EXPORT_DATA_READY: LazyLock<Mutex<Option<crate::export::ExportBattleData>>> =
     LazyLock::new(|| Mutex::new(None));
@@ -142,8 +167,22 @@ static CSV_DATA_READY: LazyLock<Mutex<Option<Vec<crate::export::ComprehensiveDat
     LazyLock::new(|| Mutex::new(None));
 
 impl BattleContext {
-    pub fn get_instance() -> MutexGuard<'static, Self> {
-        BATTLE_CONTEXT.lock().unwrap()
+    // pub fn get_instance() -> MutexGuard<'static, Self> {
+        // BATTLE_CONTEXT.lock().unwrap()
+    // }
+	// Cho UI đọc
+    pub fn get_instance() -> RwLockReadGuard<'static, Self> {
+        BATTLE_CONTEXT.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // Cho Background Thread ghi
+    fn get_instance_mut() -> RwLockWriteGuard<'static, Self> {
+        BATTLE_CONTEXT.write().unwrap_or_else(|e| e.into_inner())
+    }
+    
+    // Thêm hàm lấy state an toàn cho UI dùng
+    pub fn take_state() -> Option<BattleState> {
+        Self::get_instance_mut().state.take()
     }
 
     pub fn take_prepared_export_data() -> Option<crate::export::ExportBattleData> {
@@ -155,7 +194,7 @@ impl BattleContext {
     }
 
     fn find_lineup_index_by_avatar_id(
-        battle_context: &MutexGuard<'static, Self>,
+        battle_context: &RwLockWriteGuard<'static, Self>,
         avatar_id: u32,
     ) -> Option<usize> {
         let res = battle_context
@@ -166,7 +205,7 @@ impl BattleContext {
         res.map_or(None, |(index, _)| Some(index))
     }
 
-    fn initialize_battle_context(battle_context: &mut MutexGuard<'static, Self>) {
+    fn initialize_battle_context(battle_context: &mut RwLockWriteGuard<'static, Self>) {
         battle_context.current_turn_info = TurnInfo::default();
         battle_context.turn_history = Vec::new();
         battle_context.av_history = Vec::new();
@@ -212,7 +251,7 @@ impl BattleContext {
     // The lineup is setup first
     fn handle_on_battle_begin_event(
         e: OnBattleBeginEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         log::info!("Battle has started");
         log::info!("Max Waves: {}", e.max_waves);
@@ -232,7 +271,7 @@ impl BattleContext {
 
     fn handle_on_set_lineup_event(
         e: OnSetLineupEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.state = Some(BattleState::Started);
         Self::initialize_battle_context(&mut battle_context);
@@ -265,7 +304,7 @@ impl BattleContext {
 
     fn handle_on_damage_event(
         e: OnDamageEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         let lineup_index = Self::find_lineup_index_by_avatar_id(&battle_context, e.attacker.uid)
             .with_context(|| format!("Could not find avatar {} in lineup", e.attacker.uid))?;
@@ -305,7 +344,7 @@ impl BattleContext {
 
     fn handle_on_turn_begin_event(
         e: OnTurnBeginEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.action_value = e.action_value;
         battle_context.current_turn_info.action_value = e.action_value;
@@ -332,7 +371,7 @@ impl BattleContext {
     }
 
     fn handle_on_turn_end_event(
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.current_turn_info.wave = battle_context.wave;
         battle_context.current_turn_info.cycle = battle_context.cycle;
@@ -389,7 +428,7 @@ impl BattleContext {
 
     fn handle_on_entity_defeated_event(
         e: OnEntityDefeatedEvent,
-        mut _battle_context: MutexGuard<'static, BattleContext>,
+        mut _battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         // log::info!("{} has defeated {}", e.attacker);
 
@@ -400,7 +439,7 @@ impl BattleContext {
     }
 
     fn handle_on_battle_end_event(
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.state = Some(BattleState::Ended);
 
@@ -444,7 +483,7 @@ impl BattleContext {
 
     fn handle_on_use_skill_event(
         e: OnUseSkillEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         let turn_battle_id = battle_context.entity_turn_history.len() as u32;
 
@@ -465,7 +504,7 @@ impl BattleContext {
 
     fn handle_on_update_wave_event(
         e: OnUpdateWaveEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         log::info!("Wave: {}", e.wave);
 
@@ -479,7 +518,7 @@ impl BattleContext {
 
     fn handle_on_update_cycle_event(
         e: OnUpdateCycleEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         log::info!("Cycle: {}", e.cycle);
 
@@ -492,7 +531,7 @@ impl BattleContext {
 
     fn handle_on_property_change_event(
         e: OnPropertyChangeEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         match e.entity.team {
             Team::Player => {
@@ -523,7 +562,7 @@ impl BattleContext {
 
     fn handle_on_initialize_enemy_event(
         e: OnInitializeEnemyEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         battle_context.enemies.push(e.enemy.clone());
         battle_context.battle_enemies.push(BattleEntity {
@@ -538,7 +577,7 @@ impl BattleContext {
 
     fn handle_on_update_team_formation_event(
         e: OnUpdateTeamFormationEvent,
-        mut battle_context: MutexGuard<'static, BattleContext>,
+        mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
         match e.team {
             Team::Player => {}
@@ -552,7 +591,7 @@ impl BattleContext {
         })
     }
 
-    pub fn handle_event(event: Result<Event>) {
+    /* pub fn handle_event(event: Result<Event>) {
         let battle_context = Self::get_instance();
         let packet = match event {
             Result::Ok(event) => match event {
@@ -595,8 +634,55 @@ impl BattleContext {
             }
             Err(e) => log::error!("Packet Error: {}", e),
         };
+    } */
+	fn process_event_internal(event: Result<Event>) {
+        let battle_context = Self::get_instance_mut(); // Lấy Write Lock
+        
+        let packet = match event {
+            Result::Ok(event) => match event {
+                // NHỚ TÌM VÀ ĐỔI TOÀN BỘ MutexGuard THÀNH RwLockWriteGuard ở các hàm bên dưới!
+                Event::OnBattleBegin(e) => Self::handle_on_battle_begin_event(e, battle_context),
+                Event::OnSetBattleLineup(e) => Self::handle_on_set_lineup_event(e, battle_context),
+                Event::OnDamage(e) => Self::handle_on_damage_event(e, battle_context),
+                Event::OnTurnBegin(e) => Self::handle_on_turn_begin_event(e, battle_context),
+                Event::OnTurnEnd => Self::handle_on_turn_end_event(battle_context),
+                Event::OnEntityDefeated(e) => {
+                    Self::handle_on_entity_defeated_event(e, battle_context)
+                }
+                Event::OnBattleEnd => Self::handle_on_battle_end_event(battle_context),
+                Event::OnUseSkill(e) => Self::handle_on_use_skill_event(e, battle_context),
+                Event::OnUpdateWave(e) => Self::handle_on_update_wave_event(e, battle_context),
+                Event::OnUpdateCycle(e) => {
+                    if e.cycle == battle_context.cycle {
+                        return;
+                    }
+                    Self::handle_on_update_cycle_event(e, battle_context)
+                }
+                Event::OnPropertyChange(e) => {
+                    Self::handle_on_property_change_event(e, battle_context)
+                }
+                Event::OnInitializeEnemy(e) => {
+                    Self::handle_on_initialize_enemy_event(e, battle_context)
+                }
+				
+				Event::OnUpdateTeamFormation(e) => {
+                    Self::handle_on_update_team_formation_event(e, battle_context)
+                }
+            },
+            Err(e) => Ok({
+                log::error!("{}", e);
+                Packet::Error { msg: e.to_string() }
+            }),
+        };
+
+        match packet {
+            Result::Ok(packet) => {
+                server::broadcast(packet);
+            }
+            Err(e) => log::error!("Packet Error: {}", e),
+        };
     }
-	fn save_battle_summary(battle_context: &MutexGuard<'static, BattleContext>) -> Result<()> {
+	fn save_battle_summary(battle_context: &RwLockWriteGuard<'static, BattleContext>) -> Result<()> {
         if battle_context.avatar_lineup.is_empty() {
             log::warn!("Attempted to save battle summary, but lineup is empty. Skipping.");
             return Ok(());

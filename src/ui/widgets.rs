@@ -1044,7 +1044,8 @@ fn show_damage_category_pie_chart(ui: &mut Ui, breakdown: &DamageTypeBreakdown) 
 
             for ((attack_type, category, damage), segment) in chart_data.iter().zip(segments.into_iter()) {
                 let color = get_damage_category_color(attack_type);
-                let polygon = Polygon::new(category, PlotPoints::new(segment.points))
+				let poly_name = format!("breakdown_{}", category); 
+                let polygon = Polygon::new(poly_name, PlotPoints::new(segment.points))
                     .stroke(Stroke::new(1.5, color))
                     .fill_color(color.linear_multiply(0.35))
                     .name(format!(

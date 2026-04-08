@@ -248,7 +248,8 @@ impl Overlay for App {
             self.state.show_changelog = true;
         }
 
-        if let Some(state) = BattleContext::get_instance().state.take() {
+        //if let Some(state) = BattleContext::get_instance().state.take() {
+		if let Some(state) = BattleContext::take_state() {
             match state {
                 crate::battle::BattleState::Started => {
                     if self.config.auto_showhide_ui {

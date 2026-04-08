@@ -2,6 +2,7 @@
 
 use std::fmt::Display;
 use std::os::raw::c_void;
+use std::ffi::CStr;
 
 use il2cpp_macros::{
     ffi_type, il2cpp_getter_property, il2cpp_method, il2cpp_ref_type, il2cpp_value_type,
@@ -190,56 +191,64 @@ impl Il2CppClass {
     //         .find(|&method| method.name() == name)
     // }
 
-    pub fn find_method<S: AsRef<str>>(
+    pub fn find_method(
         &self,
-        name: S,
-        arg_types: Vec<S>,
+        name: &str,
+        arg_types: &[&str],
     ) -> Result<Il2CppMethod, Il2CppError> {
         if self.0.is_null() {
             crate::__log_debug(format_args!(
                 "[il2cpp_runtime] find_method called with null Il2CppClass for '{}'",
-                name.as_ref()
+                name
             ));
             return Err(Il2CppError::NullPointerDereference);
         }
-
-        let qualified_name = format!("{}::{}", self.name(), name.as_ref());
+		
+		let name_bytes = name.as_bytes(); 
+		let is_wildcard = name == "*";
         let mut saw_name_match = false;
 
-        for method in self
-            .methods()
-            .iter()
-            // wildcard support: if the provided name is "*", it matches any method name
-            .filter(|m| if name.as_ref() == "*" { true } else { m.name() == name.as_ref() })
-        {
-            saw_name_match = true;
-            let count = method.args_cnt() as usize;
+		for method in self.methods().iter() {
+			let method_name_ptr = crate::api::il2cpp_method_get_name(*method);
+			if method_name_ptr.is_null() {
+				continue;
+			}
 
-            if count != arg_types.len() {
-                continue;
-            }
+			let method_name_bytes = unsafe { CStr::from_ptr(method_name_ptr) }.to_bytes();
+			
+			if !is_wildcard && method_name_bytes != name_bytes {
+				continue;
+			}
 
-            let mut mismatch: Option<(usize, String)> = None;
-            for (i, arg_type) in arg_types.iter().enumerate() {
-                // Wildcard support: if the provided arg_type is "*", it matches any type
-                if arg_type.as_ref() != "*" && *arg_type.as_ref() != method.arg_type_formatted(i as u32) {
-                    mismatch = Some((i, method.arg_type_formatted(i as u32)));
-                    break;
-                }
-            }
+			saw_name_match = true;
+			let count = method.args_cnt() as usize;
 
-            if let Some((_i, _actual)) = mismatch {
-                continue;
-            }
+			if count != arg_types.len() {
+				continue;
+			}
 
-            return Ok(*method);
-        }
-
-        if saw_name_match {
-            Err(Il2CppError::NoOverloadMatched(qualified_name))
-        } else {
-            Err(Il2CppError::MethodNotFound(qualified_name))
-        }
+			let mut is_match = true;
+			for (i, arg_type) in arg_types.iter().enumerate() {
+				if *arg_type != "*" {
+					let actual_type = method.arg_type_formatted(i as u32);
+					if *arg_type != actual_type.as_str() {
+						is_match = false;
+						break;
+					}
+				}
+			}
+			
+			if is_match {
+				return Ok(*method);
+			}
+		}
+		let qualified_name = format!("{}::{}", self.name(), name);
+		
+		if saw_name_match {
+			Err(Il2CppError::NoOverloadMatched(qualified_name))
+		} else {
+			Err(Il2CppError::MethodNotFound(qualified_name))
+		}
     }
 }
 

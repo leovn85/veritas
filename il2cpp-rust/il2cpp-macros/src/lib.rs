@@ -130,7 +130,7 @@ pub fn il2cpp_method(args: TokenStream, input: TokenStream) -> TokenStream {
             #is_static_method
         ));
         let method_info = match class
-            .find_method(#il2cpp_method_name, vec![#(#il2cpp_method_args),*])
+            .find_method(#il2cpp_method_name, &[#(#il2cpp_method_args),*])
         {
             Ok(method_info) => {
                 ::il2cpp_runtime::__log_debug(format_args!(
@@ -154,7 +154,7 @@ pub fn il2cpp_method(args: TokenStream, input: TokenStream) -> TokenStream {
                         break;
                     }
 
-                    match interface.find_method(#il2cpp_method_name, vec![#(#il2cpp_method_args),*]) {
+                    match interface.find_method(#il2cpp_method_name, &[#(#il2cpp_method_args),*]) {
                         Ok(method_info) => {
                             ::il2cpp_runtime::__log_debug(format_args!(
                                 "[il2cpp_method] Resolved {}::{} via interface {}",

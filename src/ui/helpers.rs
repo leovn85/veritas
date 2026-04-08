@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use egui::{Color32, Stroke};
-use image::DynamicImage;
+//use image::DynamicImage;
 
 //use crate::kreide::types::RPG_GameCore_AvatarPropertyType;
 
-/// Global cache: avatar_id -> PNG buffer
+/* /// Global cache: avatar_id -> PNG buffer
 /// Populated in on_set_lineup, cleared on every call
 static AVATAR_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, Vec<u8>>>> = 
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -18,6 +18,16 @@ static MONSTER_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, Vec<u8>>>> =
 /// Global cache: property_name -> PNG buffer
 /// Populated on demand as properties are encountered
 static PROPERTY_BUFFER_CACHE: LazyLock<Mutex<HashMap<String, Vec<u8>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new())); */
+	
+// Lưu trữ: (Width, Height, RGBA Bytes)
+static AVATAR_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, (usize, usize, Vec<u8>)>>> = 
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static MONSTER_BUFFER_CACHE: LazyLock<Mutex<HashMap<u32, (usize, usize, Vec<u8>)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static PROPERTY_BUFFER_CACHE: LazyLock<Mutex<HashMap<String, (usize, usize, Vec<u8>)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn format_damage(value: f64) -> String {
@@ -98,7 +108,8 @@ pub fn populate_avatar_buffers(avatar_ids: &Vec<u32>) {
     cache.clear();
     
     for &avatar_id in avatar_ids {
-        if let Ok(buffer) = crate::kreide::helpers::get_avatar_png_bytes(avatar_id) {
+        //if let Ok(buffer) = crate::kreide::helpers::get_avatar_png_bytes(avatar_id) {
+		if let Ok(buffer) = crate::kreide::helpers::get_avatar_raw_bytes(avatar_id) {
             cache.insert(avatar_id, buffer);
         }
     }
@@ -149,9 +160,9 @@ pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::Tex
     }
 
     // Get buffer from global cache (populated in on_set_lineup)
-    let buffer = {
-        let cache = AVATAR_BUFFER_CACHE.lock().unwrap();
-        cache.get(&avatar_id).cloned()?
+    /* let buffer = {
+        let mut cache = AVATAR_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(&avatar_id)?
     };
 
     use image::EncodableLayout;
@@ -180,6 +191,23 @@ pub fn load_avatar_image(ctx: &egui::Context, avatar_id: u32, options: egui::Tex
         cache.insert(avatar_id, handle.clone());
         data.insert_temp(cache_id, cache);
     });
+    Some(handle) */
+	// Lấy Raw Bytes và GIẢI PHÓNG RAM
+    let (width, height, raw_bytes) = {
+        let mut cache = AVATAR_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(&avatar_id)?
+    };
+
+    // Đẩy thẳng mảng RGBA vào Egui (Bỏ qua hoàn toàn bước Decode PNG)
+    let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &raw_bytes);
+
+    let name = format!("avatar_{}", avatar_id);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(avatar_id, handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
     Some(handle)
 }
 
@@ -193,7 +221,8 @@ pub fn clear_monster_buffers() {
 pub fn cache_monster_buffer(monster_id: u32, row_data: &crate::kreide::types::RPG_GameCore_MonsterRowData) {
     let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap();
     if !cache.contains_key(&monster_id) {
-        if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(row_data) {
+        //if let Ok(buffer) = crate::kreide::helpers::get_monster_png_bytes(row_data) {
+		if let Ok(buffer) = crate::kreide::helpers::get_monster_raw_bytes(row_data) {
             cache.insert(monster_id, buffer);
         }
     }
@@ -214,22 +243,14 @@ pub fn load_monster_image(ctx: &egui::Context, monster_id: u32, options: egui::T
     }
 
     // Get buffer from global cache (populated during enemy initialization)
-    let buffer = {
-        let cache = MONSTER_BUFFER_CACHE.lock().unwrap();
-        cache.get(&monster_id).cloned()?
+/*     let buffer = {
+        let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(&monster_id)?
     };
 
     use image::EncodableLayout;
     let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
     let color_image = match &image {
-        // image::DynamicImage::ImageRgb8(image) => {
-            // egui::ColorImage::from_rgb([image.width() as usize, image.height() as usize], image.as_bytes())
-        // }
-        // other => {
-            // let image = other.to_rgba8();
-            // egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], image.as_bytes())
-        // }
-    // };
         DynamicImage::ImageRgb8(image) => {
             egui::ColorImage::from_rgb(
                 [image.width() as usize, image.height() as usize],
@@ -243,9 +264,17 @@ pub fn load_monster_image(ctx: &egui::Context, monster_id: u32, options: egui::T
                 image.as_bytes(),
             )
         }
+    }; */
+	
+	// Lấy Raw Bytes và GIẢI PHÓNG RAM
+    let (width, height, raw_bytes) = {
+        let mut cache = MONSTER_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(&monster_id)?
     };
 
-    // Cache the texture handle by monster_id
+    // Đẩy thẳng mảng RGBA vào Egui (Bỏ qua hoàn toàn bước Decode PNG)
+    let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &raw_bytes);
+
     let name = format!("monster_{}", monster_id);
     let handle = ctx.load_texture(&name, color_image, options);
     ctx.data_mut(|data| {
@@ -254,6 +283,16 @@ pub fn load_monster_image(ctx: &egui::Context, monster_id: u32, options: egui::T
         data.insert_temp(cache_id, cache);
     });
     Some(handle)
+	/* 
+    // Cache the texture handle by monster_id
+    let name = format!("monster_{}", monster_id);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(monster_id, handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
+    Some(handle) */
 }
 
 pub fn load_property_icon_image(
@@ -273,13 +312,13 @@ pub fn load_property_icon_image(
     }) {
         return Some(cached_handle);
     }
-
+	/* 
     // Get buffer from global cache (populated on demand)
     let buffer = {
-        let cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
-        cache.get(property_name).cloned()?
+        let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(property_name)?
     };
-
+	
     use image::EncodableLayout;
     let image = image::load_from_memory_with_format(&buffer, image::ImageFormat::Png).ok()?;
     let color_image = match &image {
@@ -306,6 +345,23 @@ pub fn load_property_icon_image(
         cache.insert(property_name.to_string(), handle.clone());
         data.insert_temp(cache_id, cache);
     });
+    Some(handle) */
+	// Lấy Raw Bytes và GIẢI PHÓNG RAM
+    let (width, height, raw_bytes) = {
+        let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.remove(property_name)?
+    };
+
+    // Đẩy thẳng mảng RGBA vào Egui (Bỏ qua hoàn toàn bước Decode PNG)
+    let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &raw_bytes);
+
+    let name = format!("property_{}", property_name);
+    let handle = ctx.load_texture(&name, color_image, options);
+    ctx.data_mut(|data| {
+        let mut cache = data.get_temp::<TextureCache>(cache_id).unwrap_or_default();
+        cache.insert(property_name.to_string(), handle.clone());
+        data.insert_temp(cache_id, cache);
+    });
     Some(handle)
 }
 
@@ -321,8 +377,8 @@ pub fn preload_all_property_icons() {
     let mut cache = PROPERTY_BUFFER_CACHE.lock().unwrap();
     for prop in props {
         if !cache.contains_key(prop) {
-            // Hàm này chọc vào Unity, TẠI ĐÂY LÀ AN TOÀN vì sẽ gọi qua hook
-            if let Ok(buffer) = crate::kreide::helpers::get_property_icon_png_bytes(prop) {
+            //if let Ok(buffer) = crate::kreide::helpers::get_property_icon_png_bytes(prop) {
+			if let Ok(buffer) = crate::kreide::helpers::get_property_icon_raw_bytes(prop) {
                 cache.insert(prop.to_string(), buffer);
             }
         }
