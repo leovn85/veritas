@@ -8,7 +8,7 @@ use crate::models::misc::Avatar;
 use crate::models::misc::BattleStats;
 use crate::models::misc::Enemy;
 use crate::models::misc::Entity;
-use crate::models::misc::Property;
+//use crate::models::misc::Property;
 use crate::models::misc::Team;
 
 use anyhow::Result;
@@ -22,12 +22,13 @@ use il2cpp_runtime::api::il2cpp_field_get_offset;
 use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
-use il2cpp_runtime::types::System_Enum;
+//use il2cpp_runtime::types::System_Enum;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::null;
-use std::str::FromStr;
-use std::sync::{OnceLock, LazyLock, Mutex};
+//use std::str::FromStr;
+//use std::sync::{OnceLock, LazyLock, Mutex};
+use std::sync::OnceLock;
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
@@ -45,7 +46,7 @@ struct ComboFieldOffsets {
 
 static COMBO_FIELD_OFFSETS: OnceLock<ComboFieldOffsets> = OnceLock::new();
 static ATTACK_TYPE_OFFSET: OnceLock<usize> = OnceLock::new();
-static PROPERTY_NAME_CACHE: LazyLock<Mutex<HashMap<i32, String>>> = 
+/* static PROPERTY_NAME_CACHE: LazyLock<Mutex<HashMap<i32, String>>> = 
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn get_property_name_cached(property: RPG_GameCore_AbilityProperty) -> Result<String> {
@@ -89,7 +90,7 @@ where
         )
     })
 }
-
+ */
 unsafe fn resolve_combo_field_offsets(class: Il2CppClass) -> Result<ComboFieldOffsets> {
     let field_iter_1: *const c_void = null();
     let mut turn_based_ability_component_offset = None;
@@ -231,7 +232,8 @@ fn on_damage(
         };
     safe_call!(unsafe {
         let mut event: Option<Result<Event>> = None;
-        let attacker_team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(attacker._Team()?)?;
+        //let attacker_team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(attacker._Team()?)?;
+		let attacker_team_value = attacker._Team()?.unbox()?;
 
         match attacker_team_value {
             RPG_GameCore_TeamType::TeamLight => {
@@ -259,7 +261,7 @@ fn on_damage(
                 let attack_type_offset =
                     get_attack_type_offset(Il2CppClass(*(damage_info as *const *const c_void)))?;
 
-                let r#type = {
+                /* let r#type = {
                     let damage_type = *(damage_info.byte_offset(attack_type_offset as isize) as *const i32);
                     let boxed = RPG_GameCore_AttackType__Boxed(System_Enum::to_object_from_int(
                         get_type_handle("RPG.GameCore.AttackType")?,
@@ -269,7 +271,8 @@ fn on_damage(
                         get_type_handle("RPG.GameCore.AttackType")?,
                         boxed.0,
                     )?.to_string()
-                };
+                }; */
+				let r#type: RPG_GameCore_AttackType = std::mem::transmute(*(damage_info.byte_offset(attack_type_offset as isize) as *const i32));
                     
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
@@ -280,8 +283,8 @@ fn on_damage(
                     }
                 };
 
-                let attack_owner_entity_value: RPG_GameCore_EntityType =
-                    parse_il2cpp_enum(attack_owner._EntityType()?)?;
+                //let attack_owner_entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(attack_owner._EntityType()?)?;
+				let attack_owner_entity_value = attack_owner._EntityType()?.unbox()?;
 
                 match attack_owner_entity_value {
                     RPG_GameCore_EntityType::Avatar => {
@@ -389,16 +392,16 @@ fn on_use_skill(
         };
 
         let mut event: Option<Result<Event>> = None;
-        let skill_owner_team_value: RPG_GameCore_TeamType =
-            parse_il2cpp_enum(skill_owner._Team()?)?;
+        //let skill_owner_team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(skill_owner._Team()?)?;
+		let skill_owner_team_value = skill_owner._Team()?.unbox()?;
 
         match skill_owner_team_value {
             RPG_GameCore_TeamType::TeamLight => {
                 let skill_data = instance.get_skill_data(skill_index, skill_extra_use_param)?;
 
                 if !skill_data.0.is_null() {
-                    let entity_value: RPG_GameCore_EntityType =
-                        parse_il2cpp_enum(skill_owner._EntityType()?)?;
+                    //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(skill_owner._EntityType()?)?;
+					let entity_value = skill_owner._EntityType()?.unbox()?;
                     match entity_value {
                         RPG_GameCore_EntityType::Avatar => {
                             let e = (|| -> Result<Option<Event>> {
@@ -577,8 +580,8 @@ fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) 
         };
 
         let mut event: Option<Result<Event>> = None;
-        let skill_owner_team_value: RPG_GameCore_TeamType =
-            parse_il2cpp_enum(skill_owner._Team()?)?;
+        //let skill_owner_team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(skill_owner._Team()?)?;
+		let skill_owner_team_value = skill_owner._Team()?.unbox()?;
 
         match skill_owner_team_value {
             RPG_GameCore_TeamType::TeamLight => {
@@ -591,9 +594,8 @@ fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) 
                 let skill_data = skill_character_component.get_skill_data(skill_index, -1)?;
 
                 if !skill_data.0.is_null() {
-                    let entity_value: RPG_GameCore_EntityType =
-                        parse_il2cpp_enum(skill_owner._EntityType()?)?;
-
+                    //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(skill_owner._EntityType()?)?;
+					let entity_value = skill_owner._EntityType()?.unbox()?;
                     match entity_value {
                         RPG_GameCore_EntityType::Avatar => {
                             let e: std::result::Result<Event, anyhow::Error> =
@@ -804,7 +806,8 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
     safe_call!(unsafe {
         let turn_owner = instance._CurrentTurnActionEntity()?;
 
-        let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(turn_owner._EntityType()?)?;
+        //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(turn_owner._EntityType()?)?;
+		let entity_value = turn_owner._EntityType()?.unbox()?;
 
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
@@ -890,26 +893,26 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
 		let property = RPG_GameCore_AbilityProperty::CurrentHP;
 		
 		// Gọi hàm Cache ta vừa viết ở câu trước để lấy tên "CurrentHP" (O(1))
-        let property_kind = get_property_name_cached(property.clone())?; 
+        //let property_kind = get_property_name_cached(property.clone())?; 
         
         // Lấy giá trị máu hiện tại trực tiếp bằng hằng số
         let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(property)?);
 
         let entity = turn_based_ability_component.as_base()._OwnerRef()?;
-        let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
-
+        //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
+		let entity_value = entity._EntityType()?.unbox()?;
+	
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(entity) {
                     Ok(avatar) => Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-                        entity: Entity {
-                            uid: avatar.id,
-                            team: Team::Player,
-                        },
-                        property: Property {
-                            kind: property_kind,
-                            value: property_value,
-                        },
+                        entity: Entity { uid: avatar.id, team: Team::Player },
+						property_type: property, // Truyền trực tiếp Enum
+						value: property_value,   // Truyền trực tiếp số f64
+                        // property: Property {
+                            // kind: property_kind,
+                            // value: property_value,
+                        // },
                     })),
                     Err(e) => {
                         log::error!("Avatar Event Error: {}", e);
@@ -925,10 +928,12 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
-                    property: Property {
-                        kind: property_kind,
-                        value: property_value,
-                    },
+					property_type: property, // Truyền trực tiếp Enum
+					value: property_value,   // Truyền trực tiếp số f64
+                    // property: Property {
+                        // kind: property_kind,
+                        // value: property_value,
+                    // },
                 })));
             }
             _ => {}
@@ -993,9 +998,10 @@ pub fn on_stat_change(
 		
 		//println!("  {:<25}: {:.4}", "ATK from on_stat_change", attk);
 		
-		let property_kind = get_property_name_cached(property)?;
+		//let property_kind = get_property_name_cached(property)?;
         let property_value = fixpoint_to_raw(&new_stat);
-        let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
+        //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
+		let entity_value = entity._EntityType()?.unbox()?;
 
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
@@ -1003,7 +1009,9 @@ pub fn on_stat_change(
                     // 1. Gửi thuộc tính gốc vừa bị thay đổi
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-                        property: Property { kind: property_kind.to_string(), value: property_value },
+						property_type: property,
+						value: property_value,
+                        //property: Property { kind: property_kind.to_string(), value: property_value },
                     })));
                     // 2. ÉP ENGINE TÍNH FINAL ATK, DEF, SPD VÀ LƯU LUÔN VÀO HASHMAP
                     let final_atk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
@@ -1013,15 +1021,21 @@ pub fn on_stat_change(
 
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-                        property: Property { kind: "Attack".to_string(), value: final_atk },
+						property_type: RPG_GameCore_AbilityProperty::Attack,
+						value: final_atk,
+                        //property: Property { kind: "Attack".to_string(), value: final_atk },
                     })));
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-                        property: Property { kind: "Defence".to_string(), value: final_def },
+						property_type: RPG_GameCore_AbilityProperty::Defence,
+						value: final_def,
+                        //property: Property { kind: "Defence".to_string(), value: final_def },
                     })));
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-                        property: Property { kind: "AllDamageTypeAddedRatio".to_string(), value: final_all_dmg },
+						property_type: RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio,
+						value: final_all_dmg,
+                        //property: Property { kind: "AllDamageTypeAddedRatio".to_string(), value: final_all_dmg },
                     })));
 				}
             }
@@ -1031,10 +1045,12 @@ pub fn on_stat_change(
                         uid: (*entity._RuntimeID_k__BackingField()?).into(),
                         team: Team::Enemy,
                     },
-                    property: Property {
-                        kind: property_kind.to_string(),
-                        value: property_value,
-                    },
+					property_type: property,
+					value: property_value,
+                    // property: Property {
+                        // kind: property_kind.to_string(),
+                        // value: property_value,
+                    // },
                 })));
             }
             _ => {}
@@ -1298,11 +1314,11 @@ pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: *const c
         let killer_entity =
             *(a2.byte_offset(offsets.killer_entity as isize) as *const RPG_GameCore_GameEntity);
 
-        let killer_entity_value: RPG_GameCore_EntityType =
-            parse_il2cpp_enum(killer_entity._EntityType()?)?;
+        //let killer_entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(killer_entity._EntityType()?)?;
+		let killer_entity_value = killer_entity._EntityType()?.unbox()?;
 
-        let defeated_entity_alive_state_value: RPG_GameCore_AliveState =
-            parse_il2cpp_enum(defeated_entity._AliveState()?)?;
+        //let defeated_entity_alive_state_value: RPG_GameCore_AliveState = parse_il2cpp_enum(defeated_entity._AliveState()?)?;
+		let defeated_entity_alive_state_value = defeated_entity._AliveState()?.unbox()?;
 
         if res && defeated_entity_alive_state_value == RPG_GameCore_AliveState::Dying {
             if killer_entity_value == RPG_GameCore_EntityType::Avatar {
@@ -1336,7 +1352,8 @@ pub fn on_update_team_formation(instance: RPG_GameCore_TeamFormationComponent) {
     log::debug!(function_name!());
     let res = ON_UPDATE_TEAM_FORMATION_Detour.call(instance);
     safe_call!({
-        let team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(instance._Team()?)?;
+        //let team_value: RPG_GameCore_TeamType = parse_il2cpp_enum(instance._Team()?)?;
+		let team_value = unsafe { instance._Team()?.unbox()? };
 
         if team_value == RPG_GameCore_TeamType::TeamDark {
             let team = instance._TeamFormationDatas()?;

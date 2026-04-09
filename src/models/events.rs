@@ -1,5 +1,5 @@
-
-use super::misc::{Avatar, Enemy, Entity, Skill, Property, Team};
+use crate::kreide::types::{RPG_GameCore_AbilityProperty, RPG_GameCore_AttackType};
+use super::misc::{Avatar, Enemy, Entity, Skill, /*Property, */Team};
 
 pub enum Event {
     OnBattleBegin(OnBattleBeginEvent),
@@ -49,7 +49,8 @@ pub struct OnDamageEvent {
     pub attacker: Entity,
     pub damage: f64,
     pub overkill_damage: f64,
-    pub r#type: String,
+    //pub r#type: String,
+	pub r#type: RPG_GameCore_AttackType,
 }
 
 pub struct OnEntityDefeatedEvent {
@@ -59,7 +60,8 @@ pub struct OnEntityDefeatedEvent {
 
 pub struct OnPropertyChangeEvent {
     pub entity: Entity,
-    pub property: Property
+    pub property_type: RPG_GameCore_AbilityProperty, // Đổi từ Property (chứa String) sang Enum
+    pub value: f64,
 }
 
 pub struct OnUpdateTeamFormationEvent {

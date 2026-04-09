@@ -1,9 +1,11 @@
 use std::{
     collections::BTreeMap,
-    str::FromStr,
+    //str::FromStr,
     sync::{LazyLock, Mutex,/* MutexGuard,*/ RwLock, RwLockReadGuard, RwLockWriteGuard},
-	sync::mpsc::{channel, Sender},
+	//sync::mpsc::{channel, Sender},
 };
+
+use crossbeam_channel::{bounded, Sender};
 
 //new import for reading json file to get battle mode
 use std::collections::{HashMap, HashSet};
@@ -139,7 +141,7 @@ pub enum BattleMode {
 static BATTLE_CONTEXT: LazyLock<RwLock<BattleContext>> =
     LazyLock::new(|| RwLock::new(BattleContext::default()));
 
-// Channel toàn cục
+/* // Channel toàn cục
 static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
     let (tx, rx) = channel();
     
@@ -153,11 +155,27 @@ static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
     });
     
     tx
+}); */
+
+// Channel toàn cục dùng Bounded Queue (Cấp phát sẵn bộ nhớ)
+static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
+    // Sức chứa 2048 events. Cấp phát RAM ĐÚNG 1 LẦN lúc khởi tạo.
+    // 2048 là quá dư dả vì UI Thread xử lý rất nhanh, hiếm khi tồn đọng quá 10 events.
+    let (tx, rx) = bounded(2048);
+    
+    std::thread::spawn(move || {
+        // Hàm recv() vẫn tự ngủ khi rỗng, không tốn CPU
+        while let Ok(event) = rx.recv() {
+            BattleContext::process_event_internal(event);
+        }
+    });
+    
+    tx
 });
 
 // Hàm để Hook C++ gọi: Đẩy vào channel rồi return ngay lập tức!
 pub fn send_battle_event(event: Result<Event>) {
-    let _ = EVENT_CHANNEL.send(event); 
+    let _ = EVENT_CHANNEL.try_send(event);
 }
 
 static EXPORT_DATA_READY: LazyLock<Mutex<Option<crate::export::ExportBattleData>>> =
@@ -312,8 +330,8 @@ impl BattleContext {
         // Record character damage chunk
         turn.avatars_turn_damage[lineup_index] += e.damage;
         battle_context.real_time_damages[lineup_index] += e.damage as f64;
-        let attack_type = RPG_GameCore_AttackType::from_str(&e.r#type)
-            .unwrap_or_else(|_| RPG_GameCore_AttackType::Unknown);
+        //let attack_type = RPG_GameCore_AttackType::from_str(&e.r#type).unwrap_or_else(|_| RPG_GameCore_AttackType::Unknown);
+		let attack_type = e.r#type;
         let mapped_type = display_damage_type(&attack_type);
         let breakdown = &mut battle_context.damage_by_category[lineup_index];
         *breakdown.entry(attack_type).or_insert(0.0) += e.damage as f64;
@@ -529,7 +547,7 @@ impl BattleContext {
         Ok(Packet::OnUpdateCycle { cycle: e.cycle })
     }
 
-    fn handle_on_property_change_event(
+    /* fn handle_on_property_change_event(
         e: OnPropertyChangeEvent,
         mut battle_context: RwLockWriteGuard<'static, BattleContext>,
     ) -> Result<Packet> {
@@ -558,7 +576,37 @@ impl BattleContext {
             entity: e.entity,
             property: e.property,
         })
-    }
+    } */
+	fn handle_on_property_change_event(
+		e: OnPropertyChangeEvent,
+		mut battle_context: RwLockWriteGuard<'static, BattleContext>,
+	) -> Result<Packet> {
+		// Chuyển Enum thành String ở luồng nền, không ảnh hưởng game
+		let prop_string = format!("{:?}", e.property_type); 
+		
+		let ui_property = Property {
+			kind: prop_string.clone(),
+			value: e.value,
+		};
+
+		match e.entity.team {
+			Team::Player => {
+				if let Some(avatar) = battle_context.battle_avatars.iter_mut().find(|x| x.entity == e.entity) {
+					avatar.properties.set_property(ui_property.clone());
+				}
+			}
+			Team::Enemy => {
+				if let Some(enemy) = battle_context.battle_enemies.iter_mut().find(|x| x.entity == e.entity) {
+					enemy.properties.set_property(ui_property.clone());
+				}
+			}
+		}
+
+		Ok(Packet::OnPropertyChange {
+			entity: e.entity,
+			property: ui_property,
+		})
+	}
 
     fn handle_on_initialize_enemy_event(
         e: OnInitializeEnemyEvent,
