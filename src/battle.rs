@@ -175,7 +175,10 @@ static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
 
 // Hàm để Hook C++ gọi: Đẩy vào channel rồi return ngay lập tức!
 pub fn send_battle_event(event: Result<Event>) {
-    let _ = EVENT_CHANNEL.try_send(event);
+    if let Err(e) = EVENT_CHANNEL.try_send(event) {
+        // Chỉ log ở chế độ Debug hoặc Trace để không làm chậm game thread
+        log::debug!("EVENT QUEUE FULL! Dropped event. Consider increasing queue size. Error: {:?}", e);
+    }
 }
 
 static EXPORT_DATA_READY: LazyLock<Mutex<Option<crate::export::ExportBattleData>>> =

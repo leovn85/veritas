@@ -384,3 +384,16 @@ pub fn preload_all_property_icons() {
         }
     }
 }
+
+pub fn clear_egui_texture_cache(ctx: &egui::Context) {
+    let avatar_cache_id = egui::Id::new("ui.helpers.avatar_image_cache");
+    let monster_cache_id = egui::Id::new("ui.helpers.monster_image_cache");
+
+    // Xóa sạch cache, giải phóng VRAM
+    ctx.data_mut(|data| {
+        data.remove::<HashMap<u32, egui::TextureHandle>>(avatar_cache_id);
+        data.remove::<HashMap<u32, egui::TextureHandle>>(monster_cache_id);
+    });
+    
+    log::info!("Cleared Egui GPU Texture Cache (VRAM freed).");
+}

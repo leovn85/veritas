@@ -260,6 +260,8 @@ impl Overlay for App {
                     if self.config.auto_showhide_ui {
                         self.state.should_hide = true;
                     }
+					
+					crate::ui::helpers::clear_egui_texture_cache(ctx);
 
                     if self.state.auto_save_battle_data {
                         let export_data = BattleContext::take_prepared_export_data();
