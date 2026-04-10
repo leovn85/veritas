@@ -7,7 +7,7 @@ use crate::{
         RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
         RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, 
         RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
-        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow
+        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Object, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow
     },
     models::misc::{Avatar, Skill, FribbelsCharacter, FribbelsSkills, FribbelsTraces, FribbelsMemosprite},
 };
@@ -47,16 +47,29 @@ pub fn get_module_manager() -> Result<RPG_Client_ModuleManager> {
 #[named]
 pub fn get_avatar_data_from_id(avatar_id: u32) -> Result<RPG_Client_AvatarData> {
     log::debug!(function_name!());
+	
+	if avatar_id == 0 {
+        return Err(anyhow!("ID_ZERO")); 
+    }
+	
     let s_module_manager = get_module_manager()?;
     let avatar_module = s_module_manager.AvatarModule()?;
-    Ok(unsafe { avatar_module.get_avatar(avatar_id)? })
+	
+	let avatar_data = unsafe { avatar_module.get_avatar(avatar_id)? };
+	
+	if avatar_data.0.is_null() {
+        return Err(anyhow!("NULL_DATA"));
+    }
+
+	
+    Ok(avatar_data)
 }
 
 #[named]
 pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
     log::debug!(function_name!());
 
-    let avatar_data = get_avatar_data_from_id(avatar_id)
+    /* let avatar_data = get_avatar_data_from_id(avatar_id)
         .context(format!("AvatarData with id {avatar_id} was null"))?;
 
     let avatar_name = unsafe { avatar_data.AvatarName() }
@@ -65,9 +78,41 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
 
     let avatar_name = if avatar_name.is_empty() {
         let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
-        get_textmap_content(&*data.AvatarName()?)?
+        get_textmap_content(data.AvatarName()?.try_deref()?)?
     } else {
         avatar_name
+    }; */
+	let avatar_data = get_avatar_data_from_id(avatar_id);
+
+	// Sửa đoạn lấy name:
+	// let avatar_name = match avatar_data {
+		// Ok(data) => {
+			// log::info!("Getting name for Avatar ID: {}...", avatar_id);
+			// unsafe { data.AvatarName() }.map(|name| name.to_string()).unwrap_or_default()
+		// },
+		// Err(e) => {
+			// log::warn!("Can't get AvatarData for {}: {}.", avatar_id, e);
+			// String::new()
+		// }
+	// };
+	
+	let avatar_name = match avatar_data {
+        Ok(data) => {
+            log::info!("Getting name for Avatar ID: {}", avatar_id);
+            unsafe { data.AvatarName() }.map(|name| name.to_string()).unwrap_or_default()
+        },
+        Err(e) if e.to_string() == "ID_ZERO" => {
+            "System/Environment".to_string() // Tên hiển thị cho ID 0
+        },
+        Err(_) => {
+            // Trường hợp lỗi khác (NULL_DATA hoặc module lỗi)
+            let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
+            if !data.0.is_null() {
+                get_textmap_content(&*data.AvatarName()?)?
+            } else {
+                format!("Unknown_Entity_{}", avatar_id)
+            }
+        }
     };
 
     Ok(Avatar {
@@ -99,7 +144,7 @@ pub unsafe fn get_skill_from_skilldata(skill_data: RPG_GameCore_SkillData) -> Re
     Ok(Skill {
         name: get_textmap_content(&text_id)?,
         skill_type,
-        skill_config_id: isize::try_from(*skill_data.SkillConfigID()?)?,
+        skill_config_id: isize::try_from(skill_data.SkillConfigID()?.try_deref()?)?,
     })
 }
 
@@ -189,8 +234,8 @@ pub unsafe fn get_servant_from_entity(entity: RPG_GameCore_GameEntity) -> Result
     let servant_row = servant_data_comp._ServantRowData()?._Row()?;
 
     Ok(Avatar {
-        id: u32::try_from(*servant_row.ServantID()?)?,
-        name: sanitize_entity_name(get_textmap_content(&*servant_row.ServantName()?)?),
+        id: u32::try_from(servant_row.ServantID()?.try_deref()?)?,
+        name: sanitize_entity_name(get_textmap_content(servant_row.ServantName()?.try_deref()?)?),
     })
 }
 
@@ -405,6 +450,12 @@ unsafe fn render_texture_to_raw_bytes(tex: UnityEngine_Texture2D) -> Result<(usi
             let row_start = y * width * 4;
             flipped_rgba.extend_from_slice(&raw_slice[row_start..row_start + width * 4]);
         }
+
+		// Ép kiểu (cast) Texture2D thành Object bằng cách truyền pointer (0)
+        let tex_as_obj = UnityEngine_Object(readable_tex.0);
+        
+        // Hủy Native Texture2D ngay lập tức để trả RAM cho hệ điều hành
+        let _ = UnityEngine_Object::DestroyImmediate(tex_as_obj);
 
         Ok((width, height, flipped_rgba))
     }
@@ -638,7 +689,7 @@ pub unsafe fn dump_characters_to_json() -> anyhow::Result<()> {
 
     for row_ptr in rows {
         let avatar_row = RPG_GameCore_AvatarRow(row_ptr as _);
-        let avatar_id = u32::from(*avatar_row.AvatarID()?);
+        let avatar_id = u32::from(avatar_row.AvatarID()?.try_deref()?);
         
         if let Ok(name_id) = avatar_row.AvatarName() {
             if (*name_id).hash != 0 {
@@ -743,38 +794,38 @@ pub unsafe fn dump_relic_config() -> anyhow::Result<()> {
 
         // Lấy ID đầu tiên để biết đang xử lý Relic nào
         log::debug!("Reading ID...");
-        let id = (*row.ID()?).0;
+        let id = row.ID()?.try_deref()?.0;
         log::debug!("=> ID: {}", id);
 
         log::debug!("Reading SetID...");
-        let set_id = (*row.SetID()?).0;
+        let set_id = row.SetID()?.try_deref()?.0;
         log::debug!("=> SetID: {}", set_id);
 
         log::debug!("Reading Rarity...");
-        let rarity_val = *row.Rarity()? as i32 + 1;
+        let rarity_val = (*row.Rarity()?.try_deref()?) as i32 + 1;
         log::debug!("=> Rarity: {}", rarity_val);
 
         log::debug!("Reading Type...");
-        let type_enum_val = *row.Type()?;
+        let type_enum_val = *row.Type()?.try_deref()?;
         log::debug!("=> Type Enum Val: {}", type_enum_val as i32);
 
         log::debug!("Converting Type Enum to String...");
 		let type_enum_obj = unsafe { RPG_GameCore_RelicBaseTypeExcelTable::GetData(type_enum_val)? };
-		let type_str = unsafe { RPG_Client_TextmapStatic::get_text(&*type_enum_obj.BaseTypeText()?, std::ptr::null())?.to_string() };
+		let type_str = unsafe { RPG_Client_TextmapStatic::get_text(type_enum_obj.BaseTypeText()?.try_deref()?, std::ptr::null())?.to_string() };
         //let type_enum_obj = System_Int32__Boxed(System_Enum::to_object_from_int(type_handle, type_enum_val as i32)?);
         //let type_str = System_Enum::get_name(type_handle, type_enum_obj.0)?.to_string();
         log::debug!("=> Type String: {}", type_str);
 
         log::debug!("Reading MaxLevel...");
-        let max_level = (*row.MaxLevel()?).0;
+        let max_level = row.MaxLevel()?.try_deref()?.0;
         log::debug!("=> MaxLevel: {}", max_level);
 
         log::debug!("Reading MainAffixGroup...");
-        let main_affix_id = (*row.MainAffixGroup()?).0;
+        let main_affix_id = row.MainAffixGroup()?.try_deref()?.0;
         log::debug!("=> MainAffixGroup: {}", main_affix_id);
 
         log::debug!("Reading SubAffixGroup...");
-        let sub_affix_id = (*row.SubAffixGroup()?).0;
+        let sub_affix_id = row.SubAffixGroup()?.try_deref()?.0;
         log::debug!("=> SubAffixGroup: {}", sub_affix_id);
 
         // 1. LẤY TÊN BỘ DI VẬT (Set Name) - Bọc thép
@@ -1056,7 +1107,7 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
 				let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(base_id)?;
 				if avatar_row.0.is_null() { continue; }
 
-				let path_enum_val = *avatar_row.AvatarBaseType()?;
+				let path_enum_val = *avatar_row.AvatarBaseType()?.try_deref()?;
 				let level = avatar_data.get_Level().unwrap_or(1);
 				let promotion = avatar_data.get_Promotion().unwrap_or(0);
 				let rank = avatar_data.get_Rank().unwrap_or(0);

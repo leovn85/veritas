@@ -151,12 +151,12 @@ fn process_equipment_data(this: RPG_Client_EquipmentItemData) -> Result<Reliquar
 	let uid = unsafe { this.as_base().get_UID()? };
 	let location = unsafe { this.get_BelongAvatarID()? };
 	let lock = unsafe { this.get_IsProtected()? };
-	let rank = (*this._Rank()?).0;
+	let rank = this._Rank()?.try_deref()?.0;
 	let level = unsafe { this.get_Level()? };
 	let promotion = unsafe { this.get_Promotion()? };
 	let equipment_row = unsafe { this.get_EquipmentRow()? };
-	let name = unsafe { RPG_Client_TextmapStatic::get_text(&*equipment_row.EquipmentName()?, std::ptr::null())? };
-	let id = (*equipment_row.EquipmentID()?).0;
+	let name = unsafe { RPG_Client_TextmapStatic::get_text(equipment_row.EquipmentName()?.try_deref()?, std::ptr::null())? };
+	let id = equipment_row.EquipmentID()?.try_deref()?.0;
 	
 	let light_cone = LightCone {
 		id: id.to_string(),
@@ -190,20 +190,20 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
 	unsafe 
 	{
 		let relic_row = this.get_RelicRow()?;
-		let set_id = (*relic_row.SetID()?).0;
+		let set_id = relic_row.SetID()?.try_deref()?.0;
 		let location = this.get_BelongAvatarID()?;
 		let lock = this.get_IsProtected()?;
 		let discard = this.get_IsDiscard()?;
 		let uid = this.as_base().get_UID()?;
-		let rarity = (*relic_row.Rarity()?) as u32;
+		let rarity = (*relic_row.Rarity()?.try_deref()?) as u32;
 		let level = this.get_Level()?;
 		let relic_set_config_data = RPG_GameCore_RelicSetConfigExcelTable::GetData(set_id)?;
-		let relic_set_name = RPG_Client_TextmapStatic::get_text(&*relic_set_config_data.SetName()?, std::ptr::null())?;
+		let relic_set_name = RPG_Client_TextmapStatic::get_text(relic_set_config_data.SetName()?.try_deref()?, std::ptr::null())?;
 		let main_affix_property = this.get_MainAffixPropertyType()?;
 		let main_row_data = RPG_GameCore_AvatarPropertyExcelTable::GetData(main_affix_property)?;
-		let main_stat_name = RPG_Client_TextmapStatic::get_text(&*main_row_data.PropertyName()?, std::ptr::null())?;
-		let relic_type_row = RPG_GameCore_RelicBaseTypeExcelTable::GetData(*relic_row.Type()?)?;
-		let slot_name = RPG_Client_TextmapStatic::get_text(&*relic_type_row.BaseTypeText()?, std::ptr::null())?;
+		let main_stat_name = RPG_Client_TextmapStatic::get_text(main_row_data.PropertyName()?.try_deref()?, std::ptr::null())?;
+		let relic_type_row = RPG_GameCore_RelicBaseTypeExcelTable::GetData(*relic_row.Type()?.try_deref()?)?;
+		let slot_name = RPG_Client_TextmapStatic::get_text(relic_type_row.BaseTypeText()?.try_deref()?, std::ptr::null())?;
 
 		//let mut substats = Vec::new();
 		//let mut total_count: i32 = 0;
@@ -278,17 +278,17 @@ fn process_relic_data(this: RPG_Client_RelicItemData) -> Result<ReliquaryRelic> 
                     continue;
                 }
 				
-				let property_name = RPG_Client_TextmapStatic::get_text(&*sub_row_data.PropertyName()?, std::ptr::null())?.to_string();
+				let property_name = RPG_Client_TextmapStatic::get_text(sub_row_data.PropertyName()?.try_deref()?, std::ptr::null())?.to_string();
 				
 				//println!("property_name | Value: {}", property_name);
 
-				let relic_sub_affix_config = RPG_GameCore_RelicSubAffixConfigExcelTable::GetData((*relic_row.SubAffixGroup()?).0, affix_id)?;
+				let relic_sub_affix_config = RPG_GameCore_RelicSubAffixConfigExcelTable::GetData(relic_row.SubAffixGroup()?.try_deref()?.0, affix_id)?;
 				
 				if relic_sub_affix_config.0.is_null() {
                     continue;
                 }
 				
-				let mut value: f64 = RPG_GameCore_GamePlayStatic::CalcRelicSubAffixValue(*relic_sub_affix_config.BaseValue()?, *relic_sub_affix_config.StepValue()?, count, step)?.into();
+				let mut value: f64 = RPG_GameCore_GamePlayStatic::CalcRelicSubAffixValue(*relic_sub_affix_config.BaseValue()?.try_deref()?, *relic_sub_affix_config.StepValue()?.try_deref()?, count, step)?.into();
 				
 				//println!("value from CalcRelicSubAffixValue | Value: {}", value);
 				

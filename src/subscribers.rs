@@ -1,7 +1,8 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
-macro_rules! subscribe_function {
+use std::sync::{LazyLock, Mutex};
+/* macro_rules! subscribe_function {
     (
         $detour:ident,
         $target:expr,
@@ -28,9 +29,35 @@ macro_rules! enable_subscribers {
             Ok(())
         })()
     };
+} */
+macro_rules! subscribe_function {
+    ($detour:ident, $target:expr, $reroute:ident) => {
+        (|| -> anyhow::Result<()> {
+            $crate::subscribers::SUBSCRIBERS_ENABLE_FN.lock().unwrap().push(Box::new(|| -> anyhow::Result<()> {
+                $detour.enable()?;
+                Ok(())
+            }));
+            $detour.initialize(std::mem::transmute($target), $reroute)?;
+            Ok(())
+        })()
+    };
+}
+
+macro_rules! enable_subscribers {
+    () => {
+        (|| -> anyhow::Result<()> {
+            let mut funcs = $crate::subscribers::SUBSCRIBERS_ENABLE_FN.lock().unwrap();
+            for func in funcs.iter_mut() {
+                func()?
+            }
+            Ok(())
+        })()
+    };
 }
 pub(crate) use enable_subscribers;
-pub static mut SUBSCRIBERS_ENABLE_FN: Vec<Box<dyn FnMut() -> anyhow::Result<()>>> = Vec::new();
+//pub static mut SUBSCRIBERS_ENABLE_FN: Vec<Box<dyn FnMut() -> anyhow::Result<()>>> = Vec::new();
+pub static SUBSCRIBERS_ENABLE_FN: LazyLock<Mutex<Vec<Box<dyn FnMut() -> anyhow::Result<()> + Send + Sync>>>> = 
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 // Fix later
 macro_rules! safe_call {

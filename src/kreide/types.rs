@@ -962,6 +962,13 @@ pub struct UnityEngine_Object;
 impl UnityEngine_Object {
 	#[il2cpp_getter_property(property = "name")]
 	pub fn get_name(&self) -> Il2CppString {}
+	
+	#[il2cpp_method(name = "Destroy", args = ["UnityEngine.Object"])]
+    pub fn Destroy(obj: UnityEngine_Object) {}
+    
+    // Nếu thích an toàn dọn dẹp ngay lập tức trong 1 frame
+    #[il2cpp_method(name = "DestroyImmediate", args = ["UnityEngine.Object"])]
+    pub fn DestroyImmediate(obj: UnityEngine_Object) {}
 }
 
 #[il2cpp_value_type("UnityEngine.Rect")]

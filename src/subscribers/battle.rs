@@ -33,7 +33,7 @@ use std::sync::OnceLock;
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
     log::debug!(function_name!());
-    Ok(fixpoint_to_raw(&*game_mode._ElapsedActionDelay_k__BackingField()?) * 10f64)
+    Ok(fixpoint_to_raw(game_mode._ElapsedActionDelay_k__BackingField()?.try_deref()?) * 10f64)
 }
 
 #[derive(Clone, Copy)]
@@ -242,11 +242,16 @@ fn on_damage(
                 // 48 8B 83 ?? ?? ?? ?? 48 89 84 24
                 let damage_offset = get_damage_offset()?;
 
-                let damage = {
-                    let damage_ptr = damage_info.byte_offset(damage_offset as isize)
-                        as *const RPG_GameCore_FixPoint;
-                    fixpoint_to_raw(&*damage_ptr)
-                };
+                // let damage = {
+                //     let damage_ptr = damage_info.byte_offset(damage_offset as isize)
+                //         as *const RPG_GameCore_FixPoint;
+                //     fixpoint_to_raw(&*damage_ptr)
+                // };
+                let damage_ptr = damage_info.byte_offset(damage_offset as isize) as *const RPG_GameCore_FixPoint;
+                if damage_ptr.is_null() {
+                    return Err(anyhow!("Damage pointer is null"));
+                }
+                let damage = fixpoint_to_raw(&*damage_ptr);
 
                 let hp_initial_raw = fixpoint_to_raw(&hp_initial);
                 let hp_final_raw = fixpoint_to_raw(&hp_final);
@@ -350,7 +355,7 @@ fn on_damage(
                     }
                     _ => log::warn!(
                         "Light entity type {} was not matched",
-                        *attacker._EntityType()? as usize
+                        (*attacker._EntityType()?.try_deref()?) as usize
                     ),
                 }
             }
@@ -498,7 +503,7 @@ fn on_use_skill(
                         }
                         _ => log::warn!(
                             "Light entity type {} was not matched",
-                            *skill_owner._EntityType()? as usize
+                            (*skill_owner._EntityType()?.try_deref()?) as usize
                         ),
                     }
                 }
@@ -557,14 +562,18 @@ fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) 
         let ability_name_container =
             *((instance.byte_offset(offsets.ability_name_outer as isize)) as *const *const c_void);
         if ability_name_container.is_null() {
-            return Err(anyhow!("on_combo resolved null ability name container"));
+            //return Err(anyhow!("on_combo resolved null ability name container"));
+			log::debug!("on_combo: Entity at {:p} doesn't have an ability name container (maybe a buff/environment). Skip.", instance);
+			return Ok(()); 
         }
 
         let ability_name_ptr = *(ability_name_container
             .byte_offset(offsets.ability_name_inner as isize)
             as *const *const c_void);
         if ability_name_ptr.is_null() {
-            return Err(anyhow!("on_combo resolved null ability name"));
+            //return Err(anyhow!("on_combo resolved null ability name"));
+			log::debug!("on_combo: ability_name_ptr is null. Skip.");
+			return Ok(());
         }
 
         let ability_name = Il2CppString(ability_name_ptr);
@@ -701,7 +710,7 @@ fn on_combo(instance: *const c_void, game_mode: RPG_GameCore_TurnBasedGameMode) 
                         }
                         _ => log::warn!(
                             "Light entity type {} was not matched",
-                            *skill_owner._EntityType()? as usize
+                            (*skill_owner._EntityType()?.try_deref()?) as usize
                         ),
                     }
                 }
@@ -779,10 +788,10 @@ fn on_battle_begin(instance: RPG_GameCore_TurnBasedGameMode) {
     safe_call!({
         crate::battle::send_battle_event(Ok(Event::OnBattleBegin(OnBattleBeginEvent {
             max_waves: u32::try_from(i32::from(
-                &*instance._WaveMonsterMaxCount_k__BackingField()?,
+                instance._WaveMonsterMaxCount_k__BackingField()?.try_deref()?,
             ))?,
-            max_cycles: u32::from(&*instance._ChallengeTurnLimit_k__BackingField()?),
-            stage_id: u32::from(&*instance._CurrentWaveStageID_k__BackingField()?),
+            max_cycles: u32::from(instance._ChallengeTurnLimit_k__BackingField()?.try_deref()?),
+            stage_id: u32::from(instance._CurrentWaveStageID_k__BackingField()?.try_deref()?),
         })));
         Ok(())
     });
@@ -831,7 +840,7 @@ fn on_turn_begin(instance: RPG_GameCore_TurnBasedGameMode) {
                 let e = Ok(Event::OnTurnBegin(OnTurnBeginEvent {
                     action_value: get_elapsed_av(instance)?,
                     turn_owner: Some(Entity {
-                        uid: (*turn_owner._RuntimeID_k__BackingField()?).into(),
+                        uid: (turn_owner._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     }),
                 }));
@@ -864,7 +873,7 @@ pub fn on_update_wave(instance: RPG_GameCore_TurnBasedGameMode) {
     let res = ON_UPDATE_WAVE_Detour.call(instance);
     safe_call!({
         crate::battle::send_battle_event(Ok(Event::OnUpdateWave(OnUpdateWaveEvent {
-            wave: u32::try_from(i32::from(&*instance._WaveMonsterCurrentCount()?))?,
+            wave: u32::try_from(i32::from(instance._WaveMonsterCurrentCount()?.try_deref()?))?,
         })));
         Ok(())
     });
@@ -925,7 +934,7 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
             RPG_GameCore_EntityType::Monster => {
                 crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
-                        uid: (*entity._RuntimeID_k__BackingField()?).into(),
+                        uid: (entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     },
 					property_type: property, // Truyền trực tiếp Enum
@@ -1042,7 +1051,7 @@ pub fn on_stat_change(
             RPG_GameCore_EntityType::Monster => {
                 crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                     entity: Entity {
-                        uid: (*entity._RuntimeID_k__BackingField()?).into(),
+                        uid: (entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     },
 					property_type: property,
@@ -1329,7 +1338,7 @@ pub fn on_entity_defeated(instance: RPG_GameCore_TurnBasedGameMode, a2: *const c
                             team: Team::Player,
                         },
                         entity_defeated: Entity {
-                            uid: (*defeated_entity._RuntimeID_k__BackingField()?).into(),
+                            uid: (defeated_entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                             team: Team::Enemy,
                         },
                     })),
@@ -1404,12 +1413,12 @@ pub fn on_initialize_enemy(
 			Err(_) => 0.0,
 		};
         base_stats.set_value(RPG_GameCore_AbilityProperty::Level.to_string(), unsafe { row_data.get_Level()? } as f64);
-        base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
+        base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
 
 		base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentStance.to_string(), max_stance);
 		base_stats.set_value(RPG_GameCore_AbilityProperty::MaxStance.to_string(), max_stance);
 
-        base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(&*instance._DefaultMaxHP()?));
+        base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
 
         let name_id = row.MonsterName()?;
         let monster_name = get_textmap_content(&name_id)?;
