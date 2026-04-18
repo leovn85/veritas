@@ -10,6 +10,9 @@ battle_summaries/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+# Windows .bat files
+*.bat
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -1023,29 +1023,47 @@ pub fn on_stat_change(
                         //property: Property { kind: property_kind.to_string(), value: property_value },
                     })));
                     // 2. ÉP ENGINE TÍNH FINAL ATK, DEF, SPD VÀ LƯU LUÔN VÀO HASHMAP
+					let current_hp = match instance.get_property(RPG_GameCore_AbilityProperty::CurrentHP) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
                     let final_atk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
                     let final_def = match instance.get_property(RPG_GameCore_AbilityProperty::Defence) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let current_shield = match instance.get_property(RPG_GameCore_AbilityProperty::Shield) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
                     //let final_spd = fixpoint_to_raw(&instance.get_property(RPG_GameCore_AbilityProperty::Speed).unwrap_or_default());
 					let final_all_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					
+					let elation_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					
+					let crit_chance = match instance.get_property(RPG_GameCore_AbilityProperty::CriticalChance) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let crit_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::CriticalDamage) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let break_effect = match instance.get_property(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let heal_boost = match instance.get_property(RPG_GameCore_AbilityProperty::HealRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let max_sp = match instance.get_property(RPG_GameCore_AbilityProperty::MaxSP) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let energy_regen = match instance.get_property(RPG_GameCore_AbilityProperty::SPRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let effect_hit = match instance.get_property(RPG_GameCore_AbilityProperty::StatusProbability) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
+					let effect_res = match instance.get_property(RPG_GameCore_AbilityProperty::StatusResistance) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
 
-                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-                        entity: Entity { uid: avatar.id, team: Team::Player },
-						property_type: RPG_GameCore_AbilityProperty::Attack,
-						value: final_atk,
-                        //property: Property { kind: "Attack".to_string(), value: final_atk },
-                    })));
-                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-                        entity: Entity { uid: avatar.id, team: Team::Player },
-						property_type: RPG_GameCore_AbilityProperty::Defence,
-						value: final_def,
-                        //property: Property { kind: "Defence".to_string(), value: final_def },
-                    })));
-                    crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-                        entity: Entity { uid: avatar.id, team: Team::Player },
-						property_type: RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio,
-						value: final_all_dmg,
-                        //property: Property { kind: "AllDamageTypeAddedRatio".to_string(), value: final_all_dmg },
-                    })));
+                    let properties_to_sync = [
+						(RPG_GameCore_AbilityProperty::CurrentHP, current_hp),
+						(RPG_GameCore_AbilityProperty::Attack, final_atk),
+						(RPG_GameCore_AbilityProperty::Defence, final_def),
+						(RPG_GameCore_AbilityProperty::Shield, current_shield),
+						(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio, final_all_dmg),
+						(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio, elation_dmg),
+						(RPG_GameCore_AbilityProperty::CriticalChance, crit_chance),
+						(RPG_GameCore_AbilityProperty::CriticalDamage, crit_dmg),
+						(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio, break_effect),
+						(RPG_GameCore_AbilityProperty::HealRatio, heal_boost),
+						(RPG_GameCore_AbilityProperty::MaxSP, max_sp),
+						(RPG_GameCore_AbilityProperty::SPRatio, energy_regen),
+						(RPG_GameCore_AbilityProperty::StatusProbability, effect_hit),
+						(RPG_GameCore_AbilityProperty::StatusResistance, effect_res),
+					];
+					for (prop_type, val) in properties_to_sync {
+						crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
+							entity: Entity { uid: avatar.id, team: Team::Player },
+							property_type: prop_type,
+							value: val, // Giá trị float nguyên bản
+						})));
+					}
 				}
             }
             RPG_GameCore_EntityType::Monster => {
@@ -1408,6 +1426,10 @@ pub fn on_initialize_enemy(
         let mut base_stats = BattleStats {
             properties: HashMap::new(),
         };
+		let current_stance = match unsafe {turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::CurrentStance)} {
+			Ok(val) => fixpoint_to_raw(&val),
+			Err(_) => 0.0,
+		};
 		let max_stance = match unsafe {turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::MaxStance)} {
 			Ok(val) => fixpoint_to_raw(&val),
 			Err(_) => 0.0,
@@ -1415,7 +1437,7 @@ pub fn on_initialize_enemy(
         base_stats.set_value(RPG_GameCore_AbilityProperty::Level.to_string(), unsafe { row_data.get_Level()? } as f64);
         base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
 
-		base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentStance.to_string(), max_stance);
+		base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentStance.to_string(), current_stance);
 		base_stats.set_value(RPG_GameCore_AbilityProperty::MaxStance.to_string(), max_stance);
 
         base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));

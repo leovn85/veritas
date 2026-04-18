@@ -10,6 +10,12 @@ use crate::{
 
 use super::{app::App, helpers};
 
+// Định nghĩa bảng màu để dùng chung
+const COLOR_LIGHT_RED: egui::Color32 = egui::Color32::from_rgb(255, 80, 80);    // Đỏ sáng (không bị quá gắt)
+const COLOR_BLUE: egui::Color32 = egui::Color32::from_rgb(100, 200, 255); // Xanh dương thiên thanh (rất dịu mắt)
+const COLOR_AMBER: egui::Color32 = egui::Color32::from_rgb(255, 170, 0);  // Vàng cam (Hổ phách) - tránh trùng màu nền trắng/xám
+const COLOR_LIGHT_GREEN: egui::Color32 = egui::Color32::from_rgb(100, 255, 100); // Xanh lá cây sáng
+
 pub struct PieSegment {
     pub points: Vec<[f64; 2]>,
 	#[allow(dead_code)]
@@ -833,125 +839,160 @@ impl App {
 		
 		
         let get_stat = |prop: RPG_GameCore_AbilityProperty| -> f64 {
-            stats.get_value(&prop.to_string()).unwrap_or(0.0)
-        };
-		
-        let final_atk = get_stat(RPG_GameCore_AbilityProperty::Attack);
-        
-        let final_def = get_stat(RPG_GameCore_AbilityProperty::Defence);
-		//let final_atk = get_stat(RPG_GameCore_AbilityProperty::Attack);
-		//let final_def = get_stat(RPG_GameCore_AbilityProperty::Defence);
-        let final_spd = get_stat(RPG_GameCore_AbilityProperty::Speed);
+			stats.get_value(&prop.to_string()).unwrap_or(0.0)
+		};
 
-        egui::Grid::new("unified_character_stats_grid")
-            .num_columns(2)
-            .striped(true)
-            .show(ui, |ui| {
-                
-                // --- HELPER 1: Hàm vẽ Header ---
-                let draw_header = |ui: &mut Ui, title: String| {
-                    ui.label(egui::RichText::new(title).strong().size(14.0));
-                    ui.label(""); // Cột phải để trống cho Header
-                    ui.end_row();
-                };
+		let final_atk = get_stat(RPG_GameCore_AbilityProperty::Attack);
+		let final_def = get_stat(RPG_GameCore_AbilityProperty::Defence);
+		let final_spd = get_stat(RPG_GameCore_AbilityProperty::Speed);
 
-                // --- HELPER 2: Hàm vẽ 1 dòng (có Icon, có Base + Bonus) ---
-                let draw_base_stat_row = |ui: &mut Ui, icon_key: &str, label: String, final_val: f64| {
-                    // Cột 1: Icon + Tên chỉ số
-                    ui.horizontal(|ui| {
-                        if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
-                            let dim = 14.0;
-                            ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
-                        } else {
-                            ui.allocate_space(egui::vec2(14.0, 14.0)); // Giữ chỗ nếu ko load đc icon
-                        }
-                        ui.label(label);
-                    });
+		egui::Grid::new("unified_character_stats_grid")
+			.num_columns(2)
+			.striped(true)
+			.show(ui, |ui| {
 
-                    // Cột 2: Value (Căn lề phải)
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        //let bonus_val = final_val - base_val;
-                        if final_val.abs() > 0.01 {
-                            //let sign = if final_val > 0.0 { "+" } else { "" };
-                            //let color = if final_val > 0.0 { Color32::from_rgb(137, 222, 129) } else { Color32::from_rgb(255, 80, 80) };
-                            ui.label(egui::RichText::new(format!("{:.0}", final_val)).strong());
-                        }
-                        //ui.label(format!("{:.0}", base_val));
-                    });
-                    ui.end_row();
-                };
+				// --- HELPER MỚI: Hàm vẽ Text đổ bóng (Outlined Text) ---
+				// Hàm này tự động tính kích thước chữ và xin layout chỗ trống trước khi vẽ
+				let draw_text_with_shadow = |ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32| {
+					// Dùng FontId mặc định nhưng ép nó thành dạng in đậm (bold/strong) giống UI của bạn
+					// Bằng cách sử dụng FontFamily::Proportional
+					let font_id = egui::FontId::new(size, egui::FontFamily::Proportional);
+					let text_str = text.to_string();
 
-                // --- HELPER 3: Hàm vẽ 1 dòng (Advanced/DMG, có Icon, giá trị %) ---
-                let draw_advanced_stat_row = |ui: &mut Ui, icon_key: &str, label: String, val: f64, is_percent: bool, highlight: bool| {
-                    ui.horizontal(|ui| {
-                        if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
-                            let dim = 14.0;
-                            ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
-                        } else {
-                            ui.allocate_space(egui::vec2(14.0, 14.0));
-                        }
-                        ui.label(label);
-                    });
+					// Tính toán kích thước chữ để xin cấp phát không gian trong Grid
+					let galley = ui.painter().layout_no_wrap(text_str.clone(), font_id.clone(), color);
+					let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let text = if is_percent {
-                            format!("{:.1}%", val * 100.0)
-                        } else {
-                            format!("{:.0}", val)
-                        };
-                        
-                        let mut rich_text = egui::RichText::new(text).strong();
-                        if highlight {
-                            rich_text = rich_text.color(ui.visuals().hyperlink_color);
-                        }
-                        ui.label(rich_text);
-                    });
-                    ui.end_row();
-                };
+					// 1. Vẽ bóng (Drop Shadow): Chỉ lệch 1 pixel xuống dưới và sang phải
+					// Dùng màu Đen với Alpha = 180 (hơi trong suốt) để viền bóng mềm mại, không bị gắt
+					ui.painter().text(
+						rect.min + egui::vec2(1.0, 1.0),
+						egui::Align2::LEFT_TOP,
+						&text_str,
+						font_id.clone(),
+						egui::Color32::from_black_alpha(180), 
+					);
 
-                // ==========================================
-                // VẼ GIAO DIỆN TỪ ĐÂY
-                // ==========================================
+					// 2. Vẽ chữ thật lên trên cùng (Foreground)
+					ui.painter().text(
+						rect.min,
+						egui::Align2::LEFT_TOP,
+						&text_str,
+						font_id,
+						color,
+					);
+				};
 
-                // 1. BASE STATS
-                draw_header(ui, t!("Base Stats").to_string());
-                draw_base_stat_row(ui, "Attack", t!("ATK").to_string(), final_atk);
-                draw_base_stat_row(ui, "Defence", t!("DEF").to_string(), final_def);
-                draw_base_stat_row(ui, "Speed", t!("SPD").to_string(), final_spd);
+				// --- HELPER 1: Hàm vẽ Header ---
+				let draw_header = |ui: &mut egui::Ui, title: String| {
+					let default_color = ui.visuals().text_color(); // Lấy màu theme mặc định
+					draw_text_with_shadow(ui, &title, 15.0, default_color);
+					ui.label(""); // Cột phải để trống cho Header
+					ui.end_row();
+				};
 
-                // 2. ADVANCED STATS
-                draw_header(ui, t!("Advanced Stats").to_string());
-                draw_advanced_stat_row(ui, "CriticalChance", t!("CRIT Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalChance), true, false);
-                draw_advanced_stat_row(ui, "CriticalDamage", t!("CRIT DMG").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalDamage), true, false);
-                draw_advanced_stat_row(ui, "BreakDamageAddedRatio", t!("Break Effect").to_string(), get_stat(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio), true, false);
-                draw_advanced_stat_row(ui, "HealRatio", t!("Outgoing Healing Boost").to_string(), get_stat(RPG_GameCore_AbilityProperty::HealRatio), true, false);
-                draw_advanced_stat_row(ui, "MaxSP", t!("Max Energy").to_string(), get_stat(RPG_GameCore_AbilityProperty::MaxSP), false, false);
-                draw_advanced_stat_row(ui, "SPRatio", t!("Energy Regeneration Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::SPRatio), true, false);
-                draw_advanced_stat_row(ui, "StatusProbability", t!("Effect Hit Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusProbability), true, false);
-                draw_advanced_stat_row(ui, "StatusResistance", t!("Effect RES").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusResistance), true, false);
-                draw_advanced_stat_row(ui, "ElationDamageAddedRatio", t!("Elation").to_string(), get_stat(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio), true, false);
+				// --- HELPER 2: Hàm vẽ 1 dòng (có Icon, có Base + Bonus) ---
+				let draw_base_stat_row = |ui: &mut egui::Ui, icon_key: &str, label: String, final_val: f64, color: Option<egui::Color32>| {
+					let default_color = ui.visuals().text_color();
+					
+					// Cột 1: Icon + Tên chỉ số
+					ui.horizontal(|ui| {
+						if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
+							let dim = 14.0;
+							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+						} else {
+							ui.allocate_space(egui::vec2(14.0, 14.0)); // Giữ chỗ nếu ko load đc icon
+						}
+						draw_text_with_shadow(ui, &label, 14.0, default_color);
+					});
 
-                // 3. DMG TYPE
-                draw_header(ui, t!("DMG Type").to_string());
-                let dmg_types = [
-                    (t!("Physical DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Physical, RPG_GameCore_AbilityProperty::PhysicalAddedRatio, "PhysicalAddedRatio"),
-                    (t!("Fire DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Fire, RPG_GameCore_AbilityProperty::FireAddedRatio, "FireAddedRatio"),
-                    (t!("Ice DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Ice, RPG_GameCore_AbilityProperty::IceAddedRatio, "IceAddedRatio"),
-                    (t!("Lightning DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Thunder, RPG_GameCore_AbilityProperty::ThunderAddedRatio, "ThunderAddedRatio"),
-                    (t!("Wind DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Wind, RPG_GameCore_AbilityProperty::WindAddedRatio, "WindAddedRatio"),
-                    (t!("Quantum DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Quantum, RPG_GameCore_AbilityProperty::QuantumAddedRatio, "QuantumAddedRatio"),
-                    (t!("Imaginary DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Imaginary, RPG_GameCore_AbilityProperty::ImaginaryAddedRatio, "ImaginaryAddedRatio"),
-                ];
+					// Cột 2: Value (Căn lề phải)
+					ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+						// Đã bỏ if final_val > 0.01 ở đây để luôn hiển thị giá trị
+						let text_val = if final_val.abs() < 0.01 {
+							"0".to_string() // Nếu = 0 thì in tròn số 0
+						} else {
+							format!("{:.2}", final_val) // Nếu có số lẻ thì in 2 chữ số thập phân
+						};
+						
+						let final_color = color.unwrap_or(default_color); // Áp dụng màu custom nếu có
+						draw_text_with_shadow(ui, &text_val, 14.0, final_color);
+					});
+					ui.end_row();
+				};
 
-                if let Some(char_dmg_type) = character_damage_type {
-                    if let Some((label, _, prop, icon_key)) = dmg_types.iter().find(|(_, dmg_type, _, _)| *dmg_type == char_dmg_type) {
+				// --- HELPER 3: Hàm vẽ 1 dòng (Advanced/DMG, có Icon, giá trị %) ---
+				let draw_advanced_stat_row = |ui: &mut egui::Ui, icon_key: &str, label: String, val: f64, is_percent: bool, color: Option<egui::Color32>| {
+					let default_color = ui.visuals().text_color();
+
+					ui.horizontal(|ui| {
+						if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
+							let dim = 14.0;
+							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+						} else {
+							ui.allocate_space(egui::vec2(14.0, 14.0));
+						}
+						draw_text_with_shadow(ui, &label, 14.0, default_color);
+					});
+
+					ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+						let text_val = if is_percent {
+							format!("{:.2}%", val * 100.0)
+						} else {
+							format!("{:.0}", val)
+						};
+						
+						let final_color = color.unwrap_or(default_color);
+						draw_text_with_shadow(ui, &text_val, 14.0, final_color);
+					});
+					ui.end_row();
+				};
+
+				// ==========================================
+				// VẼ GIAO DIỆN TỪ ĐÂY
+				// ==========================================
+
+				// 1. BASE STATS
+				draw_header(ui, t!("Base Stats").to_string());
+				draw_base_stat_row(ui, "HP", t!("HP").to_string(), get_stat(RPG_GameCore_AbilityProperty::CurrentHP), None);
+				draw_base_stat_row(ui, "Attack", t!("ATK").to_string(), final_atk, None);
+				draw_base_stat_row(ui, "Defence", t!("DEF").to_string(), final_def, None);
+				draw_base_stat_row(ui, "Speed", t!("SPD").to_string(), final_spd, Some(COLOR_BLUE));
+				draw_base_stat_row(ui, "Shield", t!("Shield").to_string(), get_stat(RPG_GameCore_AbilityProperty::Shield), Some(COLOR_AMBER));
+
+				// 2. ADVANCED STATS
+				draw_header(ui, t!("Advanced Stats").to_string());
+				draw_advanced_stat_row(ui, "CriticalChance", t!("CRIT Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalChance), true, Some(COLOR_LIGHT_RED));
+				draw_advanced_stat_row(ui, "CriticalDamage", t!("CRIT DMG").to_string(), get_stat(RPG_GameCore_AbilityProperty::CriticalDamage), true, Some(COLOR_LIGHT_RED));
+				draw_advanced_stat_row(ui, "BreakDamageAddedRatio", t!("Break Effect").to_string(), get_stat(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio), true, None);
+				draw_advanced_stat_row(ui, "HealRatio", t!("Outgoing Healing Boost").to_string(), get_stat(RPG_GameCore_AbilityProperty::HealRatio), true, None);
+				draw_advanced_stat_row(ui, "MaxSP", t!("Max Energy").to_string(), get_stat(RPG_GameCore_AbilityProperty::MaxSP), false, None);
+				draw_advanced_stat_row(ui, "SPRatio", t!("Energy Regeneration Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::SPRatio), true, None);
+				draw_advanced_stat_row(ui, "StatusProbability", t!("Effect Hit Rate").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusProbability), true, None);
+				draw_advanced_stat_row(ui, "StatusResistance", t!("Effect RES").to_string(), get_stat(RPG_GameCore_AbilityProperty::StatusResistance), true, None);
+				draw_advanced_stat_row(ui, "ElationDamageAddedRatio", t!("Elation").to_string(), get_stat(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio), true, Some(COLOR_LIGHT_GREEN));
+
+				// 3. DMG TYPE
+				draw_header(ui, t!("DMG Type").to_string());
+				let dmg_types = [
+					(t!("Physical DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Physical, RPG_GameCore_AbilityProperty::PhysicalAddedRatio, "PhysicalAddedRatio"),
+					(t!("Fire DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Fire, RPG_GameCore_AbilityProperty::FireAddedRatio, "FireAddedRatio"),
+					(t!("Ice DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Ice, RPG_GameCore_AbilityProperty::IceAddedRatio, "IceAddedRatio"),
+					(t!("Lightning DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Thunder, RPG_GameCore_AbilityProperty::ThunderAddedRatio, "ThunderAddedRatio"),
+					(t!("Wind DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Wind, RPG_GameCore_AbilityProperty::WindAddedRatio, "WindAddedRatio"),
+					(t!("Quantum DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Quantum, RPG_GameCore_AbilityProperty::QuantumAddedRatio, "QuantumAddedRatio"),
+					(t!("Imaginary DMG Boost").to_string(), RPG_GameCore_AttackDamageType::Imaginary, RPG_GameCore_AbilityProperty::ImaginaryAddedRatio, "ImaginaryAddedRatio"),
+				];
+
+				if let Some(char_dmg_type) = character_damage_type {
+					if let Some((label, _, prop, icon_key)) = dmg_types.iter().find(|(_, dmg_type, _, _)| *dmg_type == char_dmg_type) {
 						let base_elemental_dmg = get_stat(*prop);
 						let generic_bonus = get_stat(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio);
 						let final_dmg_value = base_elemental_dmg + generic_bonus;
-                        draw_advanced_stat_row(ui, icon_key, label.to_string(), final_dmg_value, true, true);
-                    }
-                }
-            });
+						draw_advanced_stat_row(ui, icon_key, label.to_string(), final_dmg_value, true, Some(COLOR_LIGHT_GREEN));
+					}
+				}
+			});
     }
 }
 
