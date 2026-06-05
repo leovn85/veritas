@@ -200,12 +200,44 @@ impl App {
 						let fraction = if max_dmg > 0.0 { (dmg / max_dmg) as f32 } else { 0.0 };
 						let color = helpers::get_character_color(i).linear_multiply(self.config.widget_opacity);
 						
-						let bar = egui::ProgressBar::new(fraction)
-							.fill(color)
-							.desired_height(14.0)
-							.show_percentage(); 
+						// let bar = egui::ProgressBar::new(fraction)
+							// .fill(color)
+							// .desired_height(14.0)
+							// .show_percentage();
+						//ui.add(bar);
+							
+						// Tính fraction của sát thương bị thừa (Overkill)
+						let overkill_dmg = battle_context.real_time_overkill_damages[i];
+						let overkill_fraction = if max_dmg > 0.0 { (overkill_dmg / max_dmg) as f32 } else { 0.0 };
 
-						ui.add(bar);
+						// Cấp phát không gian để vẽ thanh Bar (cao 14px)
+						let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 14.0), egui::Sense::hover());
+						let painter = ui.painter_at(rect);
+
+						// 1. Vẽ khung nền của thanh bar (màu xám tối)
+						let bg_color = ui.visuals().widgets.noninteractive.bg_fill;
+						painter.rect_filled(rect, 2.0, bg_color); // Bo tròn 2px
+
+						// 2. Vẽ thanh Damage chính (Màu của nhân vật)
+						let color = helpers::get_character_color(i).linear_multiply(self.config.widget_opacity);
+						let fill_width = rect.width() * fraction.clamp(0.0, 1.0);
+						let fill_rect = egui::Rect::from_min_max(
+							rect.min,
+							egui::pos2(rect.left() + fill_width, rect.bottom()),
+						);
+						painter.rect_filled(fill_rect, 2.0, color);
+
+						// 3. Vẽ đè thanh Overkill lên cuối thanh Damage (Màu nhạt hơn/trong suốt)
+						if overkill_fraction > 0.0 {
+							let overkill_width = rect.width() * overkill_fraction.clamp(0.0, fraction);
+							let overkill_rect = egui::Rect::from_min_max(
+								egui::pos2(fill_rect.right() - overkill_width, rect.top()),
+								egui::pos2(fill_rect.right(), rect.bottom()),
+							);
+							// Màu overlay trắng mờ mờ để thể hiện sát thương ảo (overkill)
+							let overkill_color = egui::Color32::from_white_alpha(70);
+							painter.rect_filled(overkill_rect, 2.0, overkill_color);
+						}
 					});
 				});
 				ui.add_space(4.0); 

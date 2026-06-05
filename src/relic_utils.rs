@@ -169,7 +169,7 @@ pub fn dump_and_convert_data() -> anyhow::Result<()> {
     // 3. Tạo file JSON
     let archive = FribbelsArchive {
         source: "reliquary_archiver".to_string(),
-        build: "0.14.0".to_string(),
+        build: "0.15.0".to_string(),
         version: 4,
         metadata: FribbelsMetadata { 
             uid: player_uid, 

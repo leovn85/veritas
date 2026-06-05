@@ -12,7 +12,7 @@ use crate::api::{
     il2cpp_class_from_type, il2cpp_class_get_methods, il2cpp_class_get_name,
     il2cpp_domain_get_assemblies, il2cpp_field_get_name, il2cpp_field_get_value_object,
     il2cpp_image_get_class, il2cpp_image_get_class_count, il2cpp_method_get_name,
-    il2cpp_method_get_param, il2cpp_method_get_param_count, il2cpp_type_get_name,
+    il2cpp_method_get_param, il2cpp_method_get_param_count, il2cpp_type_get_name, il2cpp_class_get_type
 };
 use crate::errors::Il2CppError;
 use crate::{get_cached_class, utils};
@@ -169,7 +169,8 @@ impl Il2CppClass {
     }
 
     pub fn byval_arg(&self) -> Il2CppType {
-        Il2CppType(unsafe { self.0.byte_offset(128) })
+        //Il2CppType(unsafe { self.0.byte_offset(120) }) //hard code -> may change when new version arrives -> crash
+		unsafe { il2cpp_class_get_type(*self) }
     }
 
     pub fn methods(&self) -> Vec<Il2CppMethod> {

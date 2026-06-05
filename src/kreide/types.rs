@@ -9,7 +9,7 @@ use std::ffi::c_void;
 
 use il2cpp_runtime::{il2cpp_enum_type, il2cpp_getter_property, il2cpp_value_type};
 use il2cpp_runtime::prelude::*;
-
+use il2cpp_runtime::types::List;
 
 #[il2cpp_value_type("RPG.Client.TextID")]
 pub struct RPG_Client_TextID {
@@ -244,6 +244,20 @@ impl RPG_GameCore_AvatarPropertyExcelTable {
 }
 
 #[il2cpp_enum_type(i32)]
+pub enum RPG_GameCore_ItemMainType {
+    Unknown = 0,
+    Virtual = 1,
+    AvatarCard = 2,
+    Equipment = 3, // Light Cones
+    Relic = 4,     // Relics
+    Usable = 5,
+    Material = 6,
+    Mission = 7,
+    Display = 8,
+    Pet = 9,
+}
+
+#[il2cpp_enum_type(i32)]
 pub enum RPG_GameCore_AttackDamageType {
 	// Fields
 	Unknow = 0, 
@@ -333,7 +347,7 @@ pub enum RPG_GameCore_AvatarPropertyType {
 	BreakDamageExtraAddedRatio,
 	ElationDamageAddedRatio,
 	ElationDamageAddedRatioBase,
-	ExtraAttackAddedRatio1,
+	ExtraAttackAddedRatio1 = 1001,
 	ExtraAttackAddedRatio2,
 	ExtraAttackAddedRatio3,
 	ExtraAttackAddedRatio4,
@@ -393,7 +407,8 @@ pub enum RPG_GameCore_AvatarPropertyType {
 	ExtraShieldConvert,
 	ExtraAllDamageReduceConvert,
 	ExtraTotalAllDamageReduce,
-	ExtraAllDamageTypeAddedRatio5
+	ExtraAllDamageTypeAddedRatio5,
+	ExtraElationDamageAddedRatio1
 }
 
 #[il2cpp_enum_type(i32)]
@@ -605,6 +620,7 @@ pub enum RPG_GameCore_AbilityProperty {
 	ExtraInsertDamageAddedRatio1,
 	ExtraDOTDamageAddedRatio1,
 	ExtraElementDamageAddedRatio1,
+	ExtraElationDamageAddedRatio1,
 	ExtraHealBase,
 	ExtraShieldBase,
 	ExtraTotalShieldPower,
@@ -735,7 +751,8 @@ pub enum RPG_GameCore_AttackType {
     Level,
     Servant,
     TrueDamage,
-	ElationDamage
+	ElationDamage,
+	Assist
 }
 
 impl Ord for RPG_GameCore_AttackType {
@@ -789,8 +806,8 @@ impl RPG_GameCore_GameEntity {
 pub struct RPG_Client_ModuleManager;
 impl RPG_Client_ModuleManager {
 
-    #[il2cpp_field(name = "AvatarModule")]
-    pub fn AvatarModule(&self) -> RPG_Client_AvatarModule {}
+    //#[il2cpp_field(name = "AvatarModule")]
+    //pub fn AvatarModule(&self) -> RPG_Client_AvatarModule {}
 	
 	#[il2cpp_field(name = "InventoryModule")]
     pub fn InventoryModule(&self) -> RPG_Client_InventoryModule {}
@@ -812,8 +829,8 @@ impl RPG_GameCore_ICharacterSkillRowData {
 
 #[il2cpp_ref_type("System.Object")]
 pub struct System_Object_Dummy;
-
-#[il2cpp_ref_type("RPG.Client.AvatarModule")]
+//deprecated
+/* #[il2cpp_ref_type("RPG.Client.AvatarModule")]
 pub struct RPG_Client_AvatarModule;
 impl RPG_Client_AvatarModule {
     #[il2cpp_method(name = "GetAvatar", args = ["uint"])]
@@ -824,7 +841,7 @@ impl RPG_Client_AvatarModule {
 	
 	#[il2cpp_getter_property(property = "AllMultiPathAvatars")]
     pub fn get_AllMultiPathAvatars(&self) -> System_Object_Dummy {}
-}
+} */
 
 #[il2cpp_ref_type("RPG.GameCore.GameWorld")]
 pub struct RPG_GameCore_GameWorld;
@@ -1282,6 +1299,9 @@ pub struct RPG_Client_InventoryModule;
 impl RPG_Client_InventoryModule {
     #[il2cpp_method(name = "GetRelicDataByUID", args = ["uint"])]
     pub fn get_relic_data_by_uid(&self, uid: u32) -> RPG_Client_RelicItemData {}
+	
+	#[il2cpp_method(name = "GetItemsByMainTypes", args = ["RPG.GameCore.ItemMainType[]"])]
+    pub fn get_items_by_main_types(&self, main_types: Il2CppArray) -> List {}
 }
 
 
@@ -1431,4 +1451,41 @@ pub struct RPG_GameCore_AvatarSkillTreeRow;
 impl RPG_GameCore_AvatarSkillTreeRow {
     #[il2cpp_field(name = "AnchorType")]
     pub fn AnchorType(&self) -> RPG_GameCore_AvatarSkillTreeAnchorType__Boxed {}
+}
+
+#[il2cpp_ref_type("RPG.AvatarSystem.IAvatar")]
+pub struct RPG_AvatarSystem_IAvatar;
+
+#[il2cpp_ref_type("RPG.Client.AvatarHelper")]
+pub struct RPG_Client_AvatarHelper;
+
+impl RPG_Client_AvatarHelper {
+    #[il2cpp_method(name = "GetAllObtainedSpecificPathAvatars", args = [])]
+    pub fn GetAllObtainedSpecificPathAvatars() -> List {}
+}
+
+#[il2cpp_ref_type("RPG.Client.AvatarExtensions")]
+pub struct RPG_Client_AvatarExtensions;
+
+impl RPG_Client_AvatarExtensions {
+    #[il2cpp_method(name = "GetAvatarID", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetAvatarID(avatar: RPG_AvatarSystem_IAvatar) -> u32 {}
+
+    #[il2cpp_method(name = "GetLevel", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetLevel(avatar: RPG_AvatarSystem_IAvatar) -> u32 {}
+
+    #[il2cpp_method(name = "GetPromotionLevel", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetPromotionLevel(avatar: RPG_AvatarSystem_IAvatar) -> u32 {}
+
+    #[il2cpp_method(name = "GetEidolonLevel", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetEidolonLevel(avatar: RPG_AvatarSystem_IAvatar) -> u32 {}
+
+    #[il2cpp_method(name = "GetEnhancedID", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetEnhancedID(avatar: RPG_AvatarSystem_IAvatar) -> u32 {}
+
+    #[il2cpp_method(name = "GetName", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetName(avatar: RPG_AvatarSystem_IAvatar) -> Il2CppString {}
+
+    #[il2cpp_method(name = "GetTraceTreeLevels", args = ["RPG.AvatarSystem.IAvatar"])]
+    pub fn GetTraceTreeLevels(avatar: RPG_AvatarSystem_IAvatar) -> *mut std::ffi::c_void {}
 }

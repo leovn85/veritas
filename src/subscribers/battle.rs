@@ -23,12 +23,17 @@ use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
 //use il2cpp_runtime::types::System_Enum;
-use std::collections::HashMap;
+use std::collections::{HashSet,HashMap};
 use std::ffi::c_void;
 use std::ptr::null;
 //use std::str::FromStr;
-//use std::sync::{OnceLock, LazyLock, Mutex};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, LazyLock, Mutex};
+//use std::sync::OnceLock;
+use anyhow::Context;
+
+thread_local! {
+    static CAPTURED_DAMAGE: std::cell::Cell<Option<f64>> = std::cell::Cell::new(None);
+}
 
 #[named]
 unsafe fn get_elapsed_av(game_mode: RPG_GameCore_TurnBasedGameMode) -> Result<f64> {
@@ -237,24 +242,35 @@ fn on_damage(
 
         match attacker_team_value {
             RPG_GameCore_TeamType::TeamLight => {
-                // mov     rax, [rbx+??h]
-                // mov     [rsp+758h+var_6A0], rax
-                // 48 8B 83 ?? ?? ?? ?? 48 89 84 24
-                let damage_offset = get_damage_offset()?;
-
-                // let damage = {
-                //     let damage_ptr = damage_info.byte_offset(damage_offset as isize)
-                //         as *const RPG_GameCore_FixPoint;
-                //     fixpoint_to_raw(&*damage_ptr)
-                // };
-                let damage_ptr = damage_info.byte_offset(damage_offset as isize) as *const RPG_GameCore_FixPoint;
-                if damage_ptr.is_null() {
-                    return Err(anyhow!("Damage pointer is null"));
-                }
-                let damage = fixpoint_to_raw(&*damage_ptr);
-
                 let hp_initial_raw = fixpoint_to_raw(&hp_initial);
                 let hp_final_raw = fixpoint_to_raw(&hp_final);
+				
+				let hp_lost = hp_initial_raw - hp_final_raw;
+                let expected_damage = if hp_lost > 0.0 && hp_final_raw > 0.0 {
+                    Some(hp_lost)
+                } else {
+                    None
+                };
+				/*
+				let damage_info_class = Il2CppClass(*(damage_info as *const *const c_void));
+				
+				let heuristic_damage = resolve_dynamic_damage(damage_info as usize, damage_info_class, expected_damage)
+                    .unwrap_or(if hp_lost > 0.0 { hp_lost } else { 0.0 });
+				*/
+				
+				let damage = CAPTURED_DAMAGE.with(|c| c.take()).unwrap_or(if hp_lost > 0.0 { hp_lost } else { 0.0 });
+
+                if damage <= 0.0 { return Ok(()); }
+				/*
+				if heuristic_damage > 0.0 || damage > 0.0 {
+                    log::info!(
+                        "[DAMAGE TEST] Heuristic = {:.2} | Captured (PreDamage) = {:.2} | Diff = {:.2}", 
+                        heuristic_damage, 
+                        damage,
+                        (heuristic_damage - damage).abs()
+                    );
+                }*/
+
                 let overkill_damage = if hp_initial_raw <= 0.0 {
                     damage
                 } else if hp_final_raw <= 0.0 {
@@ -262,6 +278,41 @@ fn on_damage(
                 } else {
                     0.0
                 };
+				
+				// === LOG OVERKILL RA FILE VERITAS.LOG ===
+                if overkill_damage > 0.0 {
+                    // Dùng log::info! nó sẽ lưu vào veritas.log
+                    log::info!("[Overkill Record] Entity {} dealt {:.2} total DMG ({:.2} was Overkill)", 
+                        attacker._RuntimeID_k__BackingField()?.try_deref()?.0, 
+                        damage, 
+                        overkill_damage
+                    );
+                }
+                // ========================================
+
+				
+                //let damage_offset = get_damage_offset()?;
+
+                // let damage = {
+                //     let damage_ptr = damage_info.byte_offset(damage_offset as isize)
+                //         as *const RPG_GameCore_FixPoint;
+                //     fixpoint_to_raw(&*damage_ptr)
+                // };
+                //let damage_ptr = damage_info.byte_offset(damage_offset as isize) as *const RPG_GameCore_FixPoint;
+                //if damage_ptr.is_null() {
+                //    return Err(anyhow!("Damage pointer is null"));
+                //}
+                //let damage = fixpoint_to_raw(&*damage_ptr);
+
+                //let hp_initial_raw = fixpoint_to_raw(&hp_initial);
+                //let hp_final_raw = fixpoint_to_raw(&hp_final);
+                // let overkill_damage = if hp_initial_raw <= 0.0 {
+                    // damage
+                // } else if hp_final_raw <= 0.0 {
+                    // (damage - hp_initial_raw).max(0.0)
+                // } else {
+                    // 0.0
+                // };
 
                 let attack_type_offset =
                     get_attack_type_offset(Il2CppClass(*(damage_info as *const *const c_void)))?;
@@ -369,6 +420,34 @@ fn on_damage(
 
     res
 }
+
+#[named]
+fn on_pre_damage_init(
+    instance: *const c_void,
+    damage_data: *const c_void,
+    attack_data: *const c_void,
+    ability_id: Il2CppString,
+    attacker_entity: RPG_GameCore_GameEntity,
+    defender_entity: RPG_GameCore_GameEntity,
+    damage: RPG_GameCore_FixPoint,           // <-- Bắt con số này
+    stance_damage: RPG_GameCore_FixPoint,
+    stance_element_ratio: RPG_GameCore_FixPoint,
+    custom_name: Il2CppString
+) -> *const c_void {
+    // 1. Dịch ra số thập phân
+    let raw_dmg = fixpoint_to_raw(&damage);
+    
+    // 2. Cất vào túi
+    CAPTURED_DAMAGE.with(|c| c.set(Some(raw_dmg)));
+
+    // 3. Chạy hàm gốc của game
+    ON_PRE_DAMAGE_Detour.call(
+        instance, damage_data, attack_data, ability_id, 
+        attacker_entity, defender_entity, damage, 
+        stance_damage, stance_element_ratio, custom_name
+    )
+}
+
 
 // Called when a manual skill is used. Does not account for insert skills (out of turn automatic skills)
 #[named]
@@ -956,11 +1035,10 @@ pub fn on_direct_change_hp(
     instance: RPG_GameCore_TurnBasedAbilityComponent,
     a1: i32,
     a2: RPG_GameCore_FixPoint,
-    a3: RPG_GameCore_FixPoint,
-    a4: *const c_void,
+    a3: *const c_void,
 ) {
     log::debug!(function_name!());
-    let res = ON_DIRECT_CHANGE_HP_Detour.call(instance, a1, a2, a3, a4);
+    let res = ON_DIRECT_CHANGE_HP_Detour.call(instance, a1, a2, a3);
     handle_hp_change(instance);
     res
 }
@@ -969,11 +1047,11 @@ pub fn on_direct_change_hp(
 pub fn on_direct_damage_hp(
     instance: RPG_GameCore_TurnBasedAbilityComponent,
     a1: RPG_GameCore_FixPoint,
-    a2: RPG_GameCore_FixPoint,
-    a3: i32,
-    a4: *const c_void,
-    a5: RPG_GameCore_FixPoint,
-    a6: *const c_void,
+    a2: i32,
+    a3: *const c_void,
+    a4: RPG_GameCore_FixPoint,
+    a5: *const c_void,
+	a6: i32
 ) {
     log::debug!(function_name!());
     let res = ON_DIRECT_DAMAGE_HP_Detour.call(instance, a1, a2, a3, a4, a5, a6);
@@ -1008,7 +1086,12 @@ pub fn on_stat_change(
 		//println!("  {:<25}: {:.4}", "ATK from on_stat_change", attk);
 		
 		//let property_kind = get_property_name_cached(property)?;
-        let property_value = fixpoint_to_raw(&new_stat);
+        let mut property_value = fixpoint_to_raw(&new_stat);
+		
+		if property == RPG_GameCore_AbilityProperty::ActionDelay {
+            property_value *= 10.0;
+        }
+		
         //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
 		let entity_value = entity._EntityType()?.unbox()?;
 
@@ -1087,14 +1170,13 @@ pub fn on_stat_change(
     res
 }
 
-use anyhow::Context;
-use std::io::Cursor;
-use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
-use windows::Win32::System::Threading::GetCurrentProcess;
+//use std::io::Cursor;
+//use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+//use windows::Win32::System::Threading::GetCurrentProcess;
 
-static DAMAGE_OFFSET: OnceLock<usize> = OnceLock::new();
-
-unsafe fn resolve_damage_offset() -> Result<usize> {
+//static DAMAGE_OFFSET: OnceLock<usize> = OnceLock::new();
+//deprecated
+/* unsafe fn resolve_damage_offset() -> Result<usize> {
     let mut on_damage_method = None;
     for (key, class) in il2cpp_runtime::get_type_table()? {
         if is_obfuscated_name(key) {
@@ -1154,20 +1236,109 @@ unsafe fn resolve_damage_offset() -> Result<usize> {
     let damage_offset = u32::from_le(unsafe { disp_ptr.read_unaligned() }) as usize;
     log::info!("Resolved damage offset: {:#x}", damage_offset);
     Ok(damage_offset)
-}
+} */
+/*
+static DYNAMIC_DAMAGE_OFFSET: LazyLock<Mutex<Option<usize>>> = LazyLock::new(|| Mutex::new(None));
+static DAMAGE_CANDIDATES: LazyLock<Mutex<Option<HashSet<usize>>>> = LazyLock::new(|| Mutex::new(None));
+static INTERSECTION_STAGNANT_COUNT: LazyLock<Mutex<u32>> = LazyLock::new(|| Mutex::new(0));
 
-unsafe fn get_damage_offset() -> Result<usize> {
-    if let Some(offset) = DAMAGE_OFFSET.get() {
-        return Ok(*offset);
+pub fn resolve_dynamic_damage(instance_ptr: usize, class: Il2CppClass, expected_damage: Option<f64>) -> Option<f64> {
+    if let Some(offset) = *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() {
+        let fixpoint = unsafe { &*((instance_ptr + offset) as *const RPG_GameCore_FixPoint) };
+        return Some(fixpoint_to_raw(fixpoint));
     }
 
-    let offset = unsafe { resolve_damage_offset()? };
-    let _ = DAMAGE_OFFSET.set(offset);
-    DAMAGE_OFFSET
-        .get()
-        .copied()
-        .ok_or_else(|| anyhow!("Failed to cache damage offset"))
+    if let Some(delta) = expected_damage {
+        let mut current_matches = HashSet::new();
+        let field_iter: *const c_void = null();
+        
+        log::debug!("[DamageResolver] Đang tìm offset cho Damage xấp xỉ: {}", delta);
+
+        loop {
+            let field = unsafe { il2cpp_class_get_fields(class, &field_iter) };
+            if field.0.is_null() { break; }
+
+            let f_type = unsafe { il2cpp_field_get_type(field) };
+            let type_name = f_type.name();
+            
+            // Tìm tất cả các field mang kiểu FixPoint
+            if type_name == "RPG.GameCore.FixPoint" {
+                let offset = unsafe { il2cpp_field_get_offset(field) } as usize;
+                let fixpoint = unsafe { &*((instance_ptr + offset) as *const RPG_GameCore_FixPoint) };
+                let val = fixpoint_to_raw(fixpoint);
+
+                if (val - delta).abs() <= 2.0 {
+                    log::debug!("[DamageResolver] Khớp tiềm năng tại Offset 0x{:X} | Giá trị: {}", offset, val);
+                    current_matches.insert(offset);
+                }
+            }
+        }
+
+        let mut candidates_guard = DAMAGE_CANDIDATES.lock().unwrap();
+
+        if let Some(candidates) = candidates_guard.as_mut() {
+            let previous_count = candidates.len();
+            candidates.retain(|o| current_matches.contains(o));
+            let current_count = candidates.len();
+
+            log::debug!("[DamageResolver] Số lượng offset còn lại sau khi giao nhau: {}", current_count);
+
+            if current_count == 1 {
+                let final_offset = *candidates.iter().next().unwrap();
+                *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                log::info!("[DamageResolver] THÀNH CÔNG! Chốt Offset Damage: 0x{:X}", final_offset);
+                
+                let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                return Some(fixpoint_to_raw(fixpoint));
+            } else if current_count > 1 {
+                if current_count == previous_count {
+                    let mut stagnant_count = INTERSECTION_STAGNANT_COUNT.lock().unwrap();
+                    *stagnant_count += 1;
+                    if *stagnant_count >= 3 {
+                        let mut sorted_offsets: Vec<_> = candidates.iter().cloned().collect();
+                        sorted_offsets.sort(); 
+                        let final_offset = sorted_offsets[0]; 
+                        *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                        log::info!("[DamageResolver] THÀNH CÔNG (Heuristic)! Sau 3 lần không đổi, chốt Offset: 0x{:X}", final_offset);
+                        let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                        return Some(fixpoint_to_raw(fixpoint));
+                    }
+                } else {
+                    *INTERSECTION_STAGNANT_COUNT.lock().unwrap() = 0;
+                }
+            } else if candidates.is_empty() {
+                log::warn!("[DamageResolver] Giao điểm rỗng! Thử lại ở đòn sau...");
+                *candidates_guard = None;
+                *INTERSECTION_STAGNANT_COUNT.lock().unwrap() = 0;
+            }
+        } else if !current_matches.is_empty() {
+            if current_matches.len() == 1 {
+                let final_offset = *current_matches.iter().next().unwrap();
+                *DYNAMIC_DAMAGE_OFFSET.lock().unwrap() = Some(final_offset);
+                log::info!("[DamageResolver] THÀNH CÔNG! Chốt Offset Damage (lần 1): 0x{:X}", final_offset);
+                let fixpoint = unsafe { &*((instance_ptr + final_offset) as *const RPG_GameCore_FixPoint) };
+                return Some(fixpoint_to_raw(fixpoint));
+            } else {
+                log::debug!("[DamageResolver] Lần quét 1 tìm thấy {} offsets. Chờ đòn sau.", current_matches.len());
+                *candidates_guard = Some(current_matches);
+            }
+        }
+    }
+    None
 }
+*/
+// unsafe fn get_damage_offset() -> Result<usize> {
+    // if let Some(offset) = DAMAGE_OFFSET.get() {
+        // return Ok(*offset);
+    // }
+
+    // let offset = unsafe { resolve_damage_offset()? };
+    // let _ = DAMAGE_OFFSET.set(offset);
+    // DAMAGE_OFFSET
+        // .get()
+        // .copied()
+        // .ok_or_else(|| anyhow!("Failed to cache damage offset"))
+// }
 
 #[derive(Clone, Copy)]
 struct EntityDefeatedOffsets {
@@ -1462,6 +1633,7 @@ pub fn on_initialize_enemy(
 
 retour::static_detour! {
     static ON_DAMAGE_Detour: fn(*const c_void, *const c_void, *const c_void, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, bool, *const c_void) -> bool;
+	static ON_PRE_DAMAGE_Detour: fn(*const c_void, *const c_void, *const c_void, Il2CppString, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, Il2CppString) -> *const c_void;
     static ON_COMBO_Detour: fn(*const c_void, RPG_GameCore_TurnBasedGameMode);
     static ON_USE_SKILL_Detour: fn(RPG_GameCore_SkillCharacterComponent, i32, *const c_void, bool, *const c_void, *const c_void, i32) -> bool;
     static ON_SET_LINEUP_Detour: fn(RPG_GameCore_BattleInstance, *const c_void, RPG_GameCore_BattleLineupData, i32, u32, bool);
@@ -1471,8 +1643,8 @@ retour::static_detour! {
     static ON_TURN_END_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32);
     static ON_UPDATE_WAVE_Detour: fn(RPG_GameCore_TurnBasedGameMode);
     static ON_UPDATE_CYCLE_Detour: fn(RPG_GameCore_TurnBasedGameMode) -> u32;
-    static ON_DIRECT_CHANGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, *const c_void);
-    static ON_DIRECT_DAMAGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, i32, *const c_void, RPG_GameCore_FixPoint, *const c_void);
+    static ON_DIRECT_CHANGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, *const c_void);
+    static ON_DIRECT_DAMAGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_FixPoint, i32, *const c_void, RPG_GameCore_FixPoint, *const c_void, i32);
     static ON_STAT_CHANGE_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_AbilityProperty, i32, RPG_GameCore_FixPoint, *const c_void) -> bool;
     static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, *const c_void) -> bool;
     static ON_UPDATE_TEAM_FORMATION_Detour: fn(RPG_GameCore_TeamFormationComponent);
@@ -1512,10 +1684,19 @@ pub fn subscribe() -> Result<()> {
             // Prewarm damage-related offsets from the discovered on_damage signature.
             let damage_info_class = method.arg(2).class();
             get_attack_type_offset(damage_info_class)?;
-            get_damage_offset()?;
+            //get_damage_offset()?;
         } else {
             return Err(anyhow!("Failed to find on_damage method"));
         }
+
+		//new hook
+		subscribe_function!(
+            ON_PRE_DAMAGE_Detour,
+            get_cached_class("RPG.GameCore.LevelPreDamageEntity")?
+                .find_method("Init", &["*", "RPG.GameCore.AttackData", "string", "RPG.GameCore.GameEntity", "RPG.GameCore.GameEntity", "RPG.GameCore.FixPoint", "RPG.GameCore.FixPoint", "RPG.GameCore.FixPoint", "string"])?
+                .va(),
+            on_pre_damage_init
+        )?;
 
         // Resolve on_combo
         let mut combo_instance_class = None;
@@ -1635,7 +1816,6 @@ pub fn subscribe() -> Result<()> {
                     &[
                         "RPG.GameCore.PropertyModifyFunction",
                         "RPG.GameCore.FixPoint",
-                        "RPG.GameCore.FixPoint",
                         "*"
                     ],
                 )?
@@ -1650,11 +1830,11 @@ pub fn subscribe() -> Result<()> {
                     "DirectDamageHP",
                     &[
                         "RPG.GameCore.FixPoint",
-                        "RPG.GameCore.FixPoint",
                         "RPG.GameCore.AntiLockHPStrength",
                         "*",
                         "RPG.GameCore.FixPoint&",
-                        "System.Nullable<RPG.GameCore.FixPoint>"
+                        "System.Nullable<RPG.GameCore.FixPoint>",
+						"RPG.GameCore.DamageIntegerizeCategory"
                     ],
                 )?
                 .va(),

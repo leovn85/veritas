@@ -1,13 +1,13 @@
 
-use std::{collections::HashMap, ptr::null, sync::LazyLock, collections::BTreeMap};
+use std::{collections::HashMap, ptr::null, sync::LazyLock, sync::Mutex, collections::BTreeMap};
 
 use crate::{
     kreide::types::{
-        RPG_Client_AvatarData, RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
+        RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
         RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
         RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, 
         RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
-        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Object, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow
+        UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Object, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow, RPG_GameCore_ItemMainType, RPG_Client_RelicItemData, RPG_Client_EquipmentItemData, RPG_AvatarSystem_IAvatar, RPG_Client_AvatarHelper, RPG_Client_AvatarExtensions
     },
     models::misc::{Avatar, Skill, FribbelsCharacter, FribbelsSkills, FribbelsTraces, FribbelsMemosprite},
 };
@@ -44,81 +44,38 @@ pub fn get_module_manager() -> Result<RPG_Client_ModuleManager> {
     Ok(RPG_Client_GlobalVars::s_ModuleManager()?)
 }
 
-#[named]
-pub fn get_avatar_data_from_id(avatar_id: u32) -> Result<RPG_Client_AvatarData> {
-    log::debug!(function_name!());
-	
-	if avatar_id == 0 {
-        return Err(anyhow!("ID_ZERO")); 
-    }
-	
-    let s_module_manager = get_module_manager()?;
-    let avatar_module = s_module_manager.AvatarModule()?;
-	
-	let avatar_data = unsafe { avatar_module.get_avatar(avatar_id)? };
-	
-	if avatar_data.0.is_null() {
-        return Err(anyhow!("NULL_DATA"));
-    }
-
-	
-    Ok(avatar_data)
-}
+static AVATAR_CACHE: LazyLock<Mutex<HashMap<u32, Avatar>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[named]
 pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
     log::debug!(function_name!());
-
-    /* let avatar_data = get_avatar_data_from_id(avatar_id)
-        .context(format!("AvatarData with id {avatar_id} was null"))?;
-
-    let avatar_name = unsafe { avatar_data.AvatarName() }
-        .map(|name| name.to_string())
-        .unwrap_or_default();
-
-    let avatar_name = if avatar_name.is_empty() {
-        let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
-        get_textmap_content(data.AvatarName()?.try_deref()?)?
-    } else {
-        avatar_name
-    }; */
-	let avatar_data = get_avatar_data_from_id(avatar_id);
-
-	// Sửa đoạn lấy name:
-	// let avatar_name = match avatar_data {
-		// Ok(data) => {
-			// log::info!("Getting name for Avatar ID: {}...", avatar_id);
-			// unsafe { data.AvatarName() }.map(|name| name.to_string()).unwrap_or_default()
-		// },
-		// Err(e) => {
-			// log::warn!("Can't get AvatarData for {}: {}.", avatar_id, e);
-			// String::new()
-		// }
-	// };
 	
-	let avatar_name = match avatar_data {
-        Ok(data) => {
-            log::info!("Getting name for Avatar ID: {}", avatar_id);
-            unsafe { data.AvatarName() }.map(|name| name.to_string()).unwrap_or_default()
-        },
-        Err(e) if e.to_string() == "ID_ZERO" => {
-            "System/Environment".to_string() // Tên hiển thị cho ID 0
-        },
-        Err(_) => {
-            // Trường hợp lỗi khác (NULL_DATA hoặc module lỗi)
-            let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
-            if !data.0.is_null() {
-                get_textmap_content(&*data.AvatarName()?)?
-            } else {
-                format!("Unknown_Entity_{}", avatar_id)
-            }
-        }
-    };
+	if avatar_id == 0 {
+        return Err(anyhow!("Avatar ID is 0 (Not an Avatar)"));
+    }
 
-    Ok(Avatar {
+    if let Some(avatar) = AVATAR_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(&avatar_id).cloned())
+    {
+        return Ok(avatar);
+    }
+
+    let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
+    let avatar_name = get_textmap_content(&*data.AvatarName()?)?;
+
+    let avatar = Avatar {
         id: avatar_id,
         name: sanitize_entity_name(avatar_name),
-    })
+    };
+
+    if let Ok(mut cache) = AVATAR_CACHE.lock() {
+        cache.insert(avatar_id, avatar.clone());
+    }
+
+    Ok(avatar)
 }
 
 #[named]
@@ -159,17 +116,11 @@ pub unsafe fn get_avatar_from_entity(entity: RPG_GameCore_GameEntity) -> Result<
     let id = unsafe { RPG_Client_UIGameEntityUtils::get_avatar_id(entity) }
         .context("Failed to get AvatarID from GameEntity")?;
 
-    let avatar_data =
-        get_avatar_data_from_id(id).context(format!("AvatarData with id {id} was null"))?;
-
-    let name = unsafe { avatar_data.AvatarName() }
-        .map(|name| name.to_string())
-        .unwrap_or_default();
-
-    Ok(Avatar {
-        id,
-        name: sanitize_entity_name(name),
-    })
+    if id == 0 {
+        return Err(anyhow!("Entity is not an Avatar (ID=0)"));
+    }
+	
+    unsafe { get_avatar_from_id(id) }
 }
 
 #[named]
@@ -323,13 +274,34 @@ pub unsafe fn get_monster_from_runtime_id(
 
 #[named]
 pub fn fixpoint_to_raw(fixpoint: &RPG_GameCore_FixPoint) -> f64 {
+    // Giá trị gốc 64-bit
+    let val = fixpoint.m_rawValue; 
+    
+    // a1 & 0xFFFFFFFE (Mặt nạ xóa bit cuối cùng)
+    // Trong 64-bit là: & 0xFFFFFFFFFFFFFFFE (hoặc đơn giản là & !1)
+    let masked_val = val & !1; 
+
+    // (a1 & 1) == 0 (Kiểm tra bit cờ)
+    if (val & 1) == 0 {
+        // Dùng hằng số index 1: ~ 1 / 2^33
+        masked_val as f64 * 1.1641532182693481e-10
+    } else {
+        // Dùng hằng số index 0: ~ 1 / 2^26
+        masked_val as f64 * 1.4901161193847656e-8
+    }
+}
+/*
+#[named]
+pub fn fixpoint_to_raw(fixpoint: &RPG_GameCore_FixPoint) -> f64 {
     log::debug!(function_name!());
     static FLOAT_CONVERSION_CONSTANT: LazyLock<f64> = LazyLock::new(|| 1f64 / 2f64.powf(32f64));
     let raw_value = fixpoint.m_rawValue;
     let hi = ((raw_value as u64 & 0xFFFFFFFF00000000) >> 32) as u32;
     let lo = (raw_value as u64 & 0x00000000FFFFFFFF) as u32;
-    hi as f64 + lo as f64 * *FLOAT_CONVERSION_CONSTANT
-}
+    //hi as f64 + lo as f64 * *FLOAT_CONVERSION_CONSTANT
+	let raw = hi as f64 + lo as f64 * *FLOAT_CONVERSION_CONSTANT;
+    raw / 2.0 // CHIA 2 TẠI ĐÂY ĐỂ SỬA LỖI X2 CỦA GAME CHO TẤT CẢ MỌI THỨ
+} */
 
 pub fn is_obfuscated_name<S: AsRef<str>>(name: S) -> bool {
     let name = name.as_ref();
@@ -997,7 +969,7 @@ pub unsafe fn extract_rows_from_dict_ram(dict_ptr: *mut std::ffi::c_void) -> any
 
     Ok(rows)
 }
-
+/*
 pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacter>, u32, String)> {
     //log::info!("[Character Dump] Starting Fribbels character dump sequence...");
     let domain = il2cpp_runtime::api::il2cpp_domain_get();
@@ -1058,10 +1030,10 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
 			// 2. LẤY DANH SÁCH NHÂN VẬT TỪ DICTIONARY
 			// ==========================================
 			//log::info!("[Character Dump] Accessing Avatar Module...");
-			let avatar_module = module_manager.AvatarModule()?;
-			let mut all_row_ptrs = Vec::new();
+			//let avatar_module = module_manager.AvatarModule()?;
+			let mut all_row_ptrs: Vec<usize> = Vec::new();
 			
-			if let Ok(all_avatars) = avatar_module.get_AllAvatars() {
+			/* if let Ok(all_avatars) = avatar_module.get_AllAvatars() {
 				if !all_avatars.as_ptr().is_null() {
 					if let Ok(rows) = extract_rows_from_dict_ram(all_avatars.as_ptr() as _) {
 						//log::info!("[Character Dump] Extracted {} rows from AllAvatars.", rows.len());
@@ -1077,7 +1049,7 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
 						all_row_ptrs.extend(rows);
 					}
 				}
-			}
+			} */
 
 			if all_row_ptrs.is_empty() {
 				log::debug!("[Character Dump] No avatars found. Aborting character dump.");
@@ -1268,6 +1240,183 @@ pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacte
 
     Ok((characters_map.into_values().collect::<Vec<_>>(), player_uid, trailblazer_meta))
 }
+*/
+
+pub unsafe fn dump_fribbels_characters() -> anyhow::Result<(Vec<FribbelsCharacter>, u32, String)> {
+    let domain = il2cpp_runtime::api::il2cpp_domain_get();
+    il2cpp_runtime::api::il2cpp_thread_attach(domain);
+    let mut characters_map: BTreeMap<u32, FribbelsCharacter> = BTreeMap::new();
+    let mut player_uid: u32 = 0;
+    let mut account_name = "Unknown".to_string();
+    let mut trailblazer_gender = "Stelle".to_string();
+
+    unsafe {
+        let safe_dump = microseh::try_seh(|| {
+            let module_manager = RPG_Client_GlobalVars::s_ModuleManager()?;
+            
+            // ==========================================
+            // 1. LẤY UID & TÊN TỪ PLAYER MODULE
+            // ==========================================
+            let _ = microseh::try_seh(|| {
+                let player_module = module_manager.PlayerModule()?;
+                if !player_module.0.is_null() {
+                    let player_data = player_module.get_PlayerData()?;
+                    if !player_data.0.is_null() {
+                        if let Ok(uid) = player_data.get_UserID() {
+                            player_uid = uid;
+                        }
+                        if let Ok(name_str) = player_data.get_NickName() {
+                            let clean_name = sanitize_entity_name(name_str.to_string());
+                            if !clean_name.is_empty() {
+                                account_name = clean_name;
+                            }
+                        }
+                    }
+                }
+                Ok::<(), anyhow::Error>(())
+            });
+
+            // ==========================================
+            // 2. LẤY DANH SÁCH NHÂN VẬT TỪ AVATAR HELPER (MỚI)
+            // ==========================================
+            let mut all_avatars: Vec<RPG_AvatarSystem_IAvatar> = Vec::new();
+            
+            if let Ok(avatar_list) = RPG_Client_AvatarHelper::GetAllObtainedSpecificPathAvatars() {
+                if !avatar_list.as_ptr().is_null() {
+                    all_avatars = avatar_list.to_vec::<RPG_AvatarSystem_IAvatar>();
+                }
+            }
+
+            if all_avatars.is_empty() {
+                log::debug!("[Character Dump] No avatars found. Aborting character dump.");
+                return Ok(()); 
+            }
+
+            // ==========================================
+            // 3. DUYỆT VÀ XỬ LÝ TỪNG NHÂN VẬT (MỚI)
+            // ==========================================
+            for avatar_obj in all_avatars {
+                if avatar_obj.0.is_null() { continue; }
+
+                // Lấy ID qua AvatarExtensions
+                let base_id = match RPG_Client_AvatarExtensions::GetAvatarID(avatar_obj) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+
+                // Detect Stelle hay Caelus
+                if base_id >= 8000 && base_id < 9000 {
+                    let gender = if base_id % 2 == 0 { "Stelle" } else { "Caelus" };
+                    trailblazer_gender = gender.to_string();
+                }
+
+                let avatar_row = RPG_GameCore_AvatarExcelTable::GetData(base_id)?;
+                if avatar_row.0.is_null() { continue; }
+
+                let path_enum_val = *avatar_row.AvatarBaseType()?.try_deref()?;
+                
+                // Đọc thông số qua AvatarExtensions
+                let level = RPG_Client_AvatarExtensions::GetLevel(avatar_obj).unwrap_or(1);
+                let promotion = RPG_Client_AvatarExtensions::GetPromotionLevel(avatar_obj).unwrap_or(0);
+                let rank = RPG_Client_AvatarExtensions::GetEidolonLevel(avatar_obj).unwrap_or(0);
+                let enhanced_id = RPG_Client_AvatarExtensions::GetEnhancedID(avatar_obj).unwrap_or(0);
+                let ability_version = if enhanced_id > 0 && enhanced_id != base_id && base_id < 8000 { 1 } else { 0 };
+
+                let path_str = match path_enum_val {
+                    RPG_GameCore_AvatarBaseType::Warrior => "Destruction",
+                    RPG_GameCore_AvatarBaseType::Rogue => "Hunt",
+                    RPG_GameCore_AvatarBaseType::Mage => "Erudition",
+                    RPG_GameCore_AvatarBaseType::Shaman => "Harmony",
+                    RPG_GameCore_AvatarBaseType::Warlock => "Nihility",
+                    RPG_GameCore_AvatarBaseType::Knight => "Preservation",
+                    RPG_GameCore_AvatarBaseType::Priest => "Abundance",
+                    RPG_GameCore_AvatarBaseType::Memory => "Remembrance",
+                    RPG_GameCore_AvatarBaseType::Elation => "Elation",
+                    _ => "Unknown",
+                };
+                
+                // Lấy Tên nhân vật
+                let mut name = format!("Avatar_{}", base_id);
+                if let Ok(name_str) = RPG_Client_AvatarExtensions::GetName(avatar_obj) {
+                    let clean = sanitize_entity_name(name_str.to_string());
+                    if !clean.is_empty() { name = clean; }
+                } else if base_id >= 8000 {
+                    name = format!("{} MC", path_str); 
+                }
+                
+                // --- SKILL TREE (LẤY TRỰC TIẾP TỪ EXTENSIONS, AN TOÀN HƠN 100% SO VỚI BẢN CŨ) ---
+                let mut skills = FribbelsSkills { basic: 1, skill: 1, ult: 1, talent: 1, elation: None };
+                let mut traces = FribbelsTraces {
+                    ability_1: false, ability_2: false, ability_3: false,
+                    stat_1: false, stat_2: false, stat_3: false, stat_4: false, stat_5: false,
+                    stat_6: false, stat_7: false, stat_8: false, stat_9: false, stat_10: false, special: false,
+                };
+                let mut memosprite = None;
+
+                // Hàm GetTraceTreeLevels trả về Dictionary C# native, đưa thẳng con trỏ này cho hàm parse RAM của ta
+                let level_dict_ptr = RPG_Client_AvatarExtensions::GetTraceTreeLevels(avatar_obj).unwrap_or(std::ptr::null_mut());
+                
+                if !level_dict_ptr.is_null() {
+                    let level_dict = extract_primitive_dict_ram(level_dict_ptr).unwrap_or_default();
+                    let mut anchor_to_level: HashMap<u32, u32> = HashMap::new();
+
+                    for (&point_id, &level) in &level_dict {
+                        if let Ok(row) = RPG_GameCore_AvatarSkillTreeExcelTable::GetData(point_id, 1) {
+                            if !row.0.is_null() {
+                                if let Ok(anchor_box) = row.AnchorType() {
+                                    let anchor_type = *anchor_box as u32;
+                                    let current_max = anchor_to_level.get(&anchor_type).copied().unwrap_or(0);
+                                    anchor_to_level.insert(anchor_type, std::cmp::max(current_max, level));
+                                }
+                            }
+                        }
+                    }
+
+                    let get_lv = |anchor_type: u32| -> u32 { anchor_to_level.get(&anchor_type).copied().unwrap_or(0) };
+
+                    skills.basic = std::cmp::max(1, get_lv(1));
+                    skills.skill = std::cmp::max(1, get_lv(2));
+                    skills.ult = std::cmp::max(1, get_lv(3));
+                    skills.talent = std::cmp::max(1, get_lv(4));
+
+                    let elation_lv = get_lv(22);
+                    skills.elation = if elation_lv > 0 { Some(elation_lv) } else { None };
+
+                    memosprite = FribbelsMemosprite { skill: get_lv(19), talent: get_lv(20) }.if_present();
+
+                    traces.ability_1 = get_lv(6) > 0; traces.ability_2 = get_lv(7) > 0; traces.ability_3 = get_lv(8) > 0;
+                    traces.stat_1 = get_lv(9) > 0; traces.stat_2 = get_lv(10) > 0; traces.stat_3 = get_lv(11) > 0;
+                    traces.stat_4 = get_lv(12) > 0; traces.stat_5 = get_lv(13) > 0; traces.stat_6 = get_lv(14) > 0;
+                    traces.stat_7 = get_lv(15) > 0; traces.stat_8 = get_lv(16) > 0; traces.stat_9 = get_lv(17) > 0;
+                    traces.stat_10 = get_lv(18) > 0; traces.special = get_lv(21) > 0;
+                }
+
+                characters_map.insert(base_id, FribbelsCharacter {
+                    id: base_id.to_string(),
+                    name,
+                    path: path_str.to_string(),
+                    level,
+                    ascension: promotion,
+                    eidolon: rank,
+                    skills,
+                    traces,
+                    memosprite,
+                    ability_version,
+                });
+            }
+            
+            Ok::<(), anyhow::Error>(())
+        });
+        
+        if let Err(e) = safe_dump {
+            log::error!("[Character Dump] CRITICAL SEH EXCEPTION: {:#?}", e);
+        }
+    }
+    
+    let trailblazer_meta = format!("{} ({})", account_name, trailblazer_gender);
+    Ok((characters_map.into_values().collect::<Vec<_>>(), player_uid, trailblazer_meta))
+}
+
 
 pub unsafe fn extract_primitive_dict_ram(dict_ptr: *mut std::ffi::c_void) -> anyhow::Result<HashMap<u32, u32>> {
     //log::info!("[DictReader] Starting to read primitive dictionary at ptr: {:p}", dict_ptr);
@@ -1352,4 +1501,51 @@ unsafe fn get_field_offset(class_name: &str, field_name: &str) -> usize {
         }
     }
     0
+}
+
+pub unsafe fn dump_all_equipment_on_demand() -> anyhow::Result<()> {
+    let module_manager = RPG_Client_GlobalVars::s_ModuleManager()?;
+    let inventory_module = module_manager.InventoryModule()?;
+    let type_handle = get_type_handle("RPG.GameCore.ItemMainType")?;
+    // Xóa cache cũ trước khi dump mới
+    crate::relic_utils::get_relics().write().clear();
+    crate::relic_utils::get_light_cones().write().clear();
+
+    // 1. DUMP RELICS
+    log::info!("Đang quét toàn bộ Di vật (Relics)...");
+    let mut relic_types_arr = unsafe {  il2cpp_runtime::types::Il2CppArray::create_instance(type_handle, 1)? };
+    *(relic_types_arr.get_mut::<i32>(0)) = RPG_GameCore_ItemMainType::Relic as i32;
+    
+    let relic_list = unsafe { inventory_module.get_items_by_main_types(relic_types_arr)? };
+    if !relic_list.as_ptr().is_null() {
+        let relic_data_vec = relic_list.to_vec::<RPG_Client_RelicItemData>();
+        log::info!("Tìm thấy {} Di vật.", relic_data_vec.len());
+        
+        for relic_data in relic_data_vec {
+            if relic_data.0.is_null() { continue; }
+            // Gọi hàm xử lý tiếng Anh
+            let _ = crate::subscribers::relics::process_relic_data_english(relic_data);
+			//let _ = crate::subscribers::relics::process_relic_data(relic_data);
+        }
+    }
+
+    // 2. DUMP LIGHT CONES (Nón ánh sáng)
+    log::info!("Đang quét toàn bộ Nón ánh sáng (Light Cones)...");
+    let mut lc_types_arr = unsafe { il2cpp_runtime::types::Il2CppArray::create_instance(type_handle, 1)? };
+    *(lc_types_arr.get_mut::<i32>(0)) = RPG_GameCore_ItemMainType::Equipment as i32; // Equipment = Light Cone
+    
+    let lc_list = unsafe { inventory_module.get_items_by_main_types(lc_types_arr)? };
+    if !lc_list.as_ptr().is_null() {
+        let lc_data_vec = lc_list.to_vec::<RPG_Client_EquipmentItemData>();
+        log::info!("Tìm thấy {} Nón ánh sáng.", lc_data_vec.len());
+        
+        for lc_data in lc_data_vec {
+            if lc_data.0.is_null() { continue; }
+            // Hàm xử lý LC (Mình viết mẫu cho bạn ở dưới)
+            let _ = crate::subscribers::relics::process_lc_data_english(lc_data);
+			//let _ = crate::subscribers::relics::process_equipment_data(lc_data);
+        }
+    }
+
+    Ok(())
 }

@@ -141,6 +141,13 @@ impl App {
 											// Attach thread vào Il2Cpp domain ở đây là an toàn tuyệt đối
 											let domain = il2cpp_runtime::api::il2cpp_domain_get();
 											il2cpp_runtime::api::il2cpp_thread_attach(domain);
+											// 1. Kéo toàn bộ Items từ Game RAM nạp vào Relics Cache (BẰNG TIẾNG ANH)
+											if let Err(e) = unsafe { crate::kreide::helpers::dump_all_equipment_on_demand() } {
+												log::error!("Failed to extract items from RAM: {:#?}", e);
+												return;
+											}
+
+											// 2. Xuất ra file Fribbels (Lúc này Cache đã chứa data 100% là tiếng Anh)
 											if let Err(e) = crate::relic_utils::dump_and_convert_data() {
 												log::error!("Data Dump Failed: {:#?}", e);
 											} else {

@@ -70,6 +70,7 @@ pub(crate) fn display_damage_type(attack_type: &RPG_GameCore_AttackType) -> Stri
         RPG_GameCore_AttackType::Servant => "Servant",
         RPG_GameCore_AttackType::TrueDamage => "True",
         RPG_GameCore_AttackType::ElationDamage => "Elation",
+		RPG_GameCore_AttackType::Assist => "Assist",
         _ => other.as_str(),
     }
     .to_string()
@@ -131,6 +132,9 @@ pub enum BattleMode {
     PF,
     AS,
     AA,
+	StarwardMOC,
+    StarwardPF,
+    StarwardAS,
     #[default]
     Other,
 }
@@ -249,7 +253,7 @@ impl BattleContext {
         battle_context.stage_id = 0;
     }
 
-    fn get_battle_mode(stage_id: u32) -> BattleMode {
+    /* fn get_battle_mode(stage_id: u32) -> BattleMode {
 		log::info!("Processing stage_id: {stage_id}");
 		for (mode_name, id_set) in BATTLE_MODE_DATA.iter() {
 			if id_set.contains(&stage_id) {
@@ -262,6 +266,31 @@ impl BattleContext {
 			}
 		}
 		
+		match stage_id {
+			420101..=420999 => BattleMode::AS,
+			_ => BattleMode::Other,
+		}
+	} */
+	fn get_battle_mode(stage_id: u32) -> BattleMode {
+		log::info!("Processing stage_id: {stage_id}");
+		
+		// Duyệt qua HashMap phẳng
+		for (mode_name, id_set) in BATTLE_MODE_DATA.iter() {
+			if id_set.contains(&stage_id) {
+				return match mode_name.as_str() {
+					"MOC" => BattleMode::MOC,
+					"PF" => BattleMode::PF,
+					"AS" => BattleMode::AS,
+					"AA" => BattleMode::AA,
+					"STARWARD_MOC" => BattleMode::StarwardMOC, // Giả sử bạn đã thêm vào Enum
+					"STARWARD_PF" => BattleMode::StarwardPF,
+					"STARWARD_AS" => BattleMode::StarwardAS,
+					_ => continue,
+				};
+			}
+		}
+		
+		// Logic dự phòng (Fallback) nếu không tìm thấy trong file JSON
 		match stage_id {
 			420101..=420999 => BattleMode::AS,
 			_ => BattleMode::Other,

@@ -103,6 +103,8 @@ features = [
 
 [build-dependencies]
 winres = "0.1.12"
+serde_json = "1.0.141"
+ureq = { version = "2.9", features = ["json"] }
 
 [patch."https://github.com/hessiser/il2cpp-rust.git"]
 il2cpp-runtime = { path = "il2cpp-rust/il2cpp-runtime" }

@@ -93,7 +93,7 @@ fn get_il2cpp_table_offset() -> Result<usize> {
             .context("Pattern not found in UnityPlayer module")?
             + module.0 as usize;
 
-        let qword_addr = addr + 7 + *((addr + 3) as *const i32) as usize;
+        let qword_addr = addr + 7 + std::ptr::read_unaligned((addr + 3) as *const i32) as usize;
         Ok(qword_addr)
     }
 }
@@ -115,6 +115,7 @@ fn setup_subscribers() -> anyhow::Result<()> {
             il2cpp_class_get_name: 37,
             il2cpp_class_get_parent: 40,
             il2cpp_class_from_type: 49,
+			il2cpp_class_get_type: 51,
             il2cpp_domain_get: 63,
             il2cpp_domain_get_assemblies: 65,
             il2cpp_field_get_name: 73,
@@ -131,7 +132,9 @@ fn setup_subscribers() -> anyhow::Result<()> {
             il2cpp_image_get_class_count: 169,
             il2cpp_image_get_class: 170,
         };
+		log::info!("Init il2cpp table");
         il2cpp_runtime::init(get_il2cpp_table_offset()?, table)?;
+		log::info!("Init il2cpp table success! Subscribe function");
         subscribers::battle::subscribe()?;
 		subscribers::relics::subscribe()?;
         subscribers::enable_subscribers!()?;
