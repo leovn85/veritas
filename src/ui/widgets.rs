@@ -95,44 +95,44 @@ impl App {
 					dmg
 				};
 
-				ui.horizontal(|ui| {
-					// ---------- PHẦN AVATAR + CHỮ % (CỦA TÁC GIẢ) ----------
+				// Tính %
+				let percentage = if battle_context.total_damage > 0.0 {
+					dmg / battle_context.total_damage * 100.0
+				} else {
+					0.0
+				};
+
+				// Lưu lại response của cả dòng để làm Hover Tooltip
+				let row_response = ui.horizontal(|ui| {
+					// ---------- PHẦN AVATAR + CHỮ % ----------
 					if let Some(handle) = helpers::load_avatar_image(ui.ctx(), avatar.id, egui::TextureOptions::default()) {
-						let dim = 48.0; // Kích thước avatar
+						let dim = 48.0;
 						let image = egui::Image::new(&handle)
 							.fit_to_exact_size(egui::vec2(dim, dim))
-							.corner_radius(egui::CornerRadius::same((dim / 2.0) as u8)); // Bo tròn
+							.corner_radius(egui::CornerRadius::same((dim / 2.0) as u8));
 
-						// Lấy object image_response để biết tọa độ avatar trên màn hình
-						//let image_response = ui.add(image);
-						let image_response = ui.add(image.sense(egui::Sense::click()));
+						// FIX LỖI MOVE BIẾN Ở ĐÂY: Gán thành mutable
+						let mut image_response = ui.add(image.sense(egui::Sense::click()));
 						
-						if image_response.clone().clicked() {
-							// Toggle logic: nếu click vào nhân vật đang được chọn thì đóng lại,
-							// nếu không thì chọn nhân vật mới.
+						if image_response.clicked() {
 							if self.state.selected_character_for_stats == Some(avatar.id) {
 								self.state.selected_character_for_stats = None;
 							} else {
 								self.state.selected_character_for_stats = Some(avatar.id);
 							}
 						}
-						image_response.clone().on_hover_text(t!("Click to view detailed stats"));
+						
+						// Gán ngược lại chính nó để không bị mất ownership
+						image_response = image_response.on_hover_text(t!("Click to view detailed stats"));
 
-						// Tính % của tác giả
-						let percentage = if battle_context.total_damage > 0.0 {
-							dmg / battle_context.total_damage * 100.0
-						} else {
-							0.0
-						};
 						let percentage_text = format!("{percentage:.0}%");
-						// Vẽ chữ % đè lên Avatar (Góc dưới phải)
-						let text_pos = image_response.clone().rect.right_bottom();
+						let text_pos = image_response.rect.right_bottom();
 						
 						let font = FontId::proportional(dim / 3.5); 
 						let offsets = [
-                            egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
-                            egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
-                        ];
+							egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
+							egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
+						];
 						for offset in offsets {
 							ui.painter().text(
 								text_pos + offset,
@@ -142,37 +142,7 @@ impl App {
 								egui::Color32::BLACK, 
 							);
 						}
-        // let mut table_builder = egui_extras::TableBuilder::new(ui)
-            // .cell_layout(Layout::centered_and_justified(egui::Direction::LeftToRight));
 
-        // let headers = [t!("Avatar"), t!("DMG"), t!("DPAV")];
-
-        // for _ in &headers {
-            // table_builder = table_builder.column(Column::auto_with_initial_suggestion(20.));
-        // }
-
-        // table_builder
-            // .header(20.0, |mut header| {
-                // for label in &headers {
-                    // header.col(|ui| {
-                        // ui.heading(label.as_ref());
-                    // });
-                // }
-            // })
-            // .body(|body| {
-                // body.rows(52., battle_context.avatar_lineup.len() + 1, |mut row| {
-                    // if battle_context.avatar_lineup.len() == 0 {
-                        // return;
-                    // }
-                    
-                    // let i = row.index();
-                    // let dmg = if i >= battle_context.avatar_lineup.len() {
-                        // battle_context.total_damage
-                    // } else {
-                        // battle_context.real_time_damages[i]
-                    // };
-
-						// Chữ trắng (Bỏ linear_multiply)
 						ui.painter().text(
 							text_pos,
 							egui::Align2::RIGHT_BOTTOM,
@@ -181,14 +151,13 @@ impl App {
 							egui::Color32::WHITE,
 						);
 					} else {
-						ui.allocate_space(egui::vec2(40.0, 40.0));
+						ui.allocate_space(egui::vec2(48.0, 48.0));
 					}
 
-					// ---------- PHẦN SÁT THƯƠNG + THANH BAR (CỦA CHÚNG TA) ----------
+					// ---------- PHẦN SÁT THƯƠNG + THANH BAR ----------
 					ui.vertical(|ui| {
-						ui.spacing_mut().item_spacing.y = 2.0; 
+						ui.spacing_mut().item_spacing.y = 4.0; // Khoảng cách giữa Text và Bar
 						
-						// Lấy màu text follow theme
 						let text_color = ui.visuals().text_color();
 
 						ui.label(egui::RichText::new(format!(
@@ -197,49 +166,41 @@ impl App {
 							helpers::format_damage(dpav)
 						)).strong().size(15.0).color(text_color));
 
+						// Tính thông số để truyền vào hàm Bar
 						let fraction = if max_dmg > 0.0 { (dmg / max_dmg) as f32 } else { 0.0 };
-						let color = helpers::get_character_color(i).linear_multiply(self.config.widget_opacity);
-						
-						// let bar = egui::ProgressBar::new(fraction)
-							// .fill(color)
-							// .desired_height(14.0)
-							// .show_percentage();
-						//ui.add(bar);
-							
-						// Tính fraction của sát thương bị thừa (Overkill)
 						let overkill_dmg = battle_context.real_time_overkill_damages[i];
 						let overkill_fraction = if max_dmg > 0.0 { (overkill_dmg / max_dmg) as f32 } else { 0.0 };
-
-						// Cấp phát không gian để vẽ thanh Bar (cao 14px)
-						let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 14.0), egui::Sense::hover());
-						let painter = ui.painter_at(rect);
-
-						// 1. Vẽ khung nền của thanh bar (màu xám tối)
-						let bg_color = ui.visuals().widgets.noninteractive.bg_fill;
-						painter.rect_filled(rect, 2.0, bg_color); // Bo tròn 2px
-
-						// 2. Vẽ thanh Damage chính (Màu của nhân vật)
+						
 						let color = helpers::get_character_color(i).linear_multiply(self.config.widget_opacity);
-						let fill_width = rect.width() * fraction.clamp(0.0, 1.0);
-						let fill_rect = egui::Rect::from_min_max(
-							rect.min,
-							egui::pos2(rect.left() + fill_width, rect.bottom()),
-						);
-						painter.rect_filled(fill_rect, 2.0, color);
 
-						// 3. Vẽ đè thanh Overkill lên cuối thanh Damage (Màu nhạt hơn/trong suốt)
-						if overkill_fraction > 0.0 {
-							let overkill_width = rect.width() * overkill_fraction.clamp(0.0, fraction);
-							let overkill_rect = egui::Rect::from_min_max(
-								egui::pos2(fill_rect.right() - overkill_width, rect.top()),
-								egui::pos2(fill_rect.right(), rect.bottom()),
-							);
-							// Màu overlay trắng mờ mờ để thể hiện sát thương ảo (overkill)
-							let overkill_color = egui::Color32::from_white_alpha(70);
-							painter.rect_filled(overkill_rect, 2.0, overkill_color);
-						}
+						// FIX LỖI BORROW Ở ĐÂY: Lấy visuals ra một biến riêng trước khi gọi hàm
+						let visuals = ui.visuals().clone();
+						
+						// Gọi hàm Custom Meter
+						draw_custom_damage_meter(
+							ui,
+							fraction,
+							overkill_fraction,
+							color,
+							&visuals // Truyền reference của bản clone
+						);
 					});
-				});
+				}).response; // Lấy response của toàn bộ thẻ horizontal
+
+				// ---------- THÊM TOOLTIP CỰC CHI TIẾT ----------
+				let overkill_dmg = battle_context.real_time_overkill_damages[i];
+				let effective_dmg = (dmg - overkill_dmg).max(0.0);
+				
+				row_response.on_hover_text(format!(
+					"{}\n{} Dealt\n{} DPAV\n{} Effective\n{} Overkill\n{:.1}% of Team Damage",
+					avatar.name,
+					helpers::format_damage(dmg),
+					helpers::format_damage(dpav),
+					helpers::format_damage(effective_dmg),
+					helpers::format_damage(overkill_dmg),
+					percentage
+				));
+
 				ui.add_space(4.0); 
 			}
 		});
@@ -1315,4 +1276,99 @@ fn create_pie_slice(start_angle: f64, end_angle: f64) -> Vec<[f64; 2]> {
     points.push(center);
 
     points
+}
+
+fn draw_custom_damage_meter(
+    ui: &mut egui::Ui,
+    fill_ratio: f32,
+    overkill_ratio: f32,
+    char_color: egui::Color32,
+    visuals: &egui::Visuals,
+) {
+    // Độ cao thanh bar (bạn đang dùng 14.0)
+    let desired_size = egui::Vec2::new(ui.available_width(), 14.0);
+    let (rect, _) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    // Màu nền và viền của thanh (lấy theo Dark/Light theme)
+    let track_fill = visuals.widgets.noninteractive.bg_fill;
+    let track_stroke = visuals.widgets.inactive.bg_stroke.color;
+
+    // Màu chính
+    let fill = char_color;
+    
+    // Line highlight (bóng bẩy) ở mép trên
+    let highlight = fill.gamma_multiply(if visuals.dark_mode { 1.3 } else { 0.8 });
+    
+    // Màu Overkill (giống tác giả gốc, làm tối/nhạt đi so với màu chính để dễ phân biệt)
+    let overkill_fill = if visuals.dark_mode {
+        egui::Color32::from_rgba_premultiplied(
+            (fill.r() as f32 * 0.45) as u8,
+            (fill.g() as f32 * 0.45) as u8,
+            (fill.b() as f32 * 0.45) as u8,
+            245,
+        )
+    } else {
+        let r = ((fill.r() as f32 * 0.9) + 255.0 * 0.1) as u8;
+        let g = ((fill.g() as f32 * 0.9) + 255.0 * 0.1) as u8;
+        let b = ((fill.b() as f32 * 0.9) + 255.0 * 0.1) as u8;
+        egui::Color32::from_rgba_premultiplied(r, g, b, 200)
+    };
+
+    // 1. Vẽ khung nền (có Stroke viền 3D)
+    painter.rect_filled(rect, 4.0, track_fill); // Bo góc 4.0
+    painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, track_stroke), egui::StrokeKind::Inside);
+
+    let clamped_ratio = fill_ratio.clamp(0.0, 1.0);
+    if clamped_ratio <= 0.0 {
+        return;
+    }
+
+    // 2. Vẽ thanh Damage chính
+    let fill_rect = egui::Rect::from_min_max(
+        rect.min,
+        egui::pos2(rect.left() + rect.width() * clamped_ratio, rect.bottom()),
+    );
+    painter.rect_filled(fill_rect, 4.0, fill);
+
+    // 3. Xử lý phần Overkill đè lên
+    let clamped_overkill_ratio = overkill_ratio.clamp(0.0, fill_ratio).max(0.0);
+    if clamped_overkill_ratio > 0.0 {
+        let overkill_width = rect.width() * clamped_overkill_ratio;
+        // Đảm bảo overkill không bị lòi ra ngoài mép trái
+        let overkill_left = (fill_rect.right() - overkill_width).max(fill_rect.left());
+        let overkill_rect = egui::Rect::from_min_max(
+            egui::pos2(overkill_left, fill_rect.top()),
+            egui::pos2(fill_rect.right(), fill_rect.bottom()),
+        );
+        
+        // Nếu Overkill chiếm cả thanh thì bo góc cả 2 đầu, nếu 1 phần thì chỉ bo bên phải
+        let overkill_rounding = if overkill_left <= fill_rect.left() {
+            egui::CornerRadius::same(4)
+        } else {
+            egui::CornerRadius { nw: 0, ne: 4, sw: 0, se: 4 }
+        };
+        painter.rect_filled(overkill_rect, overkill_rounding, overkill_fill);
+
+        // Vẽ 1 đường cắt dọc (Separator) phân tách Damage thật và Overkill
+        if overkill_left > fill_rect.left() {
+            painter.line_segment(
+                [
+                    egui::pos2(overkill_left, fill_rect.top() + 1.0),
+                    egui::pos2(overkill_left, fill_rect.bottom() - 1.0),
+                ],
+                egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+            );
+        }
+    }
+
+    // 4. Vẽ Highlight bóng bẩy ở mép trên cùng
+    let highlight_y = fill_rect.top() + 1.5;
+    painter.line_segment(
+        [
+            egui::pos2(fill_rect.left() + 2.0, highlight_y),
+            egui::pos2((fill_rect.right() - 2.0).max(fill_rect.left() + 2.0), highlight_y),
+        ],
+        egui::Stroke::new(1.0, highlight),
+    );
 }

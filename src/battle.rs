@@ -558,7 +558,7 @@ impl BattleContext {
     ) -> Result<Packet> {
         log::info!("Wave: {}", e.wave);
 
-        if battle_context.battle_mode == BattleMode::MOC {
+        if battle_context.battle_mode == BattleMode::MOC || battle_context.battle_mode == BattleMode::StarwardMOC {
             battle_context.last_wave_action_value = battle_context.action_value;
         }
 

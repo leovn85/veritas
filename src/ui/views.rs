@@ -146,6 +146,11 @@ impl App {
 												log::error!("Failed to extract items from RAM: {:#?}", e);
 												return;
 											}
+											
+											if let Err(e) = unsafe { crate::kreide::helpers::dump_relic_config() } {
+												log::error!("Failed to extract relic_config from RAM: {:#?}", e);
+												return;
+											}
 
 											// 2. Xuất ra file Fribbels (Lúc này Cache đã chứa data 100% là tiếng Anh)
 											if let Err(e) = crate::relic_utils::dump_and_convert_data() {
