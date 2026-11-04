@@ -69,7 +69,7 @@ use crate::kreide::types::{
 use crate::models::misc::{LightCone, Relic, RelicMainStat, RelicRolls, RelicSubstat, ReliquaryLightCone, ReliquaryRelic};
 use crate::relic_utils::{calc_initial_rolls, get_light_cones, get_relics, pick_low_mid_high/*, write_light_cones_to_json, write_relics_to_json*/};
 
-retour::static_detour! {
+detour::static_detour! {
 	static _UpdateRelics_Detour: unsafe extern "C" fn(RPG_Client_InventoryModule, List, bool);
 	static sync_relic_Detour: unsafe extern "C" fn(RPG_Client_RelicItemData, *const c_void);
 	static sync_equipment_Detour: unsafe extern "C" fn(RPG_Client_EquipmentItemData, *const c_void);
@@ -78,13 +78,7 @@ retour::static_detour! {
 
 impl Into<f64> for RPG_GameCore_FixPoint {
 	fn into(self) -> f64 {
-		const FLOAT_CONVERSION_CONSTANT: f64 = 1.0 / 4294967296.0;
-		let raw_value = self.m_rawValue;
-		let hi = ((raw_value as u64 & 0xFFFFFFFF00000000) >> 32) as u32;
-		let lo = (raw_value as u64 & 0x00000000FFFFFFFF) as u32;
-		//hi as f64 + lo as f64 * FLOAT_CONVERSION_CONSTANT
-		let raw = hi as f64 + lo as f64 * FLOAT_CONVERSION_CONSTANT;
-        raw / 2.0 // ĐỒNG BỘ CHIA 2 CHO CHỈ SỐ DI VẬT
+		crate::kreide::helpers::fixpoint_to_raw(&self)
 	}
 }
 

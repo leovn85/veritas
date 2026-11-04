@@ -1462,6 +1462,9 @@ pub struct RPG_Client_AvatarHelper;
 impl RPG_Client_AvatarHelper {
     #[il2cpp_method(name = "GetAllObtainedSpecificPathAvatars", args = [])]
     pub fn GetAllObtainedSpecificPathAvatars() -> List {}
+	
+	#[il2cpp_method(name = "GetAvatarName", args = ["uint"])]
+    pub fn GetAvatarName(avatar_id: u32) -> Il2CppString {}
 }
 
 #[il2cpp_ref_type("RPG.Client.AvatarExtensions")]

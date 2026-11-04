@@ -14,7 +14,12 @@ pub enum Event {
     OnPropertyChange(OnPropertyChangeEvent),
     OnEntityDefeated(OnEntityDefeatedEvent),
     OnUpdateTeamFormation(OnUpdateTeamFormationEvent),
-    OnInitializeEnemy(OnInitializeEnemyEvent)
+    OnInitializeEnemy(OnInitializeEnemyEvent),
+    OnResetActionValue(OnResetActionValueEvent),
+}
+
+pub struct OnResetActionValueEvent {
+    pub action_value: f64,
 }
 
 pub struct OnBattleBeginEvent {

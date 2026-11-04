@@ -3,7 +3,7 @@ name = "veritas"
 edition = "2024"
 license-file = "LICENSE"
 repository = "https://github.com/hessiser/veritas/"
-version = "0.2.47"
+version = "0.2.57"
 
 [package.metadata.i18n]
 available-locales = ["en", "fr", "es", "de", "it", "ja", "pt", "nl", "ru", "vi", "zh", "pl"]
@@ -18,17 +18,17 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # UI
-egui = { version = "0.32.0", features = ["serde", "persistence"] }
-egui_plot = { version = "0.33.0", features = ["serde"] }
-edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "fd1384c" }
-egui-phosphor = { version = "0.10.0", features = ["bold"]}
-egui_colors = { version = "0.9.0", features = ["serde"] }
-egui-notify = "0.20.0"
-egui_logger = "0.8.0"
-egui_inbox = "0.9.0"
-egui_commonmark = "0.21.1"
-egui_extras = "0.32.0"
-egui_table = "0.7.0"
+egui = { version = "0.36.0", features = ["serde", "persistence"] }
+egui_plot = { version = "0.37.0", features = ["serde"] }
+edio11 = { git = "https://github.com/hessiser/edio11-rs.git", rev = "cbc1270" }
+egui-phosphor = { version = "0.14.0", features = ["bold"]}
+egui_colors = { version = "0.13.0", features = ["serde"] }
+egui-notify = "0.23.0"
+egui_logger = "0.12.0"
+egui_inbox = "0.13.0"
+egui_commonmark = "0.25.0"
+egui_extras = "0.36.0"
+egui_table = "0.10.0"
 
 # Logging
 log = "0.4.29"
@@ -46,7 +46,7 @@ tower-http = { version = "0.6.6", features = ["cors"] }
 
 
 # Misc
-retour = { version = "0.3", features = ["static-detour"] }
+detour = "0.10.0"
 ctor = "0.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
@@ -70,7 +70,7 @@ widestring = "1.2.0"
 ron = "0.10.1"
 strum = { version = "0.28", features = ["derive"] }
 parse-changelog = { version = "0.6.12", default-features = false }
-il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "a592c94" , features = ["log"]}
+il2cpp-runtime = { git = "https://github.com/hessiser/il2cpp-rust.git", rev = "51f8c1f" , features = ["log"]}
 image = "0.25.10"
 futures-util = "0.3"
 lazy_static = "1.4"
@@ -80,11 +80,11 @@ crossbeam-channel = "0.5.15"
 
 
 [dev-dependencies]
-eframe = { version = "0.32.0", features = ["serde", "persistence"] }
+eframe = { version = "0.36.0", features = ["serde", "persistence"] }
 winit = { version = "0.30.12", default-features = false, features = ["wayland"] }
 
 [dependencies.windows]
-version = "0.61.3"
+version = "0.62.0"
 features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader",
@@ -107,4 +107,4 @@ serde_json = "1.0.141"
 ureq = { version = "2.9", features = ["json"] }
 
 [patch."https://github.com/hessiser/il2cpp-rust.git"]
-il2cpp-runtime = { path = "il2cpp-rust/il2cpp-runtime" }
+il2cpp-runtime = { path = "il2cpp-rust-main/il2cpp-runtime" }

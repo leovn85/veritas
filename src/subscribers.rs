@@ -68,15 +68,7 @@ macro_rules! safe_call {
         }) {
             Ok(Ok(Ok(()))) => Ok(()),
             Ok(Ok(Err(err))) => {
-                let backtrace = std::backtrace::Backtrace::capture();
-                let message = format!(
-                    "{} returned error: {:?}\nBacktrace:\n{}",
-                    function_name!(),
-                    err,
-                    backtrace
-                );
-
-                log::error!("{}", message);
+                log::error!("{} returned error: {:?}", function_name!(), err);
                 Err(err.context("safe_call body returned an error"))
             }
             Ok(Err(panic)) => {

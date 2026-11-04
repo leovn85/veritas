@@ -12,11 +12,13 @@ use std::{
 };
 use windows::Win32::{
     Foundation::{GetLastError, HMODULE, MAX_PATH},
-    System::LibraryLoader::{
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        GetModuleFileNameW, GetModuleHandleExA,
+    System::{
+        LibraryLoader::{
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            GetModuleFileNameW, GetModuleHandleExA,
+        },
+        Threading::CREATE_NO_WINDOW,
     },
-    UI::WindowsAndMessaging::SW_HIDE,
 };
 
 
@@ -204,7 +206,7 @@ impl Updater {
                 "-Command",
                 &script,
             ])
-            .show_window(SW_HIDE.0 as _)
+            .creation_flags(CREATE_NO_WINDOW.0)
             .spawn()?;
         Ok(())
     }

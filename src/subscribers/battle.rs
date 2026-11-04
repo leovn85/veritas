@@ -23,11 +23,11 @@ use il2cpp_runtime::api::il2cpp_field_get_type;
 use il2cpp_runtime::get_cached_class;
 use il2cpp_runtime::types::Il2CppString;
 //use il2cpp_runtime::types::System_Enum;
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashMap};
 use std::ffi::c_void;
 use std::ptr::null;
 //use std::str::FromStr;
-use std::sync::{OnceLock, LazyLock, Mutex};
+use std::sync::OnceLock;
 //use std::sync::OnceLock;
 use anyhow::Context;
 
@@ -246,7 +246,7 @@ fn on_damage(
                 let hp_final_raw = fixpoint_to_raw(&hp_final);
 				
 				let hp_lost = hp_initial_raw - hp_final_raw;
-                let expected_damage = if hp_lost > 0.0 && hp_final_raw > 0.0 {
+                let _expected_damage = if hp_lost > 0.0 && hp_final_raw > 0.0 {
                     Some(hp_lost)
                 } else {
                     None
@@ -1559,14 +1559,14 @@ pub fn on_update_team_formation(instance: RPG_GameCore_TeamFormationComponent) {
             let entities = team
                 .to_vec::<RPG_GameCore_GameComponentBase>()
                 .iter()
-                .map(|entity_formation| Entity {
-                    uid: (*entity_formation
-                        ._OwnerRef()
-                        .unwrap()
-                        ._RuntimeID_k__BackingField()
-                        .unwrap())
-                    .into(),
-                    team: Team::Enemy,
+                .filter_map(|entity_formation| {
+                    let owner = entity_formation._OwnerRef().ok()?;
+                    let runtime_id = owner._RuntimeID_k__BackingField().ok()?;
+                    let uid: u32 = (*runtime_id.try_deref().ok()?).into();
+                    Some(Entity {
+                        uid,
+                        team: Team::Enemy,
+                    })
                 })
                 .collect::<Vec<Entity>>();
 
@@ -1622,7 +1622,7 @@ pub fn on_initialize_enemy(
         crate::battle::send_battle_event(Ok(Event::OnInitializeEnemy(OnInitializeEnemyEvent {
             enemy: Enemy {
                 id: monster_id,
-                uid: (*entity._RuntimeID_k__BackingField().unwrap()).into(),
+                uid: (*entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                 name: (*monster_name).to_string(),
                 base_stats,
             },
@@ -1632,7 +1632,19 @@ pub fn on_initialize_enemy(
     res
 }
 
-retour::static_detour! {
+#[named]
+fn on_reset_all_entity_action_delay(instance: RPG_GameCore_TurnBasedGameMode) {
+    log::debug!(function_name!());
+    ON_RESET_ALL_ENTITY_ACTION_DELAY_Detour.call(instance);
+    safe_call!(unsafe {
+        crate::battle::send_battle_event(Ok(Event::OnResetActionValue(OnResetActionValueEvent {
+            action_value: get_elapsed_av(instance)?,
+        })));
+        Ok(())
+    });
+}
+
+detour::static_detour! {
     static ON_DAMAGE_Detour: fn(*const c_void, *const c_void, *const c_void, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, bool, *const c_void) -> bool;
 	static ON_PRE_DAMAGE_Detour: fn(*const c_void, *const c_void, *const c_void, Il2CppString, RPG_GameCore_GameEntity, RPG_GameCore_GameEntity, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, Il2CppString) -> *const c_void;
     static ON_COMBO_Detour: fn(*const c_void, RPG_GameCore_TurnBasedGameMode);
@@ -1650,6 +1662,7 @@ retour::static_detour! {
     static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, *const c_void) -> bool;
     static ON_UPDATE_TEAM_FORMATION_Detour: fn(RPG_GameCore_TeamFormationComponent);
     static ON_INITIALIZE_ENEMY_Detour: fn(RPG_GameCore_MonsterDataComponent, RPG_GameCore_TurnBasedAbilityComponent);
+    static ON_RESET_ALL_ENTITY_ACTION_DELAY_Detour: fn(RPG_GameCore_TurnBasedGameMode);
 }
 
 pub fn subscribe() -> Result<()> {
@@ -1881,6 +1894,13 @@ pub fn subscribe() -> Result<()> {
                 )?
                 .va(),
             on_initialize_enemy
+        )?;
+        subscribe_function!(
+            ON_RESET_ALL_ENTITY_ACTION_DELAY_Detour,
+            RPG_GameCore_TurnBasedGameMode::get_class_static()?
+                .find_method("ResetAllEntityActionDelay", &[])?
+                .va(),
+            on_reset_all_entity_action_delay
         )?;
         Ok(())
     }

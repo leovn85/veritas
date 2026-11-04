@@ -748,6 +748,11 @@ impl BattleContext {
 				Event::OnUpdateTeamFormation(e) => {
                     Self::handle_on_update_team_formation_event(e, battle_context)
                 }
+                Event::OnResetActionValue(e) => {
+                    let mut bc = battle_context;
+                    bc.last_wave_action_value = e.action_value;
+                    return;
+                }
             },
             Err(e) => Ok({
                 log::error!("{}", e);

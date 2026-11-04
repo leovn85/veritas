@@ -63,8 +63,13 @@ pub unsafe fn get_avatar_from_id(avatar_id: u32) -> Result<Avatar> {
         return Ok(avatar);
     }
 
-    let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
-    let avatar_name = get_textmap_content(&*data.AvatarName()?)?;
+    let avatar_name = match unsafe { RPG_Client_AvatarHelper::GetAvatarName(avatar_id) } {
+        Ok(s) if !s.0.is_null() => s.to_string(),
+        _ => {
+            let data = unsafe { RPG_GameCore_AvatarExcelTable::GetData(avatar_id)? };
+            get_textmap_content(&*data.AvatarName()?)?
+        }
+    };
 
     let avatar = Avatar {
         id: avatar_id,

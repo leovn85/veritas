@@ -10,7 +10,7 @@ use crate::ui::themes;
 use crate::{CHANGELOG, RUNTIME, ui::{app::App, helpers::{get_transparent_window_frame, get_window_frame}}, updater::{Status, Update, Updater}};
 
 impl App {
-    pub fn show_changelog_window(&mut self, ctx: &egui::Context) {
+    pub fn show_changelog_window(&mut self, ui: &mut egui::Ui) {
         let changelog = parse_changelog::parse(CHANGELOG).unwrap();
 
         if let Some(release) = changelog.get(env!("CARGO_PKG_VERSION")) {
@@ -19,8 +19,8 @@ impl App {
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .collapsible(false)
                 .resizable(true)
-                .frame(Frame::window(&ctx.style()).inner_margin(5.))
-                .show(ctx, |ui| {
+                .frame(Frame::window(&ui.style()).inner_margin(5.))
+                .show(ui, |ui| {
                     ScrollArea::new([false, true]).show(ui, |ui| {
                         ui.vertical_centered(|ui| {
                             ui.heading(release.title);
@@ -40,14 +40,14 @@ impl App {
         }
     }
 
-    pub fn show_help_window(&mut self, ctx: &egui::Context) {
+    pub fn show_help_window(&mut self, ui: &mut egui::Ui) {
         Window::new(format!("{} {}", egui_phosphor::bold::QUESTION, t!("Help")))
             .id("help_window".into())
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .collapsible(false)
             .resizable(true)
-            .frame(Frame::window(&ctx.style()).inner_margin(5.))
-            .show(ctx, |ui| {
+            .frame(Frame::window(&ui.style()).inner_margin(5.))
+            .show(ui, |ui| {
                 ScrollArea::new([false, true]).show(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         let markup = indoc::indoc!("
@@ -85,18 +85,18 @@ impl App {
             });
     }
 
-    pub fn show_menu(&mut self, ctx: &egui::Context) {
+    pub fn show_menu(&mut self, ui: &mut egui::Ui) {
         CentralPanel::default()
             .frame(Frame {
                 fill: Color32::BLACK.gamma_multiply(0.25),
                 ..Default::default()
             })
-            .show(ctx, |_ui: &mut egui::Ui| {
+            .show(ui, |ui: &mut egui::Ui| {
                 Window::new(t!("Menu"))
                     .id("menu_window".into())
                     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                     .collapsible(false)
-                    .show(ctx, |ui| {
+                    .show(ui, |ui| {
                         // Settings
                         egui::Frame::default().inner_margin(5.0).show(ui, |ui| {
                             egui::MenuBar::new().ui(ui, |ui| {
@@ -129,19 +129,16 @@ impl App {
                                 if ui
                                     .button(RichText::new(format!(
                                         "{} Get Relics",
-                                        egui_phosphor::bold::DATABASE, // Icon Database
+                                        egui_phosphor::bold::DATABASE,
                                     )))
                                     .clicked()
                                 {
                                     self.notifs.success("Dumping Game Data... Check game folder!");
                                     
                                     crate::RUNTIME.spawn(async move {
-										// Dùng spawn_blocking để đảm bảo chạy trên 1 OS Thread riêng biệt, không phá hỏng Tokio Worker
 										let _ = tokio::task::spawn_blocking(move || {
-											// Attach thread vào Il2Cpp domain ở đây là an toàn tuyệt đối
 											let domain = il2cpp_runtime::api::il2cpp_domain_get();
 											il2cpp_runtime::api::il2cpp_thread_attach(domain);
-											// 1. Kéo toàn bộ Items từ Game RAM nạp vào Relics Cache (BẰNG TIẾNG ANH)
 											if let Err(e) = unsafe { crate::kreide::helpers::dump_all_equipment_on_demand() } {
 												log::error!("Failed to extract items from RAM: {:#?}", e);
 												return;
@@ -152,7 +149,6 @@ impl App {
 												return;
 											}
 
-											// 2. Xuất ra file Fribbels (Lúc này Cache đã chứa data 100% là tiếng Anh)
 											if let Err(e) = crate::relic_utils::dump_and_convert_data() {
 												log::error!("Data Dump Failed: {:#?}", e);
 											} else {
@@ -170,7 +166,7 @@ impl App {
                                     )))
                                     .clicked()
                                 {
-                                    ctx.memory_mut(|writer| *writer = Memory::default());
+                                    ui.memory_mut(|writer| *writer = Memory::default());
                                 }
 
                                 if ui
@@ -183,17 +179,6 @@ impl App {
                                 {
                                     self.state.show_help = !self.state.show_help;
                                 }
-
-                                // ui.menu_button(RichText::new(format!(
-                                //         "{} {}",
-                                //         egui_phosphor::bold::COMMAND,
-                                //         t!("Shortcuts")
-                                //     )).strong(), |ui| {
-                                //         let button = Button::new(RichText::new(t!("Show menu"))).shortcut_text(ctx.format_shortcut(&SHOW_MENU_SHORTCUT));
-                                //         if ui.add(button).changed() {
-
-                                //         };
-                                //     });
                             });
                         });
 
@@ -204,7 +189,7 @@ impl App {
                             egui::Window::new(format!("{} {}", egui_phosphor::bold::GEAR, t!("Settings")))
                                 .id("settings_window".into())
                                 .open(&mut show_settings)
-                                .show(ctx, |ui| {
+                                .show(ui, |ui| {
                                     self.show_settings(ui);
                                 });
                             self.state.show_settings = show_settings;
@@ -215,7 +200,7 @@ impl App {
                             Window::new(format!("{} Export Battle Data", egui_phosphor::bold::DOWNLOAD_SIMPLE))
                                 .id("export_window".into())
                                 .open(&mut show_export_window)
-                                .show(ctx, |ui| {
+                                .show(ui, |ui| {
                                     self.show_export_window(ui);
                                 });
                             self.state.show_export_window = show_export_window;
@@ -231,19 +216,23 @@ impl App {
                             .open(&mut show_updater_window);
 
                             if self.state.center_updater_window {
-                                let center = ctx.input(|input| input.screen_rect.center());
-                                if let Some(size) = self.updater_window_last_size {
-                                    let top_left = center - size * 0.5;
-                                    updater_window = updater_window.current_pos(top_left);
-                                    self.state.center_updater_window = false;
+                                if let Some(center) = ui.input(|input| input.raw.screen_rect.map(|r| r.center())) {
+                                    if let Some(size) = self.updater_window_last_size {
+                                        let top_left = center - size * 0.5;
+                                        updater_window = updater_window.current_pos(top_left);
+                                        self.state.center_updater_window = false;
+                                    } else {
+                                        updater_window = updater_window
+                                            .pivot(egui::Align2::CENTER_CENTER)
+                                            .current_pos(center);
+                                    }
                                 } else {
                                     updater_window = updater_window
-                                        .pivot(egui::Align2::CENTER_CENTER)
-                                        .current_pos(center);
+                                        .pivot(egui::Align2::CENTER_CENTER);
                                 }
                             }
 
-                            if let Some(response) = updater_window.show(ctx, |ui| {
+                            if let Some(response) = updater_window.show(ui, |ui| {
                                 self.show_updater_window(ui);
                             }) {
                                 self.updater_window_last_size = Some(response.response.rect.size());
@@ -541,11 +530,9 @@ impl App {
         });
     }
 
-
-    // rename
     fn show_settings(&mut self, ui: &mut Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
-            let style = ui.ctx().style();
+            let style = ui.ctx().global_style();
             let font_id = &style.text_styles[&egui::TextStyle::Button];
             let font_size = font_id.size;
             self.colorix.light_dark_toggle_button(ui, font_size);
@@ -655,36 +642,6 @@ impl App {
                 t!("Auto(show/hide) UI on battle (start/end)."),
             );
 
-            // TODO:
-            // Change using a grid like so:
-
-            // ui.label("Text style:");
-            // ui.horizontal(|ui| {
-            //     let all_text_styles = ui.style().text_styles();
-            //     for style in all_text_styles {
-            //         ui.selectable_value(&mut config.text_style, style.clone(), style.to_string());
-            //     }
-            // });
-            // ui.end_row();
-
-            // if ui
-            //     .add(
-            //         Slider::new(
-            //             &mut self.settings.fps,
-            //             10..=120,
-            //         )
-            //         .text(t!("FPS")),
-            //     )
-            //     .changed()
-            // {
-            //     self.config.set_fps(self.settings.fps);
-            //     unsafe {
-            //         Application_set_targetFrameRate(
-            //             self.settings.fps,
-            //         )
-            //     };
-            // }
-
             ui.add(
                 TextEdit::singleline(&mut self.config.streamer_msg).hint_text(RichText::new(
                     format!(
@@ -697,9 +654,7 @@ impl App {
         });
     }
 
-
-    // Should I just create a macro?
-    pub fn show_console_window(&mut self, ctx: &egui::Context) {
+    pub fn show_console_window(&mut self, ui: &mut egui::Ui) {
         egui::Window::new(t!("Log"))
             .id("log_window".into())
             .resizable(true)
@@ -707,7 +662,7 @@ impl App {
             .default_width(400.0)
             .min_width(200.0)
             .min_height(100.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 let available = ui.available_size();
                 ui.set_min_size(available);
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
@@ -716,114 +671,120 @@ impl App {
             });
     }
 
-    pub fn show_damage_distribution_window(&mut self, ctx: &egui::Context) {
+    pub fn show_damage_distribution_window(&mut self, ui: &mut egui::Ui) {
         let damage_distribution_window_title = if self.state.show_menu {
             t!("Damage Distribution").into_owned()
         } else {
             String::new()
         };
 
+        let ctx = ui.ctx();
+        let frame = if self.state.show_menu {
+            get_window_frame(ctx, self.config.widget_opacity)
+        } else {
+            get_transparent_window_frame(ctx, self.config.widget_opacity)
+        };
+
         egui::containers::Window::new(damage_distribution_window_title)
             .id("damage_distribution_window".into())
-            .frame(if self.state.show_menu {
-                get_window_frame(ctx, self.config.widget_opacity)
-            } else {
-                get_transparent_window_frame(ctx, self.config.widget_opacity)
-            })
+            .frame(frame)
             .collapsible(false)
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_damage_distribution_widget(ui);
             });
     }
 
-    pub fn show_damage_type_breakdown_window(&mut self, ctx: &egui::Context) {
+    pub fn show_damage_type_breakdown_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Damage Type Breakdown"))
             .id("damage_type_breakdown_window".into())
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .default_width(420.0)
             .default_height(360.0)
             .min_width(280.0)
             .min_height(180.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_damage_type_breakdown_widget(ui);
             });
     }
 
-    pub fn show_character_legend_window(&mut self, ctx: &egui::Context) {
+    pub fn show_character_legend_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Character Legend"))
             .id("character_legend_window".into())
             .title_bar(true)
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.style_mut().interaction.selectable_labels = true;
                 self.show_character_legend(ui);
             });
     }
 
-    pub fn show_damage_bar_window(&mut self, ctx: &egui::Context) {
+    pub fn show_damage_bar_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Character Damage"))
             .id("damage_by_character_window".into())
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_damage_bar_widget(ui);
             });
     }
 
-    pub fn show_real_time_damage_window(&mut self, ctx: &egui::Context) {
+    pub fn show_real_time_damage_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Real-Time Damage"))
             .id("real_time_damage_window".into())
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_real_time_damage_graph_widget(ui);
             });
     }
 
-    pub fn show_battle_metrics_window(&mut self, ctx: &egui::Context) {
+    pub fn show_battle_metrics_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Battle Metrics"))
             .id("battle_metrics_window".into())
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .min_width(200.0)
             .min_height(200.0)
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_battle_metrics_widget(ui);
             });
     }
 
-    pub fn show_enemy_stats_window(&mut self, ctx: &egui::Context) {
+    pub fn show_enemy_stats_window(&mut self, ui: &mut egui::Ui) {
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         egui::containers::Window::new(t!("Enemy Stats"))
             .id("enemy_stats_window".into())
-            //.title_bar(false)
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
+            .frame(frame)
             .resizable(true)
             .min_width(200.0)
             .min_height(150.0)
-            .show(ctx, |ui| {
-                //ui.style_mut().interaction.selectable_labels = false;
+            .show(ui, |ui| {
                 self.show_enemy_stats_widget(ui);
             });
     }
 	
-	pub fn show_character_stats_window(&mut self, ctx: &egui::Context) {
+	pub fn show_character_stats_window(&mut self, ui: &mut egui::Ui) {
         let mut is_open = self.state.selected_character_for_stats.is_some();
         if !is_open {
             return;
         }
 
-        // Lấy tên nhân vật cho tiêu đề cửa sổ
         let window_title = {
             let battle_context = BattleContext::get_instance();
             if let Some(id) = self.state.selected_character_for_stats {
@@ -838,17 +799,17 @@ impl App {
             }
         };
 
+        let frame = get_window_frame(ui.ctx(), self.config.widget_opacity);
         Window::new(window_title)
             .id(egui::Id::new("character_stats_window"))
             .open(&mut is_open)
-            .collapsible(true) // Cho phép thu gọn
+            .collapsible(true)
             .resizable(true)
-            .frame(get_window_frame(ctx, self.config.widget_opacity))
-            .show(ctx, |ui| {
+            .frame(frame)
+            .show(ui, |ui| {
                 self.show_character_stats_widget(ui);
             });
 
-        // Nếu người dùng đóng cửa sổ hoặc dữ liệu không hợp lệ, cập nhật state
         if !is_open {
             self.state.selected_character_for_stats = None;
         }

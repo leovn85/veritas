@@ -128,20 +128,21 @@ pub const SHOW_MENU_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers
 
 impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
-    fn update(&mut self, ctx: &egui::Context) {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         // Get rid of this and just switch to egui-toast
         if self.state.show_changelog {
-            self.show_changelog_window(ctx);
+            self.show_changelog_window(ui);
         }
 
         if self.state.show_help {
-            self.show_help_window(ctx);
+            self.show_help_window(ui);
         }
 
         if self.config.streamer_mode {
-            egui::TopBottomPanel::bottom("statusbar")
+            egui::Panel::bottom("statusbar")
                 .resizable(true)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     ui.style_mut().override_text_style = Some(egui::TextStyle::Body);
                     let label = Label::new(RichText::new(&self.config.streamer_msg).strong())
                         .selectable(false);
@@ -152,51 +153,51 @@ impl Overlay for App {
 
         if !self.state.should_hide {
             if self.state.show_menu {
-                self.show_menu(ctx);
+                self.show_menu(ui);
             }
 
             if self.state.show_console {
-                self.show_console_window(ctx);
+                self.show_console_window(ui);
             }
 
             if self.state.show_damage_distribution {
-                self.show_damage_distribution_window(ctx);
+                self.show_damage_distribution_window(ui);
             }
 
             if self.state.show_damage_type_breakdown {
-                self.show_damage_type_breakdown_window(ctx);
+                self.show_damage_type_breakdown_window(ui);
             }
 
             if self.state.show_character_legend {
-                self.show_character_legend_window(ctx);
+                self.show_character_legend_window(ui);
             }
 
             if self.state.show_damage_bars {
-                self.show_damage_bar_window(ctx);
+                self.show_damage_bar_window(ui);
             }
 
             if self.state.show_real_time_damage {
-                self.show_real_time_damage_window(ctx);
+                self.show_real_time_damage_window(ui);
             }
 
             if self.state.show_battle_metrics {
-                self.show_battle_metrics_window(ctx);
+                self.show_battle_metrics_window(ui);
             }
 
             if self.state.show_enemy_stats {
-                self.show_enemy_stats_window(ctx);
+                self.show_enemy_stats_window(ui);
             }
 			
 			if self.state.selected_character_for_stats.is_some() {
-                self.show_character_stats_window(ctx);
+                self.show_character_stats_window(ui);
             }
         }
 
-        if ctx.input_mut(|i| i.consume_shortcut(&HIDE_UI_SHORTCUT)) {
+        if ui.input_mut(|i| i.consume_shortcut(&HIDE_UI_SHORTCUT)) {
             self.state.should_hide = !self.state.should_hide;
         }
 
-        if ctx.input_mut(|i| i.consume_shortcut(&SHOW_MENU_SHORTCUT)) {
+        if ui.input_mut(|i| i.consume_shortcut(&SHOW_MENU_SHORTCUT)) {
             if self.state.should_hide {
                 self.notifs.info(t!(
                     "`Hide UI` is still active. Use the `Hide UI` shortcut to unhide the UI."
@@ -204,7 +205,7 @@ impl Overlay for App {
             }
         }
 
-        if let Some(Some(update)) = self.update_inbox.read(ctx).last() {
+        if let Some(Some(update)) = self.update_inbox.read(ui).last() {
             if let Some(new_version) = &update.new_version {
                 match &update.status {
                     Some(status) => {
@@ -231,7 +232,7 @@ impl Overlay for App {
             self.update = Some(update);
         }
 
-        if let Some(export_notification) = self.export_inbox.read(ctx).last() {
+        if let Some(export_notification) = self.export_inbox.read(ui).last() {
             match export_notification {
                 ExportNotification::Success => {
                     self.notifs
@@ -261,7 +262,7 @@ impl Overlay for App {
                         self.state.should_hide = true;
                     }
 					
-					crate::ui::helpers::clear_egui_texture_cache(ctx);
+					crate::ui::helpers::clear_egui_texture_cache(&ctx);
 
                     if self.state.auto_save_battle_data {
                         let export_data = BattleContext::take_prepared_export_data();
@@ -333,7 +334,7 @@ impl Overlay for App {
             }
         }
 
-        self.notifs.show(ctx);
+        self.notifs.show(&ctx);
     }
 
     fn window_process(
@@ -388,8 +389,6 @@ impl Overlay for App {
     }
 
     fn save(&mut self, _storage: &mut egui::Memory) {
-        self.save_persist(_storage)
-            .unwrap_or_else(|e| log::error!("{e}"));
         self.state.save().unwrap_or_else(|e| log::error!("{e}"));
 
         self.config.theme = *self.colorix.theme();
@@ -525,10 +524,6 @@ impl App {
     }
 
     pub fn new(ctx: Context) -> Self {
-        // This should be called first
-        if App::load_persist(&ctx).is_err() {
-            log::error!("Failed to load persistence.");
-        }
 
         let fonts = vec![("zh-cn.ttf", "game_font"), ("ja-jp.ttf", "game_font_jp")];
 
