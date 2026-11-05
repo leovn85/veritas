@@ -5,7 +5,7 @@ use crate::{
     kreide::types::{
         RPG_Client_CachedAssetLoader, RPG_Client_GlobalVars,
         RPG_Client_ModuleManager, RPG_Client_UIGameEntityUtils, RPG_GameCore_AttackType__Boxed,
-        RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_AvatarPropertyType__Boxed, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, 
+        RPG_GameCore_AvatarExcelTable, RPG_GameCore_AvatarPropertyExcelTable, RPG_GameCore_MonsterDataComponent, RPG_GameCore_MonsterRowData, 
         RPG_GameCore_ServantDataComponent, UnityEngine_Graphics, UnityEngine_ImageConversion,
         UnityEngine_Rect, UnityEngine_RenderTexture, UnityEngine_Sprite, UnityEngine_Object, UnityEngine_Texture2D, RPG_GameCore_RelicConfigExcelTable, RPG_GameCore_RelicSetConfigExcelTable, RPG_GameCore_RelicBaseTypeExcelTable,  RPG_GameCore_AvatarSkillTreeExcelTable, RPG_GameCore_AvatarBaseType, RPG_GameCore_AvatarRow, RPG_GameCore_RelicConfigRow, RPG_GameCore_ItemMainType, RPG_Client_RelicItemData, RPG_Client_EquipmentItemData, RPG_AvatarSystem_IAvatar, RPG_Client_AvatarHelper, RPG_Client_AvatarExtensions
     },
@@ -532,18 +532,152 @@ pub fn get_avatar_raw_bytes(avatar_id: u32) -> Result<(usize, usize, Vec<u8>)> {
     }
 }
 
+// ============================================================================
+// DYNAMIC ENUM RESOLVER (Zero-Allocation với &'static str & Cached i32 IDs)
+// ============================================================================
+pub struct EnumBiMap {
+    pub name_to_val: HashMap<&'static str, i32>,
+    pub val_to_name: HashMap<i32, &'static str>,
+}
+
+/// Lưu sẵn các ID số nguyên i32 thường dùng nhất để so sánh O(1) bằng lệnh CMP số nguyên
+/// ngay trên Game Thread mà không cần tra bảng hay so sánh chuỗi!
+pub struct AbilityPropIds {
+    pub current_hp: i32,
+    pub action_delay: i32,
+    pub current_stance: i32,
+    pub max_stance: i32,
+    pub tracked_avatar_props: Vec<(&'static str, i32)>,
+}
+
+static DYNAMIC_ENUM_CACHE: LazyLock<Mutex<HashMap<&'static str, &'static EnumBiMap>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static ABILITY_PROP_IDS: std::sync::OnceLock<AbilityPropIds> = std::sync::OnceLock::new();
+
+pub fn get_dynamic_enum_map(enum_full_name: &'static str) -> Result<&'static EnumBiMap> {
+    if let Ok(cache) = DYNAMIC_ENUM_CACHE.lock() {
+        if let Some(&map) = cache.get(enum_full_name) {
+            return Ok(map);
+        }
+    }
+
+    let class = get_cached_class(enum_full_name)?;
+    let mut name_to_val = HashMap::new();
+    let mut val_to_name = HashMap::new();
+
+    unsafe {
+        let field_iter: *const std::ffi::c_void = std::ptr::null();
+        loop {
+            let field = il2cpp_class_get_fields(class, &field_iter);
+            if field.0.is_null() {
+                break;
+            }
+
+            let field_name = field.name();
+            if field_name == "value__" {
+                continue;
+            }
+
+            if let Ok(boxed_ptr) = field.get_value(std::ptr::null()) {
+                if !boxed_ptr.is_null() {
+                    let val = *((boxed_ptr as *const u8).add(0x10) as *const i32);
+                    // Intern chuỗi thành &'static str đúng 1 lần duy nhất trong đời chương trình
+                    let static_name: &'static str = Box::leak(field_name.into_boxed_str());
+                    name_to_val.insert(static_name, val);
+                    val_to_name.entry(val).or_insert(static_name);
+                }
+            }
+        }
+    }
+
+    log::info!(
+        "[DynamicEnum] Loaded {} variants for '{}' from RAM",
+        name_to_val.len(),
+        enum_full_name
+    );
+
+    let leaked_map: &'static EnumBiMap = Box::leak(Box::new(EnumBiMap {
+        name_to_val,
+        val_to_name,
+    }));
+
+    if let Ok(mut cache) = DYNAMIC_ENUM_CACHE.lock() {
+        cache.insert(enum_full_name, leaked_map);
+    }
+
+    Ok(leaked_map)
+}
+
+pub fn get_ability_prop_ids() -> Result<&'static AbilityPropIds> {
+    if let Some(ids) = ABILITY_PROP_IDS.get() {
+        return Ok(ids);
+    }
+
+    let map = get_dynamic_enum_map("RPG.GameCore.AbilityProperty")?;
+
+    const TRACKED_NAMES: &[&'static str] = &[
+        "CurrentHP", "MaxHP", "BaseHP",
+        "Attack", "BaseAttack",
+        "Defence", "BaseDefence",
+        "Speed", "BaseSpeed",
+        "Shield", "MaxShield",
+        "ActionDelay",
+        "CriticalChance", "CriticalDamage",
+        "BreakDamageAddedRatio", "StanceBreakAddedRatio",
+        "HealRatio",
+        "CurrentSP", "MaxSP", "SPRatio",
+        "StatusProbability", "StatusResistance",
+        "AllDamageTypeAddedRatio",
+        "ElationDamageAddedRatio",
+        "PhysicalAddedRatio", "FireAddedRatio", "IceAddedRatio",
+        "ThunderAddedRatio", "WindAddedRatio", "QuantumAddedRatio", "ImaginaryAddedRatio",
+    ];
+
+    let mut tracked_avatar_props = Vec::with_capacity(TRACKED_NAMES.len());
+    for &name in TRACKED_NAMES {
+        if let Some(&id) = map.name_to_val.get(name) {
+            tracked_avatar_props.push((name, id));
+        }
+    }
+
+    let ids = AbilityPropIds {
+        current_hp: *map.name_to_val.get("CurrentHP").unwrap_or(&10),
+        action_delay: *map.name_to_val.get("ActionDelay").unwrap_or(&38),
+        current_stance: *map.name_to_val.get("CurrentStance").unwrap_or(&42),
+        max_stance: *map.name_to_val.get("MaxStance").unwrap_or(&41),
+        tracked_avatar_props,
+    };
+
+    let _ = ABILITY_PROP_IDS.set(ids);
+    Ok(ABILITY_PROP_IDS.get().unwrap())
+}
+
+#[inline]
+pub fn ability_prop_name(id: i32) -> Option<&'static str> {
+    get_dynamic_enum_map("RPG.GameCore.AbilityProperty")
+        .ok()?
+        .val_to_name
+        .get(&id)
+        .copied()
+}
+
+#[inline]
+pub fn avatar_prop_id(name: &str) -> Result<i32> {
+    get_dynamic_enum_map("RPG.GameCore.AvatarPropertyType")?
+        .name_to_val
+        .get(name)
+        .copied()
+        .ok_or_else(|| anyhow!("AvatarPropertyType '{}' not found in RAM", name))
+}
+
 pub fn get_property_icon_png_bytes(property_name: &str) -> Result<Vec<u8>> {
     unsafe {
-        let property_type = RPG_GameCore_AvatarPropertyType__Boxed(System_Enum::parse(
-            get_type_handle("RPG.GameCore.AvatarPropertyType")?,
-            Il2CppString::new(property_name)?,
-        )?);
-        
-        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(*property_type)?;
+        let property_type = avatar_prop_id(property_name)?;
+        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(property_type)?;
         let icon_path = row.IconPath()?;
 
         let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
-        
         let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
             icon_path,
             type_handle,
@@ -558,16 +692,11 @@ pub fn get_property_icon_png_bytes(property_name: &str) -> Result<Vec<u8>> {
 
 pub fn get_property_icon_raw_bytes(property_name: &str) -> Result<(usize, usize, Vec<u8>)> {
     unsafe {
-        let property_type = RPG_GameCore_AvatarPropertyType__Boxed(System_Enum::parse(
-            get_type_handle("RPG.GameCore.AvatarPropertyType")?,
-            Il2CppString::new(property_name)?,
-        )?);
-        
-        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(*property_type)?;
+        let property_type = avatar_prop_id(property_name)?;
+        let row = RPG_GameCore_AvatarPropertyExcelTable::GetData(property_type)?;
         let icon_path = row.IconPath()?;
 
         let type_handle = get_type_handle(UnityEngine_Sprite::ffi_name())?;
-        
         let sprite = RPG_Client_CachedAssetLoader::SyncLoadAsset(
             icon_path,
             type_handle,

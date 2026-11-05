@@ -6,7 +6,6 @@ use directories::BaseDirs;
 use chrono::DateTime;
 
 use crate::battle::BattleContext;
-use crate::kreide::types::RPG_GameCore_AbilityProperty;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ComprehensiveData {
@@ -196,18 +195,17 @@ impl BattleDataExporter {
         let mut stats = HashMap::new();
 
         let tracked = [
-            RPG_GameCore_AbilityProperty::CurrentHP,
-            RPG_GameCore_AbilityProperty::MaxHP,
-            RPG_GameCore_AbilityProperty::Attack,
-            RPG_GameCore_AbilityProperty::Defence,
-            RPG_GameCore_AbilityProperty::Speed,
-            RPG_GameCore_AbilityProperty::ActionDelay,
+            "CurrentHP",
+            "MaxHP",
+            "Attack",
+            "Defence",
+            "Speed",
+            "ActionDelay",
         ];
 
-        for prop in tracked {
-            let key = prop.to_string();
-            if let Some(value) = properties.get_value(&key) {
-                stats.insert(key, value);
+        for &key in &tracked {
+            if let Some(value) = properties.get_value(key) {
+                stats.insert(key.to_string(), value);
             }
         }
 

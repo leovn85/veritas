@@ -1,4 +1,4 @@
-use crate::kreide::types::{RPG_GameCore_AbilityProperty, RPG_GameCore_AttackType};
+use crate::kreide::types::RPG_GameCore_AttackType;
 use super::misc::{Avatar, Enemy, Entity, Skill, /*Property, */Team};
 
 pub enum Event {
@@ -12,6 +12,7 @@ pub enum Event {
     OnUpdateWave(OnUpdateWaveEvent),
     OnUpdateCycle(OnUpdateCycleEvent),
     OnPropertyChange(OnPropertyChangeEvent),
+	OnSyncAvatarStats(OnSyncAvatarStatsEvent),
     OnEntityDefeated(OnEntityDefeatedEvent),
     OnUpdateTeamFormation(OnUpdateTeamFormationEvent),
     OnInitializeEnemy(OnInitializeEnemyEvent),
@@ -65,8 +66,13 @@ pub struct OnEntityDefeatedEvent {
 
 pub struct OnPropertyChangeEvent {
     pub entity: Entity,
-    pub property_type: RPG_GameCore_AbilityProperty, // Đổi từ Property (chứa String) sang Enum
+    pub property_type: &'static str, // Con trỏ tĩnh Copy trên Stack, không cấp phát bộ nhớ!
     pub value: f64,
+}
+
+pub struct OnSyncAvatarStatsEvent {
+    pub avatar_id: u32,
+    pub stats: Vec<(&'static str, f64)>, // Mảng phẳng gồm các &'static str, cực nhanh!
 }
 
 pub struct OnUpdateTeamFormationEvent {

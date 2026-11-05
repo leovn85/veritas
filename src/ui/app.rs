@@ -389,6 +389,8 @@ impl Overlay for App {
     }
 
     fn save(&mut self, _storage: &mut egui::Memory) {
+        self.save_persist(_storage)
+            .unwrap_or_else(|e| log::error!("{e}"));
         self.state.save().unwrap_or_else(|e| log::error!("{e}"));
 
         self.config.theme = *self.colorix.theme();
@@ -524,9 +526,18 @@ impl App {
     }
 
     pub fn new(ctx: Context) -> Self {
+        // Khôi phục load_persist như bản gốc của bạn
+        if App::load_persist(&ctx).is_err() {
+            log::error!("Failed to load persistence.");
+        }
+
+        // Gọi set_fonts cho Phosphor TRƯỚC, sau đó mới add_font của Game để không bị xóa mất Font Game!
+        let mut font_defs = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut font_defs, egui_phosphor::Variant::Regular);
+        egui_phosphor::add_to_fonts(&mut font_defs, egui_phosphor::Variant::Bold);
+        ctx.set_fonts(font_defs);
 
         let fonts = vec![("zh-cn.ttf", "game_font"), ("ja-jp.ttf", "game_font_jp")];
-
         for font in fonts {
             let path = format!(
                 r"StarRail_Data\StreamingAssets\MiHoYoSDKRes\HttpServerResources\font\{}",
@@ -557,15 +568,14 @@ impl App {
             }
         }
 
-        let mut fonts = egui::FontDefinitions::default();
-        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
-
-        ctx.set_fonts(fonts);
-
         let config = Config::new(&ctx).unwrap_or_else(|e| {
             log::error!("{e}");
             Config::default()
+        });
+
+        let font_sizes = config.font_sizes.clone();
+        ctx.all_styles_mut(move |style| {
+            style.text_styles = font_sizes.clone();
         });
 
         let update_config = super::config::UpdateConfig::new().unwrap_or_else(|e| {

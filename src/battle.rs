@@ -613,11 +613,8 @@ impl BattleContext {
 		e: OnPropertyChangeEvent,
 		mut battle_context: RwLockWriteGuard<'static, BattleContext>,
 	) -> Result<Packet> {
-		// Chuyển Enum thành String ở luồng nền, không ảnh hưởng game
-		let prop_string = format!("{:?}", e.property_type); 
-		
 		let ui_property = Property {
-			kind: prop_string.clone(),
+			kind: e.property_type.to_string(),
 			value: e.value,
 		};
 
@@ -740,6 +737,15 @@ impl BattleContext {
                 }
                 Event::OnPropertyChange(e) => {
                     Self::handle_on_property_change_event(e, battle_context)
+                }
+				Event::OnSyncAvatarStats(e) => {
+                    let mut bc = battle_context;
+                    if let Some(avatar) = bc.battle_avatars.iter_mut().find(|x| x.entity.uid == e.avatar_id) {
+                        for (k, v) in e.stats {
+                            avatar.properties.set_value(k, v);
+                        }
+                    }
+                    return;
                 }
                 Event::OnInitializeEnemy(e) => {
                     Self::handle_on_initialize_enemy_event(e, battle_context)

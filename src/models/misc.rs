@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::kreide::types::RPG_GameCore_AbilityProperty;
-
 use serde::{
     Deserialize,
     Serialize,
@@ -68,26 +66,23 @@ impl BattleStats {
     }
 
     pub fn current_hp(&self) -> f64 {
-        let key = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
-        self.get_value(&key).unwrap_or_default()
+        self.get_value("CurrentHP").unwrap_or_default()
     }
 
     pub fn av(&self) -> f64 {
-        let key = RPG_GameCore_AbilityProperty::ActionDelay.to_string();
-        self.get_value(&key).unwrap_or_default()
+        self.get_value("ActionDelay").unwrap_or_default()
     }
-	
-	pub fn current_stance(&self) -> f64 {
-		self.get_value("CurrentStance").unwrap_or_default()
-	}
-	
-	pub fn max_stance(&self) -> f64 {
-		self.get_value("MaxStance").unwrap_or_default()
-	}
-	
+
+    pub fn current_stance(&self) -> f64 {
+        self.get_value("CurrentStance").unwrap_or_default()
+    }
+
+    pub fn max_stance(&self) -> f64 {
+        self.get_value("MaxStance").unwrap_or_default()
+    }
+
     pub fn max_hp(&self) -> f64 {
-        let key = RPG_GameCore_AbilityProperty::MaxHP.to_string();
-        self.get_value(&key).unwrap_or_default()
+        self.get_value("MaxHP").unwrap_or_default()
     }
 
     pub fn level(&self) -> u32 {

@@ -207,8 +207,9 @@ fn on_damage(
 ) -> bool {
     log::debug!(function_name!());
 
+    let cur_hp_id = get_ability_prop_ids().map(|ids| ids.current_hp).unwrap_or(10);
     let hp_initial =
-        match unsafe { defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) } {
+        match unsafe { defender_ability.get_property(cur_hp_id) } {
             Ok(value) => value,
             Err(e) => {
                 log::error!("{} HP initial error: {}", function_name!(), e);
@@ -228,7 +229,7 @@ fn on_damage(
         a10,
     );
     let hp_final =
-        match unsafe { defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) } {
+        match unsafe { defender_ability.get_property(cur_hp_id) } {
             Ok(value) => value,
             Err(e) => {
                 log::error!("{} HP final error: {}", function_name!(), e);
@@ -971,40 +972,23 @@ pub fn on_update_cycle(instance: RPG_GameCore_TurnBasedGameMode) -> u32 {
 fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityComponent) {
     log::debug!(function_name!());
     safe_call!(unsafe {
-        // let property_kind = RPG_GameCore_AbilityProperty::CurrentHP.to_string();
-        // let property = RPG_GameCore_AbilityProperty__Boxed(System_Enum::parse(
-            // get_type_handle("RPG.GameCore.AbilityProperty")?,
-            // Il2CppString::new(&property_kind)?,
-        // )?);
-
-        //let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(*property)?);
-		let property = RPG_GameCore_AbilityProperty::CurrentHP;
-		
-		// Gọi hàm Cache ta vừa viết ở câu trước để lấy tên "CurrentHP" (O(1))
-        //let property_kind = get_property_name_cached(property.clone())?; 
-        
-        // Lấy giá trị máu hiện tại trực tiếp bằng hằng số
-        let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(property)?);
+        //let cur_hp_id = ability_prop_id("CurrentHP")?;
+        let ids = get_ability_prop_ids()?;
+		let property_value = fixpoint_to_raw(&turn_based_ability_component.get_property(ids.current_hp)?);
 
         let entity = turn_based_ability_component.as_base()._OwnerRef()?;
-        //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
-		let entity_value = entity._EntityType()?.unbox()?;
-	
+        let entity_value = entity._EntityType()?.unbox()?;
+
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 let e = match helpers::get_avatar_from_entity(entity) {
                     Ok(avatar) => Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-						property_type: property, // Truyền trực tiếp Enum
-						value: property_value,   // Truyền trực tiếp số f64
-                        // property: Property {
-                            // kind: property_kind,
-                            // value: property_value,
-                        // },
+                        property_type: "CurrentHP",
+                        value: property_value,
                     })),
                     Err(e) => {
                         log::error!("Avatar Event Error: {}", e);
-
                         Err(anyhow!("{} Avatar Event Error: {}", function_name!(), e))
                     }
                 };
@@ -1016,12 +1000,8 @@ fn handle_hp_change(turn_based_ability_component: RPG_GameCore_TurnBasedAbilityC
                         uid: (entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     },
-					property_type: property, // Truyền trực tiếp Enum
-					value: property_value,   // Truyền trực tiếp số f64
-                    // property: Property {
-                        // kind: property_kind,
-                        // value: property_value,
-                    // },
+                    property_type: "CurrentHP",
+                    value: property_value,
                 })));
             }
             _ => {}
@@ -1036,7 +1016,7 @@ pub fn on_direct_change_hp(
     a1: i32,
     a2: RPG_GameCore_FixPoint,
     a3: *const c_void,
-	a4: i32,
+    a4: i32,
 ) {
     log::debug!(function_name!());
     let res = ON_DIRECT_CHANGE_HP_Detour.call(instance, a1, a2, a3, a4);
@@ -1052,7 +1032,7 @@ pub fn on_direct_damage_hp(
     a3: *const c_void,
     a4: RPG_GameCore_FixPoint,
     a5: *const c_void,
-	a6: i32
+    a6: i32,
 ) {
     log::debug!(function_name!());
     let res = ON_DIRECT_DAMAGE_HP_Detour.call(instance, a1, a2, a3, a4, a5, a6);
@@ -1060,95 +1040,103 @@ pub fn on_direct_damage_hp(
     res
 }
 
-#[named]
-pub fn on_stat_change(
+/// Danh sách các thuộc tính hiển thị trên UI & Export cần được tính toán/đồng bộ.
+/// Toàn bộ ID sẽ được tra cứu động từ `get_dynamic_enum_map("RPG.GameCore.AbilityProperty")`.
+const TRACKED_AVATAR_PROPERTIES: &[&str] = &[
+    "CurrentHP", "MaxHP", "BaseHP",
+    "Attack", "BaseAttack",
+    "Defence", "BaseDefence",
+    "Speed", "BaseSpeed",
+    "Shield", "MaxShield",
+    "ActionDelay",
+    "CriticalChance", "CriticalDamage",
+    "BreakDamageAddedRatio", "StanceBreakAddedRatio",
+    "HealRatio",
+    "CurrentSP", "MaxSP", "SPRatio",
+    "StatusProbability", "StatusResistance",
+    "AllDamageTypeAddedRatio",
+    "ElationDamageAddedRatio",
+    "PhysicalAddedRatio", "FireAddedRatio", "IceAddedRatio",
+    "ThunderAddedRatio", "WindAddedRatio", "QuantumAddedRatio", "ImaginaryAddedRatio",
+];
+
+unsafe fn sync_full_avatar_stats(
+    avatar_id: u32,
     instance: RPG_GameCore_TurnBasedAbilityComponent,
-    property: RPG_GameCore_AbilityProperty,
-    a2: i32,
-    new_stat: RPG_GameCore_FixPoint,
-    a4: *const c_void,
-) -> bool {
+) {
+    let Ok(ids) = get_ability_prop_ids() else {
+        return;
+    };
+
+    let mut stats = Vec::with_capacity(ids.tracked_avatar_props.len());
+
+    for &(prop_name, prop_id) in &ids.tracked_avatar_props {
+        if let Ok(fixpoint) = unsafe { instance.get_property(prop_id) } {
+            let mut val = fixpoint_to_raw(&fixpoint);
+            if prop_id == ids.action_delay {
+                val *= 10.0;
+            }
+            stats.push((prop_name, val));
+        }
+    }
+
+    crate::battle::send_battle_event(Ok(Event::OnSyncAvatarStats(OnSyncAvatarStatsEvent {
+        avatar_id,
+        stats,
+    })));
+}
+
+#[named]
+pub fn on_after_property_changed(
+    instance: RPG_GameCore_TurnBasedAbilityComponent,
+    property: i32,
+    old_val: RPG_GameCore_FixPoint,
+    new_val: RPG_GameCore_FixPoint,
+    origin_modify_val: RPG_GameCore_FixPoint,
+    change_val: RPG_GameCore_FixPoint,
+    params: *const c_void,
+) {
     log::debug!(function_name!());
-    let res = ON_STAT_CHANGE_Detour.call(instance, property, a2, new_stat, a4);
+    ON_AFTER_PROPERTY_CHANGED_Detour.call(
+        instance,
+        property,
+        old_val,
+        new_val,
+        origin_modify_val,
+        change_val,
+        params,
+    );
+
     safe_call!(unsafe {
-        let entity = instance.as_base()._OwnerRef()?;
-        // let boxed = RPG_GameCore_AbilityProperty__Boxed(System_Enum::to_object_from_int(
-            // get_type_handle("RPG.GameCore.AbilityProperty")?,
-            // property as i32,
-        // )?);
-        // let property_kind =
-            // System_Enum::get_name(get_type_handle("RPG.GameCore.AbilityProperty")?, boxed.0)?;
-		
-		// let attk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) {
-			// Ok(val) => fixpoint_to_raw(&val),
-			// Err(_) => 0.0,
-		// };
-		
-		//println!("  {:<25}: {:.4}", "ATK from on_stat_change", attk);
-		
-		//let property_kind = get_property_name_cached(property)?;
-        let mut property_value = fixpoint_to_raw(&new_stat);
-		
-		if property == RPG_GameCore_AbilityProperty::ActionDelay {
+        let ids = get_ability_prop_ids()?;
+        let Some(prop_name) = ability_prop_name(property) else {
+            return Ok(());
+        };
+
+        let is_action_delay = property == ids.action_delay;
+        let mut property_value = fixpoint_to_raw(&new_val);
+        if is_action_delay {
             property_value *= 10.0;
         }
-		
-        //let entity_value: RPG_GameCore_EntityType = parse_il2cpp_enum(entity._EntityType()?)?;
-		let entity_value = entity._EntityType()?.unbox()?;
+
+        let entity = instance.as_base()._OwnerRef()?;
+        let entity_value = entity._EntityType()?.unbox()?;
 
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 if let Ok(avatar) = helpers::get_avatar_from_entity(entity) {
-                    // 1. Gửi thuộc tính gốc vừa bị thay đổi
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-						property_type: property,
-						value: property_value,
-                        //property: Property { kind: property_kind.to_string(), value: property_value },
+                        property_type: prop_name, // &'static str (Copy pointer, 0 allocation!)
+                        value: property_value,
                     })));
-                    // 2. ÉP ENGINE TÍNH FINAL ATK, DEF, SPD VÀ LƯU LUÔN VÀO HASHMAP
-					let current_hp = match instance.get_property(RPG_GameCore_AbilityProperty::CurrentHP) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-                    let final_atk = match instance.get_property(RPG_GameCore_AbilityProperty::Attack) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-                    let final_def = match instance.get_property(RPG_GameCore_AbilityProperty::Defence) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let current_shield = match instance.get_property(RPG_GameCore_AbilityProperty::Shield) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-                    //let final_spd = fixpoint_to_raw(&instance.get_property(RPG_GameCore_AbilityProperty::Speed).unwrap_or_default());
-					let final_all_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					
-					let elation_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					
-					let crit_chance = match instance.get_property(RPG_GameCore_AbilityProperty::CriticalChance) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let crit_dmg = match instance.get_property(RPG_GameCore_AbilityProperty::CriticalDamage) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let break_effect = match instance.get_property(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let heal_boost = match instance.get_property(RPG_GameCore_AbilityProperty::HealRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let max_sp = match instance.get_property(RPG_GameCore_AbilityProperty::MaxSP) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let energy_regen = match instance.get_property(RPG_GameCore_AbilityProperty::SPRatio) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let effect_hit = match instance.get_property(RPG_GameCore_AbilityProperty::StatusProbability) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
-					let effect_res = match instance.get_property(RPG_GameCore_AbilityProperty::StatusResistance) { Ok(v) => fixpoint_to_raw(&v), Err(_) => 0.0 };
 
-                    let properties_to_sync = [
-						(RPG_GameCore_AbilityProperty::CurrentHP, current_hp),
-						(RPG_GameCore_AbilityProperty::Attack, final_atk),
-						(RPG_GameCore_AbilityProperty::Defence, final_def),
-						(RPG_GameCore_AbilityProperty::Shield, current_shield),
-						(RPG_GameCore_AbilityProperty::AllDamageTypeAddedRatio, final_all_dmg),
-						(RPG_GameCore_AbilityProperty::ElationDamageAddedRatio, elation_dmg),
-						(RPG_GameCore_AbilityProperty::CriticalChance, crit_chance),
-						(RPG_GameCore_AbilityProperty::CriticalDamage, crit_dmg),
-						(RPG_GameCore_AbilityProperty::BreakDamageAddedRatio, break_effect),
-						(RPG_GameCore_AbilityProperty::HealRatio, heal_boost),
-						(RPG_GameCore_AbilityProperty::MaxSP, max_sp),
-						(RPG_GameCore_AbilityProperty::SPRatio, energy_regen),
-						(RPG_GameCore_AbilityProperty::StatusProbability, effect_hit),
-						(RPG_GameCore_AbilityProperty::StatusResistance, effect_res),
-					];
-					for (prop_type, val) in properties_to_sync {
-						crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
-							entity: Entity { uid: avatar.id, team: Team::Player },
-							property_type: prop_type,
-							value: val, // Giá trị float nguyên bản
-						})));
-					}
-				}
+                    if is_action_delay {
+                        return Ok(());
+                    }
+
+                    sync_full_avatar_stats(avatar.id, instance);
+                }
             }
             RPG_GameCore_EntityType::Monster => {
                 crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
@@ -1156,19 +1144,14 @@ pub fn on_stat_change(
                         uid: (entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     },
-					property_type: property,
-					value: property_value,
-                    // property: Property {
-                        // kind: property_kind.to_string(),
-                        // value: property_value,
-                    // },
+                    property_type: prop_name, // &'static str (Copy pointer, 0 allocation!)
+                    value: property_value,
                 })));
             }
             _ => {}
         }
         Ok(())
     });
-    res
 }
 
 //use std::io::Cursor;
@@ -1598,21 +1581,22 @@ pub fn on_initialize_enemy(
         let mut base_stats = BattleStats {
             properties: HashMap::new(),
         };
-		let current_stance = match unsafe {turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::CurrentStance)} {
+		let ids = get_ability_prop_ids()?;
+		let current_stance = match unsafe { turn_based_ability_component.get_property(ids.current_stance) } {
 			Ok(val) => fixpoint_to_raw(&val),
 			Err(_) => 0.0,
 		};
-		let max_stance = match unsafe {turn_based_ability_component.get_property(RPG_GameCore_AbilityProperty::MaxStance)} {
+		let max_stance = match unsafe { turn_based_ability_component.get_property(ids.max_stance) } {
 			Ok(val) => fixpoint_to_raw(&val),
 			Err(_) => 0.0,
 		};
-        base_stats.set_value(RPG_GameCore_AbilityProperty::Level.to_string(), unsafe { row_data.get_Level()? } as f64);
-        base_stats.set_value(RPG_GameCore_AbilityProperty::MaxHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
+        base_stats.set_value("Level", unsafe { row_data.get_Level()? } as f64);
+        base_stats.set_value("MaxHP", fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
 
-		base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentStance.to_string(), current_stance);
-		base_stats.set_value(RPG_GameCore_AbilityProperty::MaxStance.to_string(), max_stance);
+		base_stats.set_value("CurrentStance", current_stance);
+		base_stats.set_value("MaxStance", max_stance);
 
-        base_stats.set_value(RPG_GameCore_AbilityProperty::CurrentHP.to_string(), fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
+        base_stats.set_value("CurrentHP", fixpoint_to_raw(instance._DefaultMaxHP()?.try_deref()?));
 
         let name_id = row.MonsterName()?;
         let monster_name = get_textmap_content(&name_id)?;
@@ -1658,7 +1642,7 @@ detour::static_detour! {
     static ON_UPDATE_CYCLE_Detour: fn(RPG_GameCore_TurnBasedGameMode) -> u32;
     static ON_DIRECT_CHANGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, *const c_void, i32);
     static ON_DIRECT_DAMAGE_HP_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_FixPoint, i32, *const c_void, RPG_GameCore_FixPoint, *const c_void, i32);
-    static ON_STAT_CHANGE_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, RPG_GameCore_AbilityProperty, i32, RPG_GameCore_FixPoint, *const c_void) -> bool;
+    static ON_AFTER_PROPERTY_CHANGED_Detour: fn(RPG_GameCore_TurnBasedAbilityComponent, i32, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, RPG_GameCore_FixPoint, *const c_void);
     static ON_ENTITY_DEFEATED_Detour: fn(RPG_GameCore_TurnBasedGameMode, *const c_void) -> bool;
     static ON_UPDATE_TEAM_FORMATION_Detour: fn(RPG_GameCore_TeamFormationComponent);
     static ON_INITIALIZE_ENEMY_Detour: fn(RPG_GameCore_MonsterDataComponent, RPG_GameCore_TurnBasedAbilityComponent);
@@ -1702,7 +1686,7 @@ pub fn subscribe() -> Result<()> {
         } else {
             return Err(anyhow!("Failed to find on_damage method"));
         }
-
+		let _ = get_ability_prop_ids()?;
 		//new hook
 		subscribe_function!(
             ON_PRE_DAMAGE_Detour,
@@ -1855,20 +1839,26 @@ pub fn subscribe() -> Result<()> {
                 .va(),
             on_direct_damage_hp
         )?;
+        // Khởi tạo sẵn bảng Dynamic Enum từ RAM ngay lúc subscribe
+        let _ = get_dynamic_enum_map("RPG.GameCore.AbilityProperty")?;
+        let _ = get_dynamic_enum_map("RPG.GameCore.AvatarPropertyType")?;
+
         subscribe_function!(
-            ON_STAT_CHANGE_Detour,
+            ON_AFTER_PROPERTY_CHANGED_Detour,
             RPG_GameCore_TurnBasedAbilityComponent::get_class_static()?
                 .find_method(
-                    "ModifyProperty",
+                    "_AfterPropertyChanged",
                     &[
                         "RPG.GameCore.AbilityProperty",
-                        "RPG.GameCore.PropertyModifyFunction",
+                        "RPG.GameCore.FixPoint",
+                        "RPG.GameCore.FixPoint",
+                        "RPG.GameCore.FixPoint",
                         "RPG.GameCore.FixPoint",
                         "*"
                     ]
                 )?
                 .va(),
-            on_stat_change
+            on_after_property_changed
         )?;
         subscribe_function!(
             ON_ENTITY_DEFEATED_Detour,
