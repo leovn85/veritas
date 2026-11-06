@@ -547,6 +547,8 @@ pub struct AbilityPropIds {
     pub action_delay: i32,
     pub current_stance: i32,
     pub max_stance: i32,
+    pub attack: i32,
+    pub defence: i32,
     pub tracked_avatar_props: Vec<(&'static str, i32)>,
 }
 
@@ -646,6 +648,8 @@ pub fn get_ability_prop_ids() -> Result<&'static AbilityPropIds> {
         action_delay: *map.name_to_val.get("ActionDelay").unwrap_or(&38),
         current_stance: *map.name_to_val.get("CurrentStance").unwrap_or(&42),
         max_stance: *map.name_to_val.get("MaxStance").unwrap_or(&41),
+        attack: *map.name_to_val.get("Attack").unwrap_or(&18),
+        defence: *map.name_to_val.get("Defence").unwrap_or(&23),
         tracked_avatar_props,
     };
 

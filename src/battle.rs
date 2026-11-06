@@ -161,19 +161,24 @@ static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
     tx
 }); */
 
-// Channel toàn cục dùng Bounded Queue (Cấp phát sẵn bộ nhớ)
+// Channel toàn cục dùng Bounded Queue kết hợp Batch Processing (tối đa 64 events/lượt)
 static EVENT_CHANNEL: LazyLock<Sender<Result<Event>>> = LazyLock::new(|| {
-    // Sức chứa 2048 events. Cấp phát RAM ĐÚNG 1 LẦN lúc khởi tạo.
-    // 2048 là quá dư dả vì UI Thread xử lý rất nhanh, hiếm khi tồn đọng quá 10 events.
     let (tx, rx) = bounded(2048);
-    
+
     std::thread::spawn(move || {
-        // Hàm recv() vẫn tự ngủ khi rỗng, không tốn CPU
-        while let Ok(event) = rx.recv() {
-            BattleContext::process_event_internal(event);
+        let mut batch = Vec::with_capacity(64);
+        while let Ok(first_event) = rx.recv() {
+            batch.push(first_event);
+            while batch.len() < 64 {
+                match rx.try_recv() {
+                    Ok(ev) => batch.push(ev),
+                    Err(_) => break,
+                }
+            }
+            BattleContext::process_event_batch(&mut batch);
         }
     });
-    
+
     tx
 });
 
@@ -493,11 +498,26 @@ impl BattleContext {
     ) -> Result<Packet> {
         battle_context.state = Some(BattleState::Ended);
 
+        // Chụp nhanh dữ liệu và tạo Packet, sau đó NHẢ NGAY RwLockWriteGuard trước khi làm Disk I/O & JSON Serialization!
+        let snapshot = (*battle_context).clone();
+        let packet = Packet::OnBattleEnd {
+            avatars: snapshot.avatar_lineup.clone(),
+            turn_history: snapshot.turn_history.clone(),
+            av_history: snapshot.av_history.clone(),
+            turn_count: snapshot.turn_count,
+            total_damage: snapshot.total_damage as f64,
+            action_value: snapshot.action_value,
+            cycle: snapshot.cycle,
+            wave: snapshot.wave,
+            stage_id: snapshot.stage_id,
+        };
+        drop(battle_context); // <-- Giải phóng WriteLock ngay lập tức để UI Render Thread không bao giờ bị khựng!
+
         let exporter = crate::export::BattleDataExporter::new();
 
         match std::panic::catch_unwind(|| {
-            let export_data = exporter.export_battle_data(&battle_context);
-            let csv_data = exporter.generate_comprehensive_chart_data(&battle_context);
+            let export_data = exporter.export_battle_data(&snapshot);
+            let csv_data = exporter.generate_comprehensive_chart_data(&snapshot);
             (export_data, csv_data)
         }) {
             Ok((export_data, csv_data)) => {
@@ -514,21 +534,11 @@ impl BattleContext {
             }
         }
 
-		if let Err(e) = Self::save_battle_summary(&battle_context) {
-			log::error!("Failed to save battle summary: {}", e);
-		}
+        if let Err(e) = Self::save_battle_summary(&snapshot) {
+            log::error!("Failed to save battle summary: {}", e);
+        }
 
-        Ok(Packet::OnBattleEnd {
-            avatars: battle_context.avatar_lineup.clone(),
-            turn_history: battle_context.turn_history.clone(),
-            av_history: battle_context.av_history.clone(),
-            turn_count: battle_context.turn_count,
-            total_damage: battle_context.total_damage as f64,
-            action_value: battle_context.action_value,
-            cycle: battle_context.cycle,
-            wave: battle_context.wave,
-            stage_id: battle_context.stage_id,
-        })
+        Ok(packet)
     }
 
     fn handle_on_use_skill_event(
@@ -712,6 +722,12 @@ impl BattleContext {
             Err(e) => log::error!("Packet Error: {}", e),
         };
     } */
+	fn process_event_batch(batch: &mut Vec<Result<Event>>) {
+        for event in batch.drain(..) {
+            Self::process_event_internal(event);
+        }
+    }
+
 	fn process_event_internal(event: Result<Event>) {
         let battle_context = Self::get_instance_mut(); // Lấy Write Lock
         
@@ -773,7 +789,7 @@ impl BattleContext {
             Err(e) => log::error!("Packet Error: {}", e),
         };
     }
-	fn save_battle_summary(battle_context: &RwLockWriteGuard<'static, BattleContext>) -> Result<()> {
+	fn save_battle_summary(battle_context: &BattleContext) -> Result<()> {
         if battle_context.avatar_lineup.is_empty() {
             log::warn!("Attempted to save battle summary, but lineup is empty. Skipping.");
             return Ok(());

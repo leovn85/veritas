@@ -484,26 +484,44 @@ impl AppState {
     }
 }
 
+const DEFAULT_UI_ZOOM: f32 = 1.5;
+
 impl App {
-    fn load_persist(ctx: &Context) -> Result<()> {
-        match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
-            Some(proj_dirs) => {
-                let data_local_dir = proj_dirs.data_local_dir();
-                let persist_path = data_local_dir.join(PERSISTENCE_FILENAME);
+    /// Chạy TRƯỚC `edio11::set_overlay` để chống lỗi nhân dồn `zoom_factor` của `edio11`.
+    /// Nếu phát hiện file `persistence` đã bị lỗi thu nhỏ (< 1.0), tự động reset lại kích thước cửa sổ.
+    pub fn sanitize_persistence_zoom(target_zoom: f32) {
+        let Some(proj_dirs) = ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) else {
+            return;
+        };
+        let data_local_dir = proj_dirs.data_local_dir();
+        let persist_path = data_local_dir.join(PERSISTENCE_FILENAME);
 
-                if persist_path.exists() {
-                    let mut file = File::open(&persist_path)?;
-                    let mut buffer = String::new();
-                    file.read_to_string(&mut buffer)?;
-                    let memory: Memory = ron::from_str(&buffer)?;
-                    ctx.memory_mut(|writer| {
-                        *writer = memory;
-                    });
-                }
+        let mut memory = if persist_path.exists() {
+            File::open(&persist_path)
+                .ok()
+                .and_then(|mut f| {
+                    let mut buf = String::new();
+                    f.read_to_string(&mut buf).ok()?;
+                    ron::from_str::<Memory>(&buf).ok()
+                })
+                .unwrap_or_default()
+        } else {
+            Memory::default()
+        };
 
-                Ok(())
+        // Nếu zoom_factor trong file đã bị tụt xuống < 1.0 (do lỗi nhân dồn trước đó làm hỏng kích thước cửa sổ),
+        // reset lại Memory::default() để trả các cửa sổ về kích thước chuẩn ban đầu!
+        if memory.options.zoom_factor < 1.0 {
+            memory = Memory::default();
+        }
+        memory.options.zoom_factor = target_zoom;
+
+        let _ = std::fs::create_dir_all(data_local_dir);
+        if let Ok(mut file) = File::create(&persist_path) {
+            if let Ok(serialized) = ron::to_string(&memory) {
+                let _ = file.write_all(serialized.as_bytes());
+                let _ = file.flush();
             }
-            None => Err(anyhow!("Failed to load/create data project dirs.")),
         }
     }
 
@@ -516,6 +534,8 @@ impl App {
                 if !persist_path.exists() {
                     std::fs::create_dir_all(data_local_dir)?;
                 }
+                // Ghi đè lại zoom_factor chuẩn trước khi lưu xuống đĩa để edio11 không lưu giá trị đã bị nhân với res_scale
+                _storage.options.zoom_factor = DEFAULT_UI_ZOOM;
                 let mut file = File::create(persist_path)?;
                 file.write(ron::to_string(_storage)?.as_bytes())?;
                 file.flush()?;
@@ -526,10 +546,6 @@ impl App {
     }
 
     pub fn new(ctx: Context) -> Self {
-        // Khôi phục load_persist như bản gốc của bạn
-        if App::load_persist(&ctx).is_err() {
-            log::error!("Failed to load persistence.");
-        }
 
         // Gọi set_fonts cho Phosphor TRƯỚC, sau đó mới add_font của Game để không bị xóa mất Font Game!
         let mut font_defs = egui::FontDefinitions::default();
@@ -571,11 +587,6 @@ impl App {
         let config = Config::new(&ctx).unwrap_or_else(|e| {
             log::error!("{e}");
             Config::default()
-        });
-
-        let font_sizes = config.font_sizes.clone();
-        ctx.all_styles_mut(move |style| {
-            style.text_styles = font_sizes.clone();
         });
 
         let update_config = super::config::UpdateConfig::new().unwrap_or_else(|e| {

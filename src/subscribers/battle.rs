@@ -837,7 +837,7 @@ fn on_set_lineup(
                 Err(e) => errors.push(e),
             }
         }
- 
+		clear_synced_avatar_instances();
         // Populate the global buffer cache
         crate::ui::helpers::populate_avatar_buffers(&avatars.iter().map(|a| a.id).collect::<Vec<u32>>());
         crate::ui::helpers::clear_monster_buffers();
@@ -1060,6 +1060,26 @@ const TRACKED_AVATAR_PROPERTIES: &[&str] = &[
     "ThunderAddedRatio", "WindAddedRatio", "QuantumAddedRatio", "ImaginaryAddedRatio",
 ];
 
+static SYNCED_AVATAR_INSTANCES: std::sync::LazyLock<std::sync::Mutex<Vec<usize>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::with_capacity(8)));
+
+fn clear_synced_avatar_instances() {
+    if let Ok(mut list) = SYNCED_AVATAR_INSTANCES.lock() {
+        list.clear();
+    }
+}
+
+fn mark_avatar_instance_synced(instance_ptr: usize) -> bool {
+    if let Ok(mut list) = SYNCED_AVATAR_INSTANCES.lock() {
+        if list.contains(&instance_ptr) {
+            return false; // Đã sync full trước đó rồi
+        }
+        list.push(instance_ptr);
+        return true; // Lần đầu tiên xuất hiện trong trận
+    }
+    true
+}
+
 unsafe fn sync_full_avatar_stats(
     avatar_id: u32,
     instance: RPG_GameCore_TurnBasedAbilityComponent,
@@ -1084,6 +1104,27 @@ unsafe fn sync_full_avatar_stats(
         avatar_id,
         stats,
     })));
+}
+
+/// Chỉ đọc lại 2 chỉ số gián tiếp duy nhất không tự gọi _AfterPropertyChanged là Attack (18) và Defence (23)
+unsafe fn sync_indirect_avatar_stats(
+    avatar_id: u32,
+    instance: RPG_GameCore_TurnBasedAbilityComponent,
+    ids: &'static AbilityPropIds,
+) {
+    let mut stats = Vec::with_capacity(2);
+    if let Ok(atk_fp) = unsafe { instance.get_property(ids.attack) } {
+        stats.push(("Attack", fixpoint_to_raw(&atk_fp)));
+    }
+    if let Ok(def_fp) = unsafe { instance.get_property(ids.defence) } {
+        stats.push(("Defence", fixpoint_to_raw(&def_fp)));
+    }
+    if !stats.is_empty() {
+        crate::battle::send_battle_event(Ok(Event::OnSyncAvatarStats(OnSyncAvatarStatsEvent {
+            avatar_id,
+            stats,
+        })));
+    }
 }
 
 #[named]
@@ -1113,6 +1154,7 @@ pub fn on_after_property_changed(
             return Ok(());
         };
 
+        // SO SÁNH SỐ NGUYÊN i32 == i32 TRỰC TIẾP (1 xung nhịp CPU, KHÔNG so sánh String!)
         let is_action_delay = property == ids.action_delay;
         let mut property_value = fixpoint_to_raw(&new_val);
         if is_action_delay {
@@ -1125,17 +1167,26 @@ pub fn on_after_property_changed(
         match entity_value {
             RPG_GameCore_EntityType::Avatar => {
                 if let Ok(avatar) = helpers::get_avatar_from_entity(entity) {
+                    // 1. Cập nhật ngay thuộc tính vừa thay đổi (new_val đã được game tính sẵn!)
                     crate::battle::send_battle_event(Ok(Event::OnPropertyChange(OnPropertyChangeEvent {
                         entity: Entity { uid: avatar.id, team: Team::Player },
-                        property_type: prop_name, // &'static str (Copy pointer, 0 allocation!)
+                        property_type: prop_name,
                         value: property_value,
                     })));
 
+                    // 2. Nếu chỉ là lần đầu tiên nhân vật này xuất hiện trong trận -> Quét full 28 chỉ số gốc 1 lần duy nhất
+                    if mark_avatar_instance_synced(instance.0 as usize) {
+                        sync_full_avatar_stats(avatar.id, instance);
+                        return Ok(());
+                    }
+
+                    // 3. Nếu là ActionDelay trôi trên thanh hành động -> Thoát ngay (0 FFI calls!)
                     if is_action_delay {
                         return Ok(());
                     }
 
-                    sync_full_avatar_stats(avatar.id, instance);
+                    // 4. Các lần thay đổi buff/stat trong trận: chỉ cần hỏi thêm 2 chỉ số gián tiếp Attack & Defence (2 FFI calls thay vì 28!)
+                    sync_indirect_avatar_stats(avatar.id, instance, ids);
                 }
             }
             RPG_GameCore_EntityType::Monster => {
@@ -1144,7 +1195,7 @@ pub fn on_after_property_changed(
                         uid: (entity._RuntimeID_k__BackingField()?.try_deref()?).into(),
                         team: Team::Enemy,
                     },
-                    property_type: prop_name, // &'static str (Copy pointer, 0 allocation!)
+                    property_type: prop_name,
                     value: property_value,
                 })));
             }
@@ -1153,7 +1204,6 @@ pub fn on_after_property_changed(
         Ok(())
     });
 }
-
 //use std::io::Cursor;
 //use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 //use windows::Win32::System::Threading::GetCurrentProcess;
