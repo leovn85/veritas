@@ -384,7 +384,6 @@ fn on_damage(
                         event = Some(e);
                     }
                     RPG_GameCore_EntityType::Snapshot => {
-                        // Unsure if this is if only a servant died and inflicted a DOT
                         let character_data_comp = attacker_ability._CharacterDataRef()?;
                         let e = match helpers::get_avatar_from_entity(
                             character_data_comp.Summoner()?,
@@ -404,6 +403,11 @@ fn on_damage(
                             }
                         };
                         event = Some(e);
+                    }
+                    RPG_GameCore_EntityType::BattleEvent => {
+                        // Bỏ qua sát thương từ hiệu ứng sân đấu (MoC Turbulence / PF / Boss Mechanic)
+                        // để không làm sai lệch thống kê DPS thực tế của nhân vật.
+                        log::debug!("Ignored stage BattleEvent damage: {:.2}", damage);
                     }
                     _ => log::warn!(
                         "Light entity type {} was not matched",

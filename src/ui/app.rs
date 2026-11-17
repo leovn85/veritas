@@ -102,8 +102,14 @@ pub struct AppState {
     pub show_updater_window: bool,
     pub custom_export_path: Option<String>,
     pub auto_create_date_folders: bool,
+    #[serde(default = "default_ui_zoom")]
+    pub ui_zoom: f32,
 	#[serde(skip)]
     pub selected_character_for_stats: Option<u32>,
+}
+
+fn default_ui_zoom() -> f32 {
+    1.2
 }
 
 pub struct App {
@@ -130,6 +136,20 @@ impl Overlay for App {
     // This is where the main logic of the app lives. This is called every frame and is responsible for rendering the UI and handling input.
     fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+
+        // Đồng bộ mức zoom khi người dùng bấm Ctrl + (+ / - / 0)
+        ui.input(|i| {
+            if i.modifiers.command {
+                if i.key_pressed(Key::Num0) {
+                    self.state.ui_zoom = 1.0;
+                } else if i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals) {
+                    self.state.ui_zoom = ((self.state.ui_zoom + 0.1).clamp(0.2, 5.0) * 10.0).round() / 10.0;
+                } else if i.key_pressed(Key::Minus) {
+                    self.state.ui_zoom = ((self.state.ui_zoom - 0.1).clamp(0.2, 5.0) * 10.0).round() / 10.0;
+                }
+            }
+        });
+
         // Get rid of this and just switch to egui-toast
         if self.state.show_changelog {
             self.show_changelog_window(ui);
@@ -440,6 +460,7 @@ impl Default for AppState {
             show_updater_window: false,
             custom_export_path: None,
             auto_create_date_folders: true,
+            ui_zoom: default_ui_zoom(),
 			selected_character_for_stats: None,
         }
     }
@@ -484,17 +505,22 @@ impl AppState {
     }
 }
 
-const DEFAULT_UI_ZOOM: f32 = 1.5;
-
 impl App {
-    /// Chạy TRƯỚC `edio11::set_overlay` để chống lỗi nhân dồn `zoom_factor` của `edio11`.
-    /// Nếu phát hiện file `persistence` đã bị lỗi thu nhỏ (< 1.0), tự động reset lại kích thước cửa sổ.
-    pub fn sanitize_persistence_zoom(target_zoom: f32) {
+    /// Chạy TRƯỚC `edio11::set_overlay`:
+    /// - Nếu lần đầu mở game (chưa có data): Khởi tạo zoom = 1.2.
+    /// - Nếu đã có data: Khôi phục đúng mức `ui_zoom` mà người dùng đã chỉnh lần trước (chống lỗi tự động nhỏ dần của edio11).
+    pub fn sanitize_persistence_zoom() {
         let Some(proj_dirs) = ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) else {
             return;
         };
         let data_local_dir = proj_dirs.data_local_dir();
         let persist_path = data_local_dir.join(PERSISTENCE_FILENAME);
+
+        // Đọc mức zoom người dùng đã lưu trong AppState (mặc định là 1.2 nếu lần đầu mở game)
+        let saved_zoom = AppState::load()
+            .map(|s| s.ui_zoom)
+            .unwrap_or_else(|_| default_ui_zoom())
+            .clamp(0.2, 5.0);
 
         let mut memory = if persist_path.exists() {
             File::open(&persist_path)
@@ -509,12 +535,8 @@ impl App {
             Memory::default()
         };
 
-        // Nếu zoom_factor trong file đã bị tụt xuống < 1.0 (do lỗi nhân dồn trước đó làm hỏng kích thước cửa sổ),
-        // reset lại Memory::default() để trả các cửa sổ về kích thước chuẩn ban đầu!
-        if memory.options.zoom_factor < 1.0 {
-            memory = Memory::default();
-        }
-        memory.options.zoom_factor = target_zoom;
+        // Gán đúng mức zoom của người dùng vào persistence để edio11 đọc lên chính xác 100%
+        memory.options.zoom_factor = saved_zoom;
 
         let _ = std::fs::create_dir_all(data_local_dir);
         if let Ok(mut file) = File::create(&persist_path) {
@@ -534,8 +556,8 @@ impl App {
                 if !persist_path.exists() {
                     std::fs::create_dir_all(data_local_dir)?;
                 }
-                // Ghi đè lại zoom_factor chuẩn trước khi lưu xuống đĩa để edio11 không lưu giá trị đã bị nhân với res_scale
-                _storage.options.zoom_factor = DEFAULT_UI_ZOOM;
+                // Lưu đúng mức ui_zoom mà người dùng đã chỉnh (thay vì giá trị bị nhân với res_scale của edio11)
+                _storage.options.zoom_factor = self.state.ui_zoom;
                 let mut file = File::create(persist_path)?;
                 file.write(ron::to_string(_storage)?.as_bytes())?;
                 file.flush()?;

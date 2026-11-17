@@ -129,6 +129,14 @@ pub struct CharacterSummary {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BattleSummary {
     pub team_name: String,
+    #[serde(default)]
+    pub battle_mode: String,
+    #[serde(default)]
+    pub stage_id: u32,
+    #[serde(default)]
+    pub cycle: u32,
+    #[serde(default)]
+    pub wave: u32,
     pub lineup: Vec<String>,
     pub lineup_details: Vec<Avatar>,
     pub timestamp: String,
@@ -136,7 +144,7 @@ pub struct BattleSummary {
     pub total_av: f64,
     pub total_dpav: f64,
     pub characters: HashMap<String, CharacterSummary>,
-	pub turn_history: Vec<TurnInfo>,
+    pub turn_history: Vec<TurnInfo>,
     pub av_history: Vec<TurnInfo>,
 }
 

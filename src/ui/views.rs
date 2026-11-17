@@ -166,7 +166,11 @@ impl App {
                                     )))
                                     .clicked()
                                 {
-                                    ui.memory_mut(|writer| *writer = Memory::default());
+                                    self.state.ui_zoom = 1.2;
+                                    ui.memory_mut(|writer| {
+                                        *writer = Memory::default();
+                                        writer.options.zoom_factor = 1.2;
+                                    });
                                 }
 
                                 if ui
@@ -598,17 +602,33 @@ impl App {
                 });
 
             ui.horizontal(|ui| {
-                ui.horizontal(|ui| {
-                    let all_text_styles = ui.style().text_styles();
-                    for style in all_text_styles {
-                        ui.selectable_value(
-                            &mut self.config.legend_text_style,
-                            style.clone(),
-                            style.to_string(),
-                        );
-                    }
-                });
-                ui.label(t!("Legend Text Style"));
+                let scale_changed = ui
+                    .add(
+                        Slider::new(&mut self.config.ui_scale, 0.7..=2.0)
+                            .step_by(0.05)
+                            .text("UI Scale"),
+                    )
+                    .changed();
+
+                if ui.button("Reset (1.2x)").clicked() {
+                    self.config.ui_scale = 1.0;
+                    self.state.ui_zoom = 1.2;
+                    let font_sizes = self.config.font_sizes.clone();
+                    ui.ctx().all_styles_mut(move |style| {
+                        style.text_styles = font_sizes.clone();
+                    });
+                } else if scale_changed {
+                    let scale = self.config.ui_scale;
+                    self.state.ui_zoom = (1.2 * scale * 10.0).round() / 10.0;
+                    let base_fonts = self.config.font_sizes.clone();
+                    ui.ctx().all_styles_mut(move |style| {
+                        for (text_style, font_id) in &base_fonts {
+                            let mut scaled_id = font_id.clone();
+                            scaled_id.size = (font_id.size * scale).clamp(8.0, 48.0);
+                            style.text_styles.insert(text_style.clone(), scaled_id);
+                        }
+                    });
+                }
             });
 
             ui.horizontal(|ui| {

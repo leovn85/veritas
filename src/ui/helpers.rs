@@ -367,7 +367,7 @@ pub fn load_property_icon_image(
 
 pub fn preload_all_property_icons() {
     let props = [
-        "Attack", "Defence", "Speed", "CriticalChance", "CriticalDamage",
+        "MaxHP", "Attack", "Defence", "Speed", "CriticalChance", "CriticalDamage",
         "BreakDamageAddedRatio", "HealRatio", "MaxSP", "SPRatio",
         "StatusProbability", "StatusResistance", "ElationDamageAddedRatio",
         "PhysicalAddedRatio", "FireAddedRatio", "IceAddedRatio",

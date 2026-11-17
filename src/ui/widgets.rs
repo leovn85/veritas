@@ -102,61 +102,71 @@ impl App {
 					0.0
 				};
 
+				let scale = self.config.ui_scale;
+				let dim = 48.0 * scale;
+
 				// Lưu lại response của cả dòng để làm Hover Tooltip
 				let row_response = ui.horizontal(|ui| {
-					// ---------- PHẦN AVATAR + CHỮ % ----------
-					if let Some(handle) = helpers::load_avatar_image(ui.ctx(), avatar.id, egui::TextureOptions::default()) {
-						let dim = 48.0;
+					// ---------- PHẦN AVATAR (HOẶC VÒNG TRÒN FALLBACK) + CHỮ % ----------
+					let mut avatar_response = if let Some(handle) = helpers::load_avatar_image(ui.ctx(), avatar.id, egui::TextureOptions::default()) {
 						let image = egui::Image::new(&handle)
 							.fit_to_exact_size(egui::vec2(dim, dim))
 							.corner_radius(egui::CornerRadius::same((dim / 2.0) as u8));
-
-						// FIX LỖI MOVE BIẾN Ở ĐÂY: Gán thành mutable
-						let mut image_response = ui.add(image.sense(egui::Sense::click()));
-						
-						if image_response.clicked() {
-							if self.state.selected_character_for_stats == Some(avatar.id) {
-								self.state.selected_character_for_stats = None;
-							} else {
-								self.state.selected_character_for_stats = Some(avatar.id);
-							}
-						}
-						
-						// Gán ngược lại chính nó để không bị mất ownership
-						image_response = image_response.on_hover_text(t!("Click to view detailed stats"));
-
-						let percentage_text = format!("{percentage:.0}%");
-						let text_pos = image_response.rect.right_bottom();
-						
-						let font = FontId::proportional(dim / 3.5); 
-						let offsets = [
-							egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
-							egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0)
-						];
-						for offset in offsets {
-							ui.painter().text(
-								text_pos + offset,
-								egui::Align2::RIGHT_BOTTOM,
-								&percentage_text,
-								font.clone(),
-								egui::Color32::BLACK, 
-							);
-						}
-
-						ui.painter().text(
-							text_pos,
-							egui::Align2::RIGHT_BOTTOM,
-							&percentage_text,
-							font,
+						ui.add(image.sense(egui::Sense::click()))
+					} else {
+						// Fallback: Vẽ vòng tròn màu + chữ cái đầu tiên của tên nhân vật (vẫn Click xem Stats được!)
+						let (rect, response) = ui.allocate_exact_size(egui::vec2(dim, dim), egui::Sense::click());
+						let painter = ui.painter_at(rect);
+						let fill = helpers::get_character_color(i).linear_multiply(0.55);
+						painter.circle_filled(rect.center(), dim * 0.5, fill);
+						painter.circle_stroke(rect.center(), dim * 0.5 - 1.0, egui::Stroke::new(1.5, helpers::get_character_color(i)));
+						let initial = avatar.name.chars().next().unwrap_or('?').to_string();
+						painter.text(
+							rect.center(),
+							egui::Align2::CENTER_CENTER,
+							initial,
+							FontId::proportional(dim * 0.45),
 							egui::Color32::WHITE,
 						);
-					} else {
-						ui.allocate_space(egui::vec2(48.0, 48.0));
+						response
+					};
+
+					if avatar_response.clicked() {
+						if self.state.selected_character_for_stats == Some(avatar.id) {
+							self.state.selected_character_for_stats = None;
+						} else {
+							self.state.selected_character_for_stats = Some(avatar.id);
+						}
 					}
+					avatar_response = avatar_response.on_hover_text(t!("Click to view detailed stats"));
+
+					let percentage_text = format!("{percentage:.0}%");
+					let text_pos = avatar_response.rect.right_bottom();
+					let font = FontId::proportional(dim / 3.5);
+					let offsets = [
+						egui::vec2(-1.0, -1.0), egui::vec2(1.0, -1.0),
+						egui::vec2(-1.0, 1.0), egui::vec2(1.0, 1.0),
+					];
+					for offset in offsets {
+						ui.painter().text(
+							text_pos + offset,
+							egui::Align2::RIGHT_BOTTOM,
+							&percentage_text,
+							font.clone(),
+							egui::Color32::BLACK,
+						);
+					}
+					ui.painter().text(
+						text_pos,
+						egui::Align2::RIGHT_BOTTOM,
+						&percentage_text,
+						font,
+						egui::Color32::WHITE,
+					);
 
 					// ---------- PHẦN SÁT THƯƠNG + THANH BAR ----------
 					ui.vertical(|ui| {
-						ui.spacing_mut().item_spacing.y = 4.0; // Khoảng cách giữa Text và Bar
+						ui.spacing_mut().item_spacing.y = 4.0 * scale;
 						
 						let text_color = ui.visuals().text_color();
 
@@ -164,7 +174,7 @@ impl App {
 							"{} : {}", 
 							helpers::format_damage(dmg), 
 							helpers::format_damage(dpav)
-						)).strong().size(15.0).color(text_color));
+						)).strong().size(15.0 * scale).color(text_color));
 
 						// Tính thông số để truyền vào hàm Bar
 						let fraction = if max_dmg > 0.0 { (dmg / max_dmg) as f32 } else { 0.0 };
@@ -876,56 +886,60 @@ impl App {
 					);
 				};
 
+				let scale = self.config.ui_scale;
+				let header_font_size = 15.0 * scale;
+				let row_font_size = 14.0 * scale;
+				let icon_dim = 14.0 * scale;
+
 				// --- HELPER 1: Hàm vẽ Header ---
 				let draw_header = |ui: &mut egui::Ui, title: String| {
-					let default_color = ui.visuals().text_color(); // Lấy màu theme mặc định
-					draw_text_with_shadow(ui, &title, 15.0, default_color);
-					ui.label(""); // Cột phải để trống cho Header
+					let default_color = ui.visuals().text_color();
+					draw_text_with_shadow(ui, &title, header_font_size, default_color);
+					ui.label("");
 					ui.end_row();
 				};
 
-				// --- HELPER 2: Hàm vẽ 1 dòng (có Icon, có Base + Bonus) ---
+				// --- HELPER 2: Hàm vẽ 1 dòng Base Stat ---
 				let draw_base_stat_row = |ui: &mut egui::Ui, icon_key: &str, label: String, final_val: f64, color: Option<egui::Color32>| {
 					let default_color = ui.visuals().text_color();
 					
 					// Cột 1: Icon + Tên chỉ số
 					ui.horizontal(|ui| {
 						if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
-							let dim = 14.0;
-							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(icon_dim, icon_dim)));
+						} else if icon_key == "Shield" {
+							draw_text_with_shadow(ui, egui_phosphor::bold::SHIELD, row_font_size, COLOR_AMBER);
 						} else {
-							ui.allocate_space(egui::vec2(14.0, 14.0)); // Giữ chỗ nếu ko load đc icon
+							ui.allocate_space(egui::vec2(icon_dim, icon_dim));
 						}
-						draw_text_with_shadow(ui, &label, 14.0, default_color);
+						draw_text_with_shadow(ui, &label, row_font_size, default_color);
 					});
 
 					// Cột 2: Value (Căn lề phải)
 					ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-						// Đã bỏ if final_val > 0.01 ở đây để luôn hiển thị giá trị
 						let text_val = if final_val.abs() < 0.01 {
-							"0".to_string() // Nếu = 0 thì in tròn số 0
+							"0".to_string()
 						} else {
-							format!("{:.2}", final_val) // Nếu có số lẻ thì in 2 chữ số thập phân
+							format!("{:.2}", final_val)
 						};
 						
-						let final_color = color.unwrap_or(default_color); // Áp dụng màu custom nếu có
-						draw_text_with_shadow(ui, &text_val, 14.0, final_color);
+						let final_color = color.unwrap_or(default_color);
+						draw_text_with_shadow(ui, &text_val, row_font_size, final_color);
 					});
 					ui.end_row();
 				};
 
-				// --- HELPER 3: Hàm vẽ 1 dòng (Advanced/DMG, có Icon, giá trị %) ---
+				// --- HELPER 3: Hàm vẽ 1 dòng Advanced/DMG ---
 				let draw_advanced_stat_row = |ui: &mut egui::Ui, icon_key: &str, label: String, val: f64, is_percent: bool, color: Option<egui::Color32>| {
 					let default_color = ui.visuals().text_color();
 
 					ui.horizontal(|ui| {
 						if let Some(handle) = helpers::load_property_icon_image(ui.ctx(), icon_key, egui::TextureOptions::default()) {
-							let dim = 14.0;
-							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(dim, dim)));
+							ui.add(egui::Image::new(&handle).fit_to_exact_size(egui::vec2(icon_dim, icon_dim)));
 						} else {
-							ui.allocate_space(egui::vec2(14.0, 14.0));
+							ui.allocate_space(egui::vec2(icon_dim, icon_dim));
 						}
-						draw_text_with_shadow(ui, &label, 14.0, default_color);
+						draw_text_with_shadow(ui, &label, row_font_size, default_color);
 					});
 
 					ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -936,7 +950,7 @@ impl App {
 						};
 						
 						let final_color = color.unwrap_or(default_color);
-						draw_text_with_shadow(ui, &text_val, 14.0, final_color);
+						draw_text_with_shadow(ui, &text_val, row_font_size, final_color);
 					});
 					ui.end_row();
 				};
@@ -945,9 +959,9 @@ impl App {
 				// VẼ GIAO DIỆN TỪ ĐÂY
 				// ==========================================
 
-				// 1. BASE STATS
+				// 1. BASE STATS (Dùng "MaxHP" để hiện đúng icon trái tim của game)
 				draw_header(ui, t!("Base Stats").to_string());
-				draw_base_stat_row(ui, "HP", t!("HP").to_string(), get_stat("CurrentHP"), None);
+				draw_base_stat_row(ui, "MaxHP", t!("HP").to_string(), get_stat("CurrentHP"), None);
 				draw_base_stat_row(ui, "Attack", t!("ATK").to_string(), final_atk, None);
 				draw_base_stat_row(ui, "Defence", t!("DEF").to_string(), final_def, None);
 				draw_base_stat_row(ui, "Speed", t!("SPD").to_string(), final_spd, Some(COLOR_BLUE));

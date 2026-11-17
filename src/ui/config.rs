@@ -35,6 +35,8 @@ pub struct Config {
     pub defender_exclusion: bool,
     #[serde(default = "default_auto_showhide_ui")]
     pub auto_showhide_ui: bool,
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f32,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -90,6 +92,10 @@ fn default_auto_showhide_ui() -> bool {
     false
 }
 
+fn default_ui_scale() -> f32 {
+    1.0
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -105,6 +111,7 @@ impl Default for Config {
             pie_chart_opacity: default_pie_chart_opacity(),
             defender_exclusion: default_defender_exclusion(),
             auto_showhide_ui: default_auto_showhide_ui(),
+            ui_scale: default_ui_scale(),
         }
     }
 }

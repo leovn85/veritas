@@ -843,6 +843,10 @@ impl BattleContext {
 
         let summary_data = BattleSummary {
             team_name: team_name.clone(),
+            battle_mode: battle_mode_str,
+            stage_id,
+            cycle: battle_context.cycle,
+            wave: battle_context.wave,
             lineup: battle_context.avatar_lineup.iter().map(|a| a.name.clone()).collect(),
             lineup_details: battle_context.avatar_lineup.clone(),
             timestamp: now_str,
